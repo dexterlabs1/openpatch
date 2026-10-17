@@ -43,6 +43,12 @@ MCP construction cues follow all six VCO controls and all eight ADSR controls at
 
 **84 focused checks passed**, including all fourteen MCP control anchors and five cable workflows; strict desktop Clippy and formatting passed. Final light/dark native meshes were inspected. The preceding utility CI run exposed four stale jack-coordinate tests; those workflows and the related cancellation fixture now select actual named ports. Detailed results and the native capture are recorded in the [review notes](../design/reviews/signal-atlas-two-modules-v1/README.md). Next: Stock LFO and Stock VCF, then the remaining catalog families. Installed 0.2.5 build 7 remains unchanged; no DSP sources or frozen references changed.
 
+### Stock modulation and filter continuation
+
+Stock LFO now shares the VCO's larger main controls and four-wave display, with its own source-accurate offset/invert/PWM shapes, observed clock units and real phase/mode lamps. Stock VCF pairs three larger main controls with three smaller CV-depth controls and a drive/ladder/negative-feedback diagram. Both keep their widths, socket rows, identities, numeric editing and undo; all twelve MCP anchors follow the new controls. The filter's highpass tap mix and exact CV laws are explained in tooltips, without inventing a measured response.
+
+[Native LFO/filter pair and thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-stock-modulation.png). **85 focused checks passed**, including the actual LFO engine in all offset/invert modes at three widths, clock-aware editing, MCP anchors, real lamps, geometry, shared rendering and isolated simultaneous filter previews. Strict desktop Clippy and formatting passed; light/dark meshes were inspected. Prior `dc748c7` CI passed 1,090 desktop tests and failed one stale ADSR label expectation; that exact fixture is corrected and passes locally. No DSP sources/frozen references or installed app changed. Eleven native panels now have detailed layouts; next: Stock VCA, Process and Octave as a utility family.
+
 The following catalog batches describe existing development source, not an approved final design.
 
 ### First catalog batch in progress

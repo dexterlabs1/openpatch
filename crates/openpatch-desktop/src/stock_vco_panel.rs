@@ -26,8 +26,8 @@ fn stock_vco_parameter_value(parameter: &str, value: f32) -> String {
     }
 }
 
-/// Stock VCO and LFO use the same black rotary hardware. The arc reports the
-/// saved, bounded UI position; it is not a signal meter.
+/// Compact hardware retained by Stock Process. The arc reports the saved,
+/// bounded UI position; it is not a signal meter.
 fn stock_oscillator_rotary(
     painter: &egui::Painter,
     center: Pos2,
@@ -42,7 +42,7 @@ fn stock_oscillator_rotary(
 // lives below. These positions also drive precision and construction anchors.
 fn stock_vco_control(parameter: &str) -> (Pos2, f32) {
     match parameter {
-        "frequency" => (pos2(72.0, 120.0), 35.0),
+        "frequency" | "rate" => (pos2(72.0, 120.0), 35.0),
         "pulse_width" => (pos2(288.0, 120.0), 35.0),
         "fm_amount" => (pos2(66.0, 239.0), 27.0),
         _ => (pos2(294.0, 239.0), 27.0),
@@ -56,7 +56,7 @@ fn stock_vco_mode_rect(parameter: &str) -> Rect {
     Rect::from_min_size(
         pos2(
             144.0,
-            if parameter == "linear_fm" {
+            if matches!(parameter, "linear_fm" | "offset") {
                 204.0
             } else {
                 232.0
@@ -65,12 +65,23 @@ fn stock_vco_mode_rect(parameter: &str) -> Rect {
         vec2(78.0, 24.0),
     )
 }
-fn stock_vco_control_print(painter: &egui::Painter, origin: Pos2, name: &str, zoom: f32) {
+fn stock_oscillator_control_print(
+    painter: &egui::Painter,
+    origin: Pos2,
+    kind: &str,
+    name: &str,
+    ratio: bool,
+    zoom: f32,
+) {
     let (center, _) = stock_vco_control(name);
     painter.text(
         origin + vec2(center.x, if center.y < 200.0 { 165.0 } else { 278.0 }) * zoom,
         Align2::CENTER_CENTER,
-        stock_vco_parameter_label(name),
+        if kind == "stock_lfo" {
+            stock_lfo_parameter_label(name, ratio)
+        } else {
+            stock_vco_parameter_label(name)
+        },
         crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
         INK,
     );
@@ -91,13 +102,16 @@ fn stock_vco_nominal(wave: usize, phase: f32, width: f32) -> f32 {
         }
     }
 }
-fn stock_vco_configuration(
+fn paint_stock_oscillator_configuration(
     painter: &egui::Painter,
     node: &Node,
     rect: Rect,
     zoom: f32,
     lighting: &crate::lighting::RoomLighting,
+    clock: Option<f32>,
 ) {
+    let lfo = node.kind == "stock_lfo";
+    let offset = lfo && node.params.get("offset").copied().unwrap_or(1.0) >= 0.5;
     let p = |x, y| rect.min + vec2(x, y) * zoom;
     let text = |x, y, value: &str, size, color| {
         painter.text(
@@ -118,7 +132,21 @@ fn stock_vco_configuration(
     draw.screen(Rect::from_min_max(p(133.0, 77.0), p(227.0, 191.0)));
     let quiet = Color32::from_rgb(153, 163, 140);
     let grid = Color32::from_rgb(43, 57, 43);
-    text(180.0, 86.0, "NOMINAL ±5 V", 8.0, quiet);
+    text(
+        180.0,
+        86.0,
+        if lfo {
+            if offset {
+                "CONFIGURED 0–10 V"
+            } else {
+                "CONFIGURED ±5 V"
+            }
+        } else {
+            "NOMINAL ±5 V"
+        },
+        8.0,
+        quiet,
+    );
     let width = node
         .params
         .get("pulse_width")
@@ -133,7 +161,7 @@ fn stock_vco_configuration(
         if wave == 3 {
             phases.extend([width - 0.00001, width]);
         }
-        if wave == 2 {
+        if wave == 2 && !offset {
             phases.push(0.5 - 0.00001);
         }
         phases.sort_by(f32::total_cmp);
@@ -142,7 +170,13 @@ fn stock_vco_configuration(
             .map(|phase| {
                 p(
                     158.0 + 61.0 * phase,
-                    y - 7.0 * stock_vco_nominal(wave, phase, width),
+                    y - 7.0
+                        * if lfo {
+                            stock_lfo_guide_sample(node, wave, phase) / 5.0
+                                - if offset { 1.0 } else { 0.0 }
+                        } else {
+                            stock_vco_nominal(wave, phase, width)
+                        },
                 )
             })
             .collect();
@@ -152,19 +186,47 @@ fn stock_vco_configuration(
         ));
     }
     lighting.preserve(painter, start);
-    for (x, label) in [(72.0, "C4"), (288.0, "50%")] {
+    let ratio = lfo && clock.is_some_and(|c| c != 2.0);
+    let midpoint = if lfo {
+        if ratio {
+            "×1"
+        } else {
+            "2 Hz"
+        }
+    } else {
+        "C4"
+    };
+    for (x, label) in [(72.0, midpoint), (288.0, "50%")] {
         text(x, 68.0, label, 7.0, INK);
     }
+    let ends = if lfo {
+        if ratio {
+            ["1/512×", "512×"]
+        } else {
+            ["1/256 Hz", "1024 Hz"]
+        }
+    } else {
+        ["−76 st", "+76 st"]
+    };
     for (x, label) in [
-        (26.0, "−76 st"),
-        (118.0, "+76 st"),
+        (26.0, ends[0]),
+        (118.0, ends[1]),
         (242.0, "1%"),
         (334.0, "99%"),
     ] {
         text(x, 155.0, label, 7.0, INK);
     }
-    // Source-backed routing captions; A is the associated signed depth.
-    for (x, label) in [(66.0, "FM × A → f"), (294.0, "PWM/10 × A → PW")] {
+    for (x, label) in [
+        (
+            66.0,
+            if lfo {
+                "FM × A → OCT"
+            } else {
+                "FM × A → f"
+            },
+        ),
+        (294.0, "PWM/10 × A → PW"),
+    ] {
         text(x, 202.0, label, 8.0, INK);
     }
     for center in [66.0, 294.0] {
@@ -176,7 +238,7 @@ fn stock_vco_configuration(
 impl Rack {
     fn stock_vco_lights(&self, ui: &mut egui::Ui, node: &Node, rect: Rect) {
         let zoom = self.zoom;
-        stock_vco_configuration(ui.painter(), node, rect, zoom, &self.lighting);
+        paint_stock_oscillator_configuration(ui.painter(), node, rect, zoom, &self.lighting, None);
         let help_rect = Rect::from_min_max(
             rect.min + vec2(133.0, 77.0) * zoom,
             rect.min + vec2(227.0, 191.0) * zoom,

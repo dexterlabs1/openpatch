@@ -235,7 +235,7 @@ fn generic_parameter_hardware(
 ) -> GenericParameterHardware {
     if has_choices {
         GenericParameterHardware::Choice
-    } else if atlas_voice(kind) || kind == "stock_vco" {
+    } else if atlas_voice(kind) || matches!(kind, "stock_vco" | "stock_lfo") {
         GenericParameterHardware::Rotary {
             body_radius: layout_radius,
             target_half: layout_radius + 3.0,
@@ -244,13 +244,6 @@ fn generic_parameter_hardware(
         // This 24-bit integer restarts the noise sequence; it is not a
         // continuous setting and retains its existing exact-entry path.
         GenericParameterHardware::Fader
-    } else if matches!(kind, "stock_lfo" | "stock_vco") {
-        // Preserve the stock oscillators' original 27-point body and 68-point
-        // target while other panels adopt a bounded size from their own cells.
-        GenericParameterHardware::Rotary {
-            body_radius: 27.0,
-            target_half: 34.0,
-        }
     } else if matches!(kind, "multi_vco" | "multi_lfo")
         && oscillator_voice_rotary_parameter(kind, parameter)
     {
@@ -3757,30 +3750,6 @@ impl Rack {
                     }
                     continue;
                 }
-                if *name == "rate" && node.kind == "stock_lfo" {
-                    // Rate is log2; FM depth multiplies its frequency ratio.
-                    painter.text(
-                        point(width * 0.5, 97.0),
-                        Align2::CENTER_CENTER,
-                        "fCLK (Hz)/2 × 2^(RATE + FM×DEPTH) → RATE",
-                        crate::panel_skin::print_font(painter.ctx(), 9.0 * self.zoom),
-                        INK,
-                    );
-                    painter.text(
-                        point(width * 0.5, 115.0),
-                        Align2::CENTER_CENTER,
-                        "fCLK = measured Hz · starts at 2 Hz until clocked",
-                        crate::panel_skin::print_font(painter.ctx(), 8.5 * self.zoom),
-                        MUTED,
-                    );
-                    painter.text(
-                        point(width * 0.5, 133.0),
-                        Align2::CENTER_CENTER,
-                        "PWM/10×DEPTH→SQUARE WIDTH · RESET→PHASE · OFFSET→RANGE",
-                        crate::panel_skin::print_font(painter.ctx(), 8.5 * self.zoom),
-                        MUTED,
-                    );
-                }
                 if node.kind == "multi_vco" && matches!(*name, "linear_fm" | "soft_sync") {
                     let enabled = node.params.get(*name).copied().unwrap_or(0.0) >= 0.5;
                     let rect = Rect::from_min_size(
@@ -3877,10 +3846,13 @@ impl Rack {
                 }
                 if node.kind == "stock_lfo" && matches!(*name, "offset" | "invert") {
                     let enabled = value_or_default(node, name, spec) >= 0.5;
-                    let x = if *name == "offset" { 184.0 } else { 268.0 };
+                    let toggle = stock_vco_mode_rect(name);
                     let response = crate::panel_skin::toggle_button(
                         ui,
-                        Rect::from_min_size(point(x, 39.0), vec2(78.0, 24.0) * self.zoom),
+                        Rect::from_min_size(
+                            point(toggle.min.x, toggle.min.y),
+                            toggle.size() * self.zoom,
+                        ),
                         if *name == "offset" {
                             if enabled {
                                 "0–10 V"
@@ -4195,17 +4167,8 @@ impl Rack {
                         random_parameter_position(index),
                         if *name == "unipolar" { 10.0 } else { 14.0 },
                     )
-                } else if node.kind == "stock_vco" {
+                } else if matches!(node.kind.as_str(), "stock_vco" | "stock_lfo") {
                     stock_vco_control(name)
-                } else if node.kind == "stock_lfo" {
-                    let column = match *name {
-                        "frequency" | "rate" => 0,
-                        "pulse_width" => 1,
-                        "fm_amount" => 2,
-                        "pwm_amount" => 3,
-                        _ => index,
-                    };
-                    (pos2(45.0 + column as f32 * 90.0, 196.0), 30.0)
                 } else if is_wavetable(&node.kind) {
                     (wavetable_parameter_position(index), 18.0)
                 } else if matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") {
@@ -4432,7 +4395,7 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if node.kind == "stock_vco" {
+                let value_center = if matches!(node.kind.as_str(), "stock_vco" | "stock_lfo") {
                     let local = stock_vco_value_center(name);
                     point(local.x, local.y)
                 } else if atlas_voice(&node.kind) {
@@ -4721,7 +4684,9 @@ impl Rack {
                         self.zoom,
                     );
                 } else if let GenericParameterHardware::Rotary { body_radius, .. } = hardware {
-                    let paint_rotary = if atlas_voice(&node.kind) || node.kind == "stock_vco" {
+                    let paint_rotary = if atlas_voice(&node.kind)
+                        || matches!(node.kind.as_str(), "stock_vco" | "stock_lfo")
+                    {
                         paint_atlas_voice_rotary
                     } else {
                         crate::panel_skin::signal_atlas_rotary
@@ -4744,8 +4709,15 @@ impl Rack {
                         self.zoom,
                     );
                 }
-                if node.kind == "stock_vco" {
-                    stock_vco_control_print(&painter, rect.min, name, self.zoom);
+                if matches!(node.kind.as_str(), "stock_vco" | "stock_lfo") {
+                    stock_oscillator_control_print(
+                        &painter,
+                        rect.min,
+                        &node.kind,
+                        name,
+                        clock_ratio,
+                        self.zoom,
+                    );
                 } else if !atlas_voice(&node.kind) {
                     crate::panel_skin::control_label(
                         &painter,
@@ -4789,7 +4761,9 @@ impl Rack {
                         &painter, center, &node.kind, name, radius, self.zoom,
                     );
                 }
-                let paint_readout = if atlas_voice(&node.kind) || node.kind == "stock_vco" {
+                let paint_readout = if atlas_voice(&node.kind)
+                    || matches!(node.kind.as_str(), "stock_vco" | "stock_lfo")
+                {
                     paint_atlas_voice_readout
                 } else {
                     crate::panel_skin::readout
@@ -12508,7 +12482,12 @@ fn paint_panel(
 ) {
     // One faceplate material across the catalog and its browser previews.
     // Bespoke mixer/process layouts own their section dividers.
-    if atlas_voice(&node.kind) || matches!(node.kind.as_str(), "stock_vco" | "adsr_eg") {
+    if atlas_voice(&node.kind)
+        || matches!(
+            node.kind.as_str(),
+            "stock_vco" | "adsr_eg" | "stock_lfo" | "stock_vcf"
+        )
+    {
         paint_atlas_voice_face(painter, rect, node, zoom);
     } else {
         crate::panel_skin::signal_atlas_face(painter, rect, zoom);
@@ -12568,7 +12547,12 @@ fn paint_panel(
         );
         lighting.preserve(painter, selection_start);
     }
-    if atlas_voice(&node.kind) || matches!(node.kind.as_str(), "stock_vco" | "adsr_eg") {
+    if atlas_voice(&node.kind)
+        || matches!(
+            node.kind.as_str(),
+            "stock_vco" | "adsr_eg" | "stock_lfo" | "stock_vcf"
+        )
+    {
         if master {
             paint_jack_light(
                 painter,
@@ -12820,7 +12804,7 @@ fn paint_jack(
             );
         }
     }
-    if matches!(kind, "stock_vco" | "adsr_eg") {
+    if matches!(kind, "stock_vco" | "adsr_eg" | "stock_lfo" | "stock_vcf") {
         paint_atlas_socket_hardware(painter, center, 10.3 * zoom * port_scale / 32.0, connected);
     } else {
         crate::panel_skin::socket(painter, center, connected, zoom, port_scale);
