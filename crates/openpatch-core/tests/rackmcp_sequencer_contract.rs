@@ -189,7 +189,7 @@ fn equal_authored_assignment_survives_lane_cache_until_changed_curve_writes() {
     assigned.adopt_state_from(&old);
     assert_eq!(
         assigned.inherit_parameter_values(&old, &[], &[assigned_handle]),
-        0
+        1 // The unassigned sequencer running value also inherits.
     );
     render(&mut assigned, 96);
     assert_eq!(assigned.parameter_value(assigned_handle), Some(0.8));
@@ -302,7 +302,8 @@ fn unrelated_reorder_and_rate_adoption_preserve_cache_even_when_target_is_recrea
             .insert("value".into(), unrelated);
         let mut next = patch.compile().unwrap();
         next.adopt_state_from(&old);
-        assert_eq!(next.inherit_parameter_values(&old, &[], &[]), 1);
+        assert_eq!(next.inherit_parameter_values(&old, &[], &[]), 2);
+        assert_eq!(value(&next, "seq", "running"), 1.0);
         let expected = render(&mut old, 64);
         let actual = render(&mut next, 64);
         assert_eq!(actual, expected);
@@ -315,7 +316,7 @@ fn unrelated_reorder_and_rate_adoption_preserve_cache_even_when_target_is_recrea
     fresh.adopt_state_from_excluding(&old, &[target.module()]);
     assert_eq!(
         fresh.inherit_parameter_values(&old, &[target.module()], &[]),
-        0
+        1 // Fresh VCA is excluded; sequencer running remains continuous.
     );
     // 1100 + 3*64 samples leaves division at 12; the next write is 20 away.
     render(&mut fresh, 19);

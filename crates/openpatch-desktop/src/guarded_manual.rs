@@ -140,7 +140,7 @@ impl Performance {
             token: entry.token,
             action_epoch: entry.action_epoch,
             cancel_through_serial,
-            action,
+            action: PerformanceAction::Module(action),
             sequence,
             revision,
             deadline: self
@@ -169,5 +169,100 @@ impl Performance {
             json!({"queued":true,"applied":false,"sequence":sequence,"id":id,"action":action,"minimum_revision":revision,"future_timeout_seconds":FUTURE_SECONDS}),
             entry,
         ))
+    }
+}
+
+impl Performance {
+    fn enqueue_rackmcp(
+        &self,
+        id: &str,
+        requests: &[RackMcpTransport],
+        data: &openpatch_core::rackmcp_sequence::SequenceData,
+    ) -> Result<Value, String> {
+        if requests.is_empty() || requests.len() > 2 {
+            return Err("Expected one action, optionally preceded by a pattern selection".into());
+        }
+        for (index, request) in requests.iter().enumerate() {
+            match request {
+                RackMcpTransport::Select { pattern, .. }
+                    if usize::from(*pattern) >= data.patterns.len() =>
+                {
+                    return Err("Pattern index is unavailable".into())
+                }
+                RackMcpTransport::Seek { bar }
+                    if !bar.is_finite() || !(0.0..=100_000.0).contains(bar) =>
+                {
+                    return Err("Seek bar must be finite and between 0 and 100000".into())
+                }
+                _ => {}
+            }
+            if requests.len() == 2
+                && ((index == 0 && !matches!(request, RackMcpTransport::Select { .. }))
+                    || (index == 1
+                        && matches!(request, RackMcpTransport::Select { .. } | RackMcpTransport::Seek { .. })))
+            {
+                return Err("Expected a pattern selection followed by one transport action".into());
+            }
+        }
+        let fingerprint = openpatch_core::rackmcp_sequence::content_fingerprint(data)?;
+        let mut control = self
+            .control
+            .lock()
+            .map_err(|_| "Module event registry poisoned")?;
+        if !self.execution_available() {
+            self.shared.rejected.fetch_add(1, Ordering::Relaxed);
+            return Err("Document execution is unavailable; transport was not queued".into());
+        }
+        let entry = control
+            .entries
+            .get(id)
+            .copied()
+            .ok_or_else(|| format!("Module '{id}' has no live RackMCP sequencer instance"))?;
+        if entry.kind != ModuleKind::RackMcpSequencer || entry.bypassed {
+            self.shared.rejected.fetch_add(1, Ordering::Relaxed);
+            return Err(format!(
+                "Module '{id}' is bypassed or is not a RackMCP sequencer"
+            ));
+        }
+        if !control
+            .rackmcp_metadata
+            .get(id)
+            .is_some_and(|(actual, _)| *actual == fingerprint)
+        {
+            return Err("Sequence content changed; transport was not queued".into());
+        }
+        let sequence = control.next_sequence;
+        control.next_sequence = control.next_sequence.wrapping_add(1).max(1);
+        let revision = control.revision;
+        let mut fixed = [None; 2];
+        for (slot, request) in fixed.iter_mut().zip(requests) {
+            *slot = Some(*request);
+        }
+        let event = Event {
+            slot: entry.slot,
+            token: entry.token,
+            action_epoch: entry.action_epoch,
+            cancel_through_serial: 0,
+            action: PerformanceAction::RackMcp {
+                requests: fixed,
+                content_fingerprint: fingerprint,
+            },
+            sequence,
+            revision,
+            deadline: self
+                .shared
+                .frame
+                .load(Ordering::Acquire)
+                .saturating_add(u64::from(self.rate) * FUTURE_SECONDS),
+        };
+        self.shared.queued.fetch_add(1, Ordering::Release);
+        if control.queue.push(event).is_err() {
+            self.shared.queued.fetch_sub(1, Ordering::Release);
+            self.shared.backpressure.fetch_add(1, Ordering::Relaxed);
+            return Err("Module action queue is full; transport was not queued".into());
+        }
+        Ok(
+            json!({"queued":true,"applied":false,"sequence":sequence,"id":id,"minimum_revision":revision,"future_timeout_seconds":FUTURE_SECONDS}),
+        )
     }
 }

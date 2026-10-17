@@ -3,8 +3,9 @@
 Concrete follow-on to the [sequence contract](RACKMCP_SEQUENCE_CONTRACT.md).
 The source engine primitives are qualified. Core target capabilities, coherent
 publication, project-save overlays and explicit parameter history/adoption are
-implemented for the two current capabilities. Native sequence dispatch and explicit
-data-load intent are implemented; exclusive lane ownership below remains open. Preserve
+implemented for VCA level, source VCF frequency and sequencer running. Native
+sequence dispatch, explicit data-load intent and exclusive lane ownership are
+implemented. Preserve
 the [shared document authority](COMPATIBILITY_DECISION.md).
 
 The control document records authored intent. The active engine owns effective
@@ -40,7 +41,7 @@ models which remain unresolved.
 Process a sequencer at its normal native node position. End that node borrow,
 then apply a fixed stack buffer of at most eight writes before processing the
 next node. Later nodes see the new parameter that sample; earlier nodes see it
-next sample. Competing writers follow native traversal/lane order. This is a
+next sample. Exclusive owners alone write/acknowledge; explicit loads acquire in final document action order. Cold graphs use native traversal/lane order. This is a
 declared deterministic native policy, **not proof of Rack scheduler equivalence**;
 native cables already deliver their previous sample.
 
@@ -123,8 +124,8 @@ shared Session edit/undo/redo/save/reopen and suspension/resume, with no callbac
 heap activity. These are native parameter authority checks. Exclusive lane
 ownership now follows ordered document loads and preserves vacant claims after
 winner deletion. Source-provenance import and a real shared-session callback
-workflow are now qualified below; Bridge/Listen and direct transport/status
-publication remain open.
+workflow are now qualified below. Direct transport/status and saved selected-name
+publication now follow the [transport contract](RACKMCP_SEQUENCE_CONTRACT.md#live-transport-and-saved-selection); Bridge/Listen remain open.
 
 
 ## Observed SDK binding boundary

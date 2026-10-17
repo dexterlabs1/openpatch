@@ -33,6 +33,46 @@ pub(crate) const OUTPUTS: [&str; 18] = [
     "reset",
 ];
 
+/// Fixed-capacity source module transport request. Requests of each queued kind
+/// coalesce until the next source process sample.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RackMcpTransport {
+    Play,
+    Stop,
+    Toggle,
+    Reset,
+    Select { pattern: u8, now: bool },
+    Seek { bar: f64 },
+}
+
+/// Source status: controls/counts are current; position/clock publish every 64
+/// processed samples. An unconsumed selection overlays the published pending index.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct RackMcpSequenceStatus {
+    pub running: bool,
+    pub bpm: f32,
+    pub swing: f32,
+    pub selected_pattern: u8,
+    pub active_pattern: i32,
+    pub pending_pattern: Option<u8>,
+    pub step: i32,
+    pub loop_count: i64,
+    pub beat: f32,
+    pub external_clock: bool,
+    pub pattern_count: u8,
+    pub lane_count: u8,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct PublishedPosition {
+    active: i32,
+    pending: Option<u8>,
+    step: i32,
+    loops: i64,
+    beat: f32,
+    external: bool,
+}
+
 /// Native destination associated with a source lane's stable target pair.
 /// Source-package provenance is checked by the document boundary.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -150,6 +190,7 @@ pub(crate) struct RackMcpSequencer {
     state: Box<SequenceState>,
     data: Box<CompiledSequence>,
     data_fingerprint: [u8; 32],
+    content_fingerprint: [u8; 32],
     target_fingerprints: [Option<[u8; 32]>; LANES],
     source_target_indices: [Option<usize>; LANES],
     targets: [Option<ResolvedTarget>; LANES],
@@ -163,6 +204,12 @@ pub(crate) struct RackMcpSequencer {
     reset_trigger: Schmitt,
     reset_button: Schmitt,
     lane_divider: u8,
+    publish_divider: u8,
+    published: PublishedPosition,
+    selected: u8,
+    requested_reset: bool,
+    requested_seek: Option<f64>,
+    requested_pattern: Option<(u8, bool)>,
     last_lane_value: [f32; LANES],
 }
 
@@ -202,6 +249,7 @@ impl RackMcpSequencer {
         let state = node.rackmcp_sequence.clone().unwrap_or_default();
         let data = Box::new(state.compile()?);
         let data_fingerprint = fingerprint(&state.data)?;
+        let content_fingerprint = super::content_fingerprint(&state.data)?;
         let mut target_fingerprints = [None; LANES];
         let mut source_target_indices = [None; LANES];
         for (lane_index, lane) in state.data.lanes.iter().enumerate() {
@@ -214,10 +262,12 @@ impl RackMcpSequencer {
         }
         let mut player = Player::default();
         player.adopt_data(&data);
+        let selected = data.selected_pattern() as u8;
         Ok(Self {
             state,
             data,
             data_fingerprint,
+            content_fingerprint,
             target_fingerprints,
             source_target_indices,
             targets: [None; LANES],
@@ -231,6 +281,12 @@ impl RackMcpSequencer {
             reset_trigger: Schmitt::default(),
             reset_button: Schmitt::default(),
             lane_divider: 0,
+            publish_divider: 0,
+            published: PublishedPosition::default(),
+            selected,
+            requested_reset: false,
+            requested_seek: None,
+            requested_pattern: None,
             last_lane_value: [f32::NAN; LANES],
         })
     }
@@ -251,13 +307,23 @@ impl RackMcpSequencer {
     /// Preserve source transport and detectors across graph replacement while
     /// retaining the receiving configuration, allocations and parameter values.
     pub(crate) fn adopt(&mut self, old: &Self) {
+        self.adopt_preserving_selection(old, false);
+    }
+
+    pub(crate) fn adopt_preserving_selection(&mut self, old: &Self, preserve: bool) {
         self.player.adopt_runtime(&old.player);
         self.clock_trigger = old.clock_trigger;
         self.reset_trigger = old.reset_trigger;
         self.reset_button = old.reset_button;
         self.lane_divider = old.lane_divider;
+        self.publish_divider = old.publish_divider;
+        self.published = old.published;
+        self.selected = old.selected;
+        self.requested_reset = old.requested_reset;
+        self.requested_seek = old.requested_seek;
+        self.requested_pattern = old.requested_pattern;
         self.last_lane_value = old.last_lane_value;
-        if self.data_fingerprint != old.data_fingerprint {
+        if !self.data_matches(old) && !(preserve && self.content_matches(old)) {
             self.reload_data();
         } else {
             for i in 0..LANES {
@@ -274,6 +340,46 @@ impl RackMcpSequencer {
         self.data_matches(previous) && self.target_fingerprints == previous.target_fingerprints
     }
 
+    pub(crate) fn claims_match_preserving_selection(
+        &self,
+        previous: &Self,
+        preserve: bool,
+    ) -> bool {
+        (self.data_matches(previous) || (preserve && self.content_matches(previous)))
+            && self.target_fingerprints == previous.target_fingerprints
+    }
+
+    pub(crate) fn content_fingerprint(&self) -> [u8; 32] {
+        self.content_fingerprint
+    }
+
+    /// Musical source content identity excludes only its persisted desired selection.
+    pub(crate) fn content_matches(&self, previous: &Self) -> bool {
+        self.content_fingerprint == previous.content_fingerprint
+    }
+
+    pub(crate) fn saved_state(&self) -> crate::SavedModuleState {
+        let name = &self.data.pattern_names()[usize::from(self.selected)];
+        crate::SavedModuleState::RackMcpSelection(
+            crate::FixedPatternName::new(name).expect("compiled source name"),
+        )
+    }
+
+    pub(crate) fn set_saved_selection(&mut self, name: crate::FixedPatternName) -> bool {
+        let Some(index) = self
+            .data
+            .pattern_names()
+            .iter()
+            .position(|candidate| candidate == name.as_str())
+        else {
+            return false;
+        };
+        self.transport(RackMcpTransport::Select {
+            pattern: index as u8,
+            now: false,
+        })
+    }
+
     /// Source-data identity is independent of resolved native target routes.
     pub(crate) fn data_matches(&self, previous: &Self) -> bool {
         self.data_fingerprint == previous.data_fingerprint
@@ -281,8 +387,69 @@ impl RackMcpSequencer {
 
     /// Explicit source dataFromJson lifecycle, including an equal-data load.
     pub(crate) fn reload_data(&mut self) {
+        self.selected = self.data.selected_pattern() as u8;
         self.player.adopt_data(&self.data);
         self.last_lane_value = [f32::NAN; LANES];
+    }
+
+    /// Control-side requests do not reload data, invalidate lane caches or claim targets.
+    pub(crate) fn transport(&mut self, request: RackMcpTransport) -> bool {
+        match request {
+            RackMcpTransport::Play => self.running = true,
+            RackMcpTransport::Stop => self.running = false,
+            RackMcpTransport::Toggle => self.running = !self.running,
+            RackMcpTransport::Reset => self.requested_reset = true,
+            RackMcpTransport::Select { pattern, now } => {
+                if usize::from(pattern) >= self.data.pattern_names().len() {
+                    return false;
+                }
+                self.selected = pattern;
+                self.requested_pattern = Some((pattern, now));
+            }
+            RackMcpTransport::Seek { bar } => {
+                if !bar.is_finite() || !(0.0..=100000.0).contains(&bar) {
+                    return false;
+                }
+                self.requested_seek = Some(bar);
+            }
+        }
+        true
+    }
+
+    pub(crate) fn running(&self) -> f32 {
+        if self.running {
+            1.0
+        } else {
+            0.0
+        }
+    }
+
+    pub(crate) fn set_running(&mut self, value: f32) -> bool {
+        if value != 0.0 && value != 1.0 {
+            return false;
+        }
+        self.running = value == 1.0;
+        true
+    }
+
+    pub(crate) fn status(&self) -> RackMcpSequenceStatus {
+        RackMcpSequenceStatus {
+            running: self.running,
+            bpm: self.bpm,
+            swing: self.swing,
+            selected_pattern: self.selected,
+            active_pattern: self.published.active,
+            pending_pattern: self
+                .requested_pattern
+                .map(|(index, _)| index)
+                .or(self.published.pending),
+            step: self.published.step,
+            loop_count: self.published.loops,
+            beat: self.published.beat,
+            external_clock: self.published.external,
+            pattern_count: self.data.pattern_names().len() as u8,
+            lane_count: self.state.data.lanes.len() as u8,
+        }
     }
 
     /// Commit a cache entry only after the native destination accepted it.
@@ -313,6 +480,16 @@ impl RackMcpSequencer {
         let reset_button = self.reset_button.process(self.reset, 0.0);
         if reset_input | reset_button {
             self.player.reset();
+        }
+        if self.requested_reset {
+            self.requested_reset = false;
+            self.player.reset();
+        }
+        if let Some(bar) = self.requested_seek.take() {
+            self.player.seek(bar * 4.0);
+        }
+        if let Some((pattern, now)) = self.requested_pattern.take() {
+            self.player.queue_pattern(usize::from(pattern), now);
         }
         let rising = clock_connected && self.clock_trigger.process(inputs[0].channel(0), 0.1);
         let frame = self.player.process(
@@ -376,6 +553,19 @@ impl RackMcpSequencer {
                     }
                 }
             }
+        }
+        self.publish_divider += 1;
+        if self.publish_divider >= 64 {
+            self.publish_divider = 0;
+            let (active, pending, step, loops, beat) = self.player.position();
+            self.published = PublishedPosition {
+                active: active as i32,
+                pending: pending.map(|index| index as u8),
+                step: step as i32,
+                loops,
+                beat: beat as f32,
+                external: clock_connected,
+            };
         }
         (outputs, writes)
     }

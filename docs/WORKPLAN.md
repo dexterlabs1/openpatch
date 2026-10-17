@@ -187,8 +187,19 @@ pass. [Reviewed UI](../design/reviews/rackmcp-import-v1/README.md) shows Exact
 suspension and explicit Partial without invented telemetry. The frozen 96-file
 Core manifest is unchanged, so the existing numerical proof is reused.
 
-Next close transport/status publication, Bridge/Listen and the full imported
-musical control workflow. No release, installation or whole-module equivalence
+Transport/status now has direct MCP commands, coherent source-cadence status and
+selected-name/running save/history capture. Source transport comparison passes
+3 cases / 17,584 frames exactly. The actual shared-session import workflow reaches
+audio and source-preserving save/reopen; focused callback checks cover queue
+fences and selection-only adoption without reclaiming automation.
+[Transport contract and checks](benchmarks/rackmcp-sequence-transport.json): all 71
+Core unit/integration targets (927 passed, three ignored), 355 CLI-library
+checks (two ignored), 229 audio-callback checks (one ignored), 37 publication
+checks, nine document-state checks and five real MCP stdio workflows pass.
+Strict Core/CLI/Desktop all-target Clippy and formatting pass.
+
+Next close Bridge/Listen and the full imported musical control workflow,
+including live panel transport presentation. No release, installation or whole-module equivalence
 is claimed.
 
 Close one imported musical workflow using the actual RackMCP 2.0.0 sequencers

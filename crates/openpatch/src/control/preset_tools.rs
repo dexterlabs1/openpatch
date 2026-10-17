@@ -12,19 +12,46 @@ impl Session {
             .iter()
             .find(|node| node.id == id)
             .ok_or("module not found")?;
-        let (state, source, frame) = if let Some(initial) = SavedModuleState::from_node(node) {
-            if let Some(backend) = &self.live_module_events {
-                let (value, frame) =
-                    running::live_saved(&backend.snapshot(), id, self.revision, initial)?;
-                (Some(value), "live", Some(frame))
+        let backend = self
+            .live_module_events
+            .as_ref()
+            .filter(|_| self.execution_disposition().is_runnable());
+        let snapshot = backend.map(|backend| backend.snapshot());
+        let mut frame = None;
+        let mut captured = node.clone();
+        let mut source = if self.execution_disposition().is_runnable() {
+            "saved_parameters"
+        } else {
+            "suspended_persisted"
+        };
+        let state = if let Some(initial) = SavedModuleState::from_node(node) {
+            if let Some(snapshot) = &snapshot {
+                let (value, seen) = running::live_saved(snapshot, id, self.revision, initial)?;
+                frame = Some(seen);
+                source = "live";
+                Some(value)
             } else {
-                (Some(initial), "offline_reset", None)
+                if self.execution_disposition().is_runnable() {
+                    source = "offline_reset";
+                }
+                Some(initial)
             }
         } else {
-            (None, "saved_parameters", None)
+            None
         };
+        if let Some(state) = state {
+            super::rackmcp_transport::validate_selection(node, state)?;
+        }
+        if backend.is_some_and(|backend| backend.supports_live_parameters()) {
+            for &name in openpatch_core::runtime_parameter_names(&node.kind) {
+                let value =
+                    super::parameters::observe(self, node, name, snapshot.as_ref(), &mut frame)?;
+                captured.params.insert(name.into(), value);
+                source = "live";
+            }
+        }
         self.check_midi_cc_capture()?;
-        let preset = presets::capture_state_with_assets(node, state, &self.patch.assets)?;
+        let preset = presets::capture_state_with_assets(&captured, state, &self.patch.assets)?;
         let mut reply = preset_reply(&preset, args)?;
         reply["revision"] = json!(self.revision);
         reply["id"] = json!(id);

@@ -1,5 +1,5 @@
 fn stock_octave_packet(revision: u64, frame: u64, lights: Option<ModuleLightState>) -> ModuleSnapshot {
-    ModuleSnapshot { parameters: [None; MAX_PUBLISHED_PARAMETERS],
+    ModuleSnapshot { rackmcp_sequence: None, parameters: [None; MAX_PUBLISHED_PARAMETERS],
         revision,
         frame,
         state: None,

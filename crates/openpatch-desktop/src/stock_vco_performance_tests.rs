@@ -27,6 +27,7 @@ fn stock_vco_is_passive_and_five_lamps_obey_packet_identity_without_clock_metada
         meter.write(
             entry.token,
             ModuleSnapshot {
+                rackmcp_sequence: None,
                 parameters: [None; MAX_PUBLISHED_PARAMETERS],
                 revision: 7,
                 frame: 512,
@@ -78,6 +79,7 @@ fn rack264_vco_keeps_its_own_passive_runtime_light_identity() {
     meter.write(
         entry.token,
         ModuleSnapshot {
+            rackmcp_sequence: None,
             parameters: [None; MAX_PUBLISHED_PARAMETERS],
             revision: 7,
             frame: 512,

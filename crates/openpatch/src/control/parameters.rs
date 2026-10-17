@@ -53,7 +53,7 @@ fn targets(patch: &Patch, name: &str, args: &Value) -> Result<Targets, String> {
     Ok(targets)
 }
 
-fn observe(
+pub(super) fn observe(
     session: &Session,
     node: &Node,
     key: &str,

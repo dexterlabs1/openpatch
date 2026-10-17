@@ -49,6 +49,11 @@ controls above; unsupported targets remain explicitly unbound. Its mapping is
 labeled a musical role because native scheduling and healthy repeated rebinding
 are deliberate host corrections. [Contract and limits](RACKMCP_SEQUENCE_CONTRACT.md#source-import-and-automation-authority).
 
+`rackmcp_transport` controls imported sequencers through the live callback queue;
+`inspect_rackmcp_sequence` reports actual transport/status or explicit unavailable.
+Saved native state captures desired selection and effective running without
+rewriting the retained original VCV package. [Transport and persistence](RACKMCP_SEQUENCE_CONTRACT.md#live-transport-and-saved-selection).
+
 Imported automation checks the exact source package, original numeric target ID,
 registered mapping and native control. Reusing a referenced native ID for an
 unrelated module rejects the edit atomically; missing targets keep dormant

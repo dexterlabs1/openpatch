@@ -7,6 +7,7 @@ use crate::{Engine, EngineKind, ModuleHandle, MAX_NODES};
 pub(crate) enum ParameterId {
     StockVcaLevel,
     Rack264VcfFrequency,
+    RackMcpSequencerRunning,
 }
 
 impl ParameterId {
@@ -14,19 +15,27 @@ impl ParameterId {
         match kind {
             "stock_vca" => &[Self::StockVcaLevel],
             "rack264_vcf" => &[Self::Rack264VcfFrequency],
+            "rackmcp_sequencer" => &[Self::RackMcpSequencerRunning],
             _ => &[],
         }
     }
     pub(crate) fn mask(self) -> u8 {
         // Bits are local to a model's capability list, not global enum IDs.
-        // Both currently expose one parameter at slot zero. Adding another
+        // Each currently exposes one parameter at slot zero. Adding another
         // model does not consume a bit in every existing model's mask.
         match self {
-            Self::StockVcaLevel | Self::Rack264VcfFrequency => 1,
+            Self::StockVcaLevel | Self::Rack264VcfFrequency | Self::RackMcpSequencerRunning => 1,
         }
     }
     pub(crate) fn descriptor(self) -> ParameterDescriptor {
         match self {
+            Self::RackMcpSequencerRunning => ParameterDescriptor {
+                name: "running",
+                default: 0.0,
+                min: 0.0,
+                max: 1.0,
+                snap: true,
+            },
             Self::StockVcaLevel => ParameterDescriptor {
                 name: "level",
                 default: 1.0,
@@ -55,6 +64,7 @@ pub fn runtime_parameter_names(kind: &str) -> &'static [&'static str] {
     match kind {
         "stock_vca" => &["level"],
         "rack264_vcf" => &["frequency"],
+        "rackmcp_sequencer" => &["running"],
         _ => &[],
     }
 }
@@ -64,6 +74,7 @@ pub fn runtime_parameter_descriptor(kind: &str, name: &str) -> Option<ParameterD
     let parameter = match (kind, name) {
         ("stock_vca", "level") => ParameterId::StockVcaLevel,
         ("rack264_vcf", "frequency") => ParameterId::Rack264VcfFrequency,
+        ("rackmcp_sequencer", "running") => ParameterId::RackMcpSequencerRunning,
         _ => return None,
     };
     Some(parameter.descriptor())

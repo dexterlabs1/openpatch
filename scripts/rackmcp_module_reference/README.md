@@ -126,3 +126,59 @@ python3 scripts/rackmcp_module_reference/audit_binding_correction.py \
 ```
 
 See the [source-derived host contract](../../docs/RACKMCP_SEQUENCE_CONTRACT.md#genuine-wrapper-finding-and-deliberate-host-correction).
+
+## Separate transport and status comparison
+
+`transport.py` builds `transport.cpp` against the same unchanged source TUs and
+SDK flags, and `transport.rs` against public native Patch/Engine APIs. The three
+original fixtures contain **no automation lanes or targets**; the existing SDK
+binding discrepancy/correction does not enter this comparison.
+
+```sh
+python3 scripts/rackmcp_module_reference/transport.py \
+  --source native-test-output/rack-control-import/reference/rackmcp \
+  --sdk /Users/dbrewer/Library/Caches/VCVRackMCP/build/ck-sdk/vendor/Rack-SDK \
+  --target-dir native-test-output/rackmcp-build \
+  --output native-test-output/rack-control-import/transport-reference-new
+```
+
+Root runs this command serially; a new output directory is required. The default
+three cases contain **17,584 frames**: internal now/wrap selection and stop/resume;
+stopped fractional seek, reset/selection/seek coalescing and source consumption
+order; and external edges, stalls, thresholds, stop/seek/reset and reconnect.
+Reset input/button and changes to BPM/swing also cross the genuine module wrapper.
+`--case NAME` selects a diagnostic subset. Fixtures, source/SDK/Core manifests,
+drivers, toolchains and both binaries are frozen before either driver executes.
+Build/case timeouts and private logs follow the existing runner.
+
+Every frame compares all 306 output words (18 channel counts plus sixteen
+canonical f32 words each), together with every actual `statusJson` field **both
+after requests/before process and after process**. BPM/swing/published bar use
+exact IEEE words; published beat is recovered exactly from the source's bar by
+multiplication by four. Desired pattern name comes from actual `dataToJson`.
+Names, pending request overlay, running, clock source, step, loop and counts
+compare exactly, including the source's 64-sample publication lag. No tolerance,
+startup exemption or ignored field is allowed. A successful run prints one JSON
+summary with `passed:true`, `cases:3`, `frames:17584` and the report path; this is an
+expected result. Recorded `transport-reference-001` passes all three cases with
+17,584 complete frames; the current Core production manifest matches its frozen
+96 entries. See the [transport evidence](../../docs/benchmarks/rackmcp-sequence-transport.json).
+
+The source still uses a genuine Context/Engine, module/plugin/model registry,
+SDK load envelope and real output/reset/clock cables. Its declared receive
+boundary matches the existing driver. Native parameter/topology rebuilds use
+ordinary equal-data state adoption and live parameter inheritance; source data
+is loaded only once. Graph adoption/rate-change behavior has separate Core
+contracts because Rack has no corresponding graph replacement operation here.
+This bounded transport/status comparison makes no UI/device, Bridge, Listen or
+whole-patch claim and does not alter the frozen failed target-write comparison.
+
+
+The original `native.rs` target-wrapper driver explicitly marks each incoming
+packet's running control as an assignment during effective-parameter inheritance.
+Running joined that public capability set with transport integration; omitting
+this assignment would silently inherit the previous run value despite the source
+packet setting it. The initial failed requalification (`module-reference-006`)
+is retained. The corrected driver (`module-reference-007`) retains every original
+fixture/output comparison and only the declared SDK binding differences; no
+production DSP or expected source trace was changed to obtain the audit pass.

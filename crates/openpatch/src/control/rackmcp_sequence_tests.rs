@@ -1,7 +1,7 @@
 use super::*;
 
 fn state() -> Value {
-    json!({"data":{"patterns":[{"name":"A","length":4,"tracks":[{"voices":2,
+    json!({"data":{"selectedPattern":"A","patterns":[{"name":"A","length":4,"tracks":[{"voices":2,
         "steps":[{"step":0,"notes":[0,7],"accent":true},{"step":2,"notes":[12,19]}]}]}],
         "lanes":[{"moduleId":"42","paramId":0,"points":[{"bar":0,"value":0.25}]}]},
         "targets":[{"source_module_id":"42","source_param_id":0,"module":"vca","parameter":"level"}]})
@@ -39,7 +39,8 @@ fn rackmcp_sequence_presets_retain_native_targets_and_validate_before_assignment
     let original: Node = serde_json::from_value(json!({"id":"seq","kind":"rackmcp_sequencer",
         "rackmcp_sequence":state(),"params":{"bpm":128}}))
     .unwrap();
-    let preset = crate::presets::capture(&original, None).unwrap();
+    let preset =
+        crate::presets::capture_state(&original, SavedModuleState::from_node(&original)).unwrap();
     let mut session = Session::new(&std::env::temp_dir()).unwrap();
     session
         .execute(
@@ -55,7 +56,15 @@ fn rackmcp_sequence_presets_retain_native_targets_and_validate_before_assignment
         original.rackmcp_sequence
     );
     session.execute("undo", json!({})).unwrap();
-    assert!(session.patch.nodes[0].rackmcp_sequence.is_none());
+    let mut defaults: Node =
+        serde_json::from_value(json!({"id":"copy","kind":"rackmcp_sequencer"})).unwrap();
+    SavedModuleState::from_node(&defaults)
+        .unwrap()
+        .write_node(&mut defaults);
+    assert_eq!(
+        session.patch.nodes[0].rackmcp_sequence,
+        defaults.rackmcp_sequence
+    );
     session.execute("redo", json!({})).unwrap();
     let revision = session.revision;
     let mut invalid = preset.clone();
@@ -70,7 +79,11 @@ fn rackmcp_sequence_presets_retain_native_targets_and_validate_before_assignment
     );
     let default_node: Node =
         serde_json::from_value(json!({"id":"default","kind":"rackmcp_sequencer"})).unwrap();
-    crate::presets::validate(&crate::presets::capture(&default_node, None).unwrap()).unwrap();
+    crate::presets::validate(
+        &crate::presets::capture_state(&default_node, SavedModuleState::from_node(&default_node))
+            .unwrap(),
+    )
+    .unwrap();
 }
 
 #[test]
@@ -94,21 +107,33 @@ fn rackmcp_data_on_other_kinds_and_invalid_batches_are_atomic_rejections() {
 }
 
 #[derive(Default)]
-struct SequenceLoadObserver(Mutex<Vec<(u64, Vec<String>)>>);
+struct SequenceLoadObserver(Mutex<Vec<(u64, Vec<String>)>>, Mutex<Value>);
+impl SequenceLoadObserver {
+    fn publish(&self, patch: &Patch, revision: u64) {
+        let modules: serde_json::Map<_, _> = patch.nodes.iter().filter(|n| n.kind == "rackmcp_sequencer").map(|n| {
+            let selected = match SavedModuleState::from_node(n).unwrap() {
+                SavedModuleState::RackMcpSelection(name) => name, _ => unreachable!(),
+            };
+            (n.id.clone(), json!({"kind":n.kind,"available":true,"revision":revision,"frame":64,"state":{"selected_pattern":selected.as_str()}}))
+        }).collect();
+        *self.1.lock().unwrap() = json!({"coherent":true,"modules":modules});
+    }
+}
 impl LiveModuleEvents for SequenceLoadObserver {
     fn trigger(&self, _: &str, _: ModuleAction) -> Result<Value, String> {
         Err("not used by this control-only observer".into())
     }
     fn snapshot(&self) -> Value {
-        json!({"modules":{}})
+        self.1.lock().unwrap().clone()
     }
     fn sync_patch_with_intents(
         &self,
-        _: &Patch,
+        patch: &Patch,
         revision: u64,
         _: &BTreeMap<String, BTreeMap<String, f32>>,
         loads: &[String],
     ) {
+        self.publish(patch, revision);
         self.0.lock().unwrap().push((revision, loads.to_vec()));
     }
 }
@@ -123,6 +148,7 @@ fn explicit_equal_sequence_loads_and_history_emit_intent_without_unrelated_reloa
         )
         .unwrap();
     let backend = Arc::new(SequenceLoadObserver::default());
+    backend.publish(&session.patch, session.revision);
     session
         .set_live_module_events(Some(backend.clone()))
         .unwrap();
@@ -192,10 +218,15 @@ fn sequence_preset_intent_depends_on_explicit_data_and_batches_commit_one_final_
         .execute("add_module", json!({"id":"score","kind":"score_sequencer"}))
         .unwrap();
     let backend = Arc::new(SequenceLoadObserver::default());
+    backend.publish(&session.patch, session.revision);
     session
         .set_live_module_events(Some(backend.clone()))
         .unwrap();
-    let preset = crate::presets::capture(&session.patch.nodes[0], None).unwrap();
+    let preset = crate::presets::capture_state(
+        &session.patch.nodes[0],
+        SavedModuleState::from_node(&session.patch.nodes[0]),
+    )
+    .unwrap();
     session.execute("apply_module_preset", json!({"id":"seq","preset":{"format":"openpatch-module-preset","version":1,"kind":"rackmcp_sequencer","params":{"bpm":130}}})).unwrap();
     assert!(backend.0.lock().unwrap().last().unwrap().1.is_empty());
     session
@@ -249,6 +280,7 @@ fn sequence_load_order_tracks_last_action_and_reverses_with_history() {
             .unwrap();
     }
     let backend = Arc::new(SequenceLoadObserver::default());
+    backend.publish(&session.patch, session.revision);
     session
         .set_live_module_events(Some(backend.clone()))
         .unwrap();
@@ -284,6 +316,7 @@ fn sequence_load_order_tracks_last_action_and_reverses_with_history() {
 fn creation_and_duplication_loads_preserve_final_order_without_undo_ghosts() {
     let mut session = Session::new(&std::env::temp_dir()).unwrap();
     let backend = Arc::new(SequenceLoadObserver::default());
+    backend.publish(&session.patch, session.revision);
     session
         .set_live_module_events(Some(backend.clone()))
         .unwrap();

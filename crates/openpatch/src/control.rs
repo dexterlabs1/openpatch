@@ -59,6 +59,9 @@ mod preset_tests;
 mod push_tests;
 #[cfg(test)]
 mod rackmcp_sequence_tests;
+mod rackmcp_transport;
+#[cfg(test)]
+mod rackmcp_transport_tests;
 #[cfg(test)]
 mod score_tests;
 #[cfg(test)]
@@ -158,6 +161,16 @@ impl MidiLearnReceipt {
 pub trait LiveModuleEvents: Send + Sync {
     fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String>;
     fn snapshot(&self) -> Value;
+    /// Atomically queue at most two source sequencer requests. Data identifies
+    /// the pattern ordering; the callback must reject a superseded identity.
+    fn rackmcp_transport(
+        &self,
+        _id: &str,
+        _requests: &[openpatch_core::RackMcpTransport],
+        _data: &openpatch_core::rackmcp_sequence::SequenceData,
+    ) -> Result<Value, String> {
+        Err("RackMCP transport unsupported by this backend".into())
+    }
     /// Effective native raw parameter values are present in the same fenced
     /// module snapshot as persistent state. Older backends retain authored
     /// parameter behavior and must not be described as live parameter sources.
@@ -292,6 +305,8 @@ pub trait LiveModuleEvents: Send + Sync {
     /// Assign saved PUSH HOLD after adoption, including equal-value loads/history.
     fn load_module_holding(&self, _states: &BTreeMap<String, bool>) {}
     /// Assign typed persistent state after adoption, including equal-value loads.
+    /// RackMCP selection must already be projected into the receiving typed node;
+    /// its saved generation acknowledges the data load without a second request.
     fn load_module_saved_states(&self, states: &BTreeMap<String, SavedModuleState>) {
         let mut running = BTreeMap::new();
         let mut holding = BTreeMap::new();
@@ -303,7 +318,8 @@ pub trait LiveModuleEvents: Send + Sync {
                 SavedModuleState::PushHold(value) => {
                     holding.insert(id.clone(), *value);
                 }
-                SavedModuleState::StockSeq3 { .. }
+                SavedModuleState::RackMcpSelection(_)
+                | SavedModuleState::StockSeq3 { .. }
                 | SavedModuleState::StockSeq3Fields { .. }
                 | SavedModuleState::StockQuantizerNotes(_)
                 | SavedModuleState::RandomValues { .. }
@@ -1044,6 +1060,24 @@ impl Session {
         } else {
             self.undo.back().unwrap().clone()
         };
+        // A sequence selection is structured source data. Materialize a
+        // captured history selection before compilation; the source-data load
+        // epoch performs its sole transport request and ownership acquisition.
+        let mut selection_overlay = false;
+        for node in &mut target.patch.nodes {
+            if let Some(state @ SavedModuleState::RackMcpSelection(_)) =
+                target.restore_saved.get(&node.id).copied()
+            {
+                rackmcp_transport::validate_selection(node, state)?;
+                state.write_node(node);
+                selection_overlay = true;
+            }
+        }
+        if selection_overlay {
+            target.document = target
+                .document
+                .with_native_patch(target.patch.clone(), &BTreeMap::new())?;
+        }
         let outgoing_capture = self.prepare_history_suspension(&mut target)?;
         if !target.restore_parameters.is_empty() {
             parameters::overlay(&mut target.patch, &target.restore_parameters);
@@ -1275,6 +1309,7 @@ impl Session {
                     | "redo"
                     | "rotate_sequence"
                     | "trigger_module"
+                    | "rackmcp_transport"
                     | "learn_midi_cc"
                     | "cancel_midi_cc_learn"
                     | "learn_midi_gate"
@@ -1293,6 +1328,7 @@ impl Session {
                 | "analyze_signal"
                 | "capture_signal"
                 | "trigger_module"
+                | "rackmcp_transport"
         ) {
             self.require_document_execution()?;
         }
@@ -1366,6 +1402,8 @@ impl Session {
             | "cancel_midi_gate_learn" => {
                 return self.midi_cc_learn_tool(name, &args);
             }
+            "rackmcp_transport" => return self.rackmcp_transport_tool(&args),
+            "inspect_rackmcp_sequence" => return self.inspect_rackmcp_sequence_tool(&args),
             "trigger_module" => {
                 self.check_revision(expected_revision(&args)?)?;
                 let id = string(&args, "id")?;
@@ -2630,6 +2668,8 @@ pub fn tools() -> Value {
         tool("cancel_midi_gate_learn","Cancel an armed MIDI Gate Learn request. Completed decisions reconcile before cancellation.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("learn_midi_cc","Arm a MIDI CC cell (1..16) to learn the next accepted controller value change on the audio timeline. Completion records one undoable mapping edit independently of the GUI.",json!({"id":s,"cell":{"type":"integer","minimum":1,"maximum":16},"expected_revision":rev}),&["id","cell"],false),
         tool("cancel_midi_cc_learn","Cancel an armed MIDI CC Learn request. Completed decisions reconcile before cancellation.",json!({"id":s,"expected_revision":rev}),&["id"],false),
+        tool("rackmcp_transport","Queue live RackMCP 2.0.0 Sequencer play/stop/toggle/reset/select/seek. Optional pattern names select atomically with play/stop/toggle/reset; quantize is now (next advance) or wrap (default). select requires pattern; seek requires bar in 0..100000 and forbids pattern/quantize. No sequence data load, automation reclaim, history entry or speaker startup. Requires runnable live execution. Receipt confirms bounded queue acceptance, not callback application.",json!({"id":s,"action":{"type":"string","enum":["play","stop","toggle","reset","select","seek"]},"pattern":{"type":"string","minLength":1,"maxLength":32},"quantize":{"type":"string","enum":["now","wrap"]},"bar":{"type":"number","minimum":0,"maximum":100000},"expected_revision":rev}),&["id","action"],false),
+        tool("inspect_rackmcp_sequence","Read actual coherent live RackMCP sequence transport, selected/active/pending patterns, step/loop/bar, clock source, tempo and counts. Position follows source 64-sample publication. Reports unavailable before publication or without runnable live execution; never substitutes authored state or offline analysis.",json!({"id":s,"expected_revision":rev}),&["id"],true),
         tool("inspect_performance","Read live queue, callback, and emergency-release counters plus coherent per-module state, momentary controls, and lights. Native audio_timing reports a separately coherent completed callback with actual frames/rate, processing duration, budget utilization/peaks and budget overruns (not hardware xruns); it has its own revision, sequence and reset epoch. Each module reports availability and the actual published revision; state is unavailable until the current graph is published. Queued receipts and applied/dropped counters are distinct; headless mode reports unsupported.",json!({"expected_revision":rev}),&[],true),
         tool("rotate_sequence","Rotate all eight seq3 or stock_seq3 columns left or right, including three voltage rows and coherent live gate flags. Commits one revision and one undo step.",json!({"id":s,"direction":{"type":"string","enum":["left","right"]},"expected_revision":rev}),&["id","direction"],false),
         tool("rotate_scale","Transpose the enabled Stock Quantizer notes by -12..12 semitones, preserving offset, identity and cables. Captures the coherent live scale and commits one revision and undo step. Supports atomic batches and previews.",json!({"id":s,"semitones":{"type":"integer","minimum":-12,"maximum":12},"expected_revision":rev}),&["id","semitones"],false),

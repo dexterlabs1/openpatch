@@ -265,6 +265,7 @@ pub fn capture_state_with_assets(
     assets: &WaveAssets,
 ) -> Result<Value, String> {
     let module = descriptor(&node.kind)?;
+    let mut captured_node = node.clone();
     let mut params = BTreeMap::new();
     for (name, spec) in module["params"].as_object().unwrap() {
         if spec["hidden"] == true {
@@ -291,11 +292,12 @@ pub fn capture_state_with_assets(
                 )
             })?;
         actual.write_params(&mut params);
+        actual.write_node(&mut captured_node);
     }
     let mut preset = json!({"format":"openpatch-module-preset","version":1,"kind":node.kind,"params":params,"bypassed":node.bypassed});
     if node.kind == "rackmcp_sequencer" {
         preset["rackmcp_sequence"] =
-            serde_json::to_value(node.rackmcp_sequence.clone().unwrap_or_default())
+            serde_json::to_value(captured_node.rackmcp_sequence.clone().unwrap_or_default())
                 .map_err(|error| error.to_string())?;
     }
     if node.kind == "score_sequencer" {

@@ -36,6 +36,7 @@ fn stock_quantizer_atomic_packets_distinguish_none_zero_and_valid_banks_and_clea
             meter.write(
                 entry.token,
                 ModuleSnapshot {
+                    rackmcp_sequence: None,
                     parameters: [None; MAX_PUBLISHED_PARAMETERS],
                     revision: 7,
                     frame: 1024,
@@ -75,6 +76,7 @@ fn stock_quantizer_atomic_packets_distinguish_none_zero_and_valid_banks_and_clea
         meter.write(
             entry.token,
             ModuleSnapshot {
+                rackmcp_sequence: None,
                 parameters: [None; MAX_PUBLISHED_PARAMETERS],
                 revision: 8,
                 frame: 2048,
@@ -107,6 +109,7 @@ fn stock_quantizer_snapshot_bank_playing_union_and_empty_lamp_array_share_one_se
                 shared.meters[0].write(
                     71,
                     ModuleSnapshot {
+                        rackmcp_sequence: None,
                         parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: frame + 1,
                         frame,

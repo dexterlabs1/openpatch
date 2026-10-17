@@ -9,11 +9,32 @@
 mod adapter;
 mod engine;
 
-pub use adapter::{NativeTarget, SequenceState};
+pub use adapter::{NativeTarget, RackMcpSequenceStatus, RackMcpTransport, SequenceState};
 pub(crate) use adapter::{RackMcpSequencer, ResolvedTarget, INPUTS, OUTPUTS};
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
+
+/// Control-thread musical content identity. Persisted selectedPattern is the
+/// only excluded source field; indexes remain fenced against reordered patterns.
+pub fn content_fingerprint(data: &SequenceData) -> Result<[u8; 32], String> {
+    use sha2::{Digest, Sha256};
+    #[derive(Serialize)]
+    struct Content<'a> {
+        version: u32,
+        seed: u32,
+        patterns: &'a [Pattern],
+        lanes: &'a [Lane],
+    }
+    let bytes = serde_json::to_vec(&Content {
+        version: data.version,
+        seed: data.seed,
+        patterns: &data.patterns,
+        lanes: &data.lanes,
+    })
+    .map_err(|error| format!("sequence content fingerprint: {error}"))?;
+    Ok(Sha256::digest(bytes).into())
+}
 
 pub(crate) fn catalog() -> serde_json::Value {
     serde_json::json!({
@@ -460,7 +481,12 @@ impl Player {
         self.engine.seek(beats);
     }
     pub fn request_pattern(&mut self, data: &CompiledSequence, index: usize, now: bool) -> bool {
-        index < data.names.len() && self.engine.request_pattern(index, now)
+        index < data.names.len() && self.queue_pattern(index, now)
+    }
+    // A previously validated module request may outlive a data load. Preserve
+    // source requestPattern ordering; process sanitizes against the new store.
+    pub(crate) fn queue_pattern(&mut self, index: usize, now: bool) -> bool {
+        self.engine.request_pattern(index, now)
     }
     pub fn position(&self) -> (usize, Option<usize>, usize, i64, f64) {
         (

@@ -225,8 +225,37 @@ class OpenPatchMCPTests(unittest.TestCase):
         check(payload)
         return payload
 
+    def test_rackmcp_transport_discovery_and_headless_unavailable_boundary(self) -> None:
+        tools = self.client.request("tools/list")["result"]["tools"]
+        names = {tool["name"] for tool in tools}
+        self.assertTrue({"rackmcp_transport", "inspect_rackmcp_sequence"}.issubset(names))
+        self.require_tool_success("add_module", {
+            "id": "seq", "kind": "rackmcp_sequencer",
+            "rackmcp_sequence": {"data": {"patterns": [
+                {"name": "A", "length": 4}, {"name": "B♭", "length": 4}]}}})
+        before = self.patch_snapshot()
+        history = self.payload(self.require_tool_success("inspect_history"))
+        observed = self.payload(self.require_tool_success("inspect_rackmcp_sequence", {"id": "seq"}))
+        self.assertFalse(observed["available"])
+        self.assertNotIn("rackmcp_sequence", observed)
+        for arguments in [
+            {"id": "seq", "action": "play", "pattern": "B♭", "quantize": "now"},
+            {"id": "seq", "action": "select", "pattern": "missing"},
+            {"id": "seq", "action": "play", "bar": 0},
+            {"id": "seq", "action": "seek", "bar": 1.5},
+            {"id": "seq", "action": "seek", "bar": 1, "pattern": "A"},
+            {"id": "seq", "action": "select"},
+        ]:
+            self.require_tool_error("rackmcp_transport", arguments)
+        self.require_tool_error("inspect_rackmcp_sequence", {"id": "seq", "expected_revision": 0})
+        self.assertEqual(self.patch_snapshot(), before)
+        self.assertEqual(self.payload(self.require_tool_success("inspect_history")), history)
+        captured = self.payload(self.require_tool_success("capture_project_patch"))["patch"]
+        self.assertEqual(captured["nodes"][0]["rackmcp_sequence"]["data"]["selectedPattern"], "A")
+        self.assertEqual(self.patch_snapshot(), before)
+
     def test_rackmcp_sequence_state_edit_history_preset_and_saved_roundtrip(self) -> None:
-        sequence = {"data": {"patterns": [{"name": "A", "length": 4, "tracks": [
+        sequence = {"data": {"selectedPattern": "A", "patterns": [{"name": "A", "length": 4, "tracks": [
             {"voices": 2, "steps": [{"step": 0, "notes": [0, 7], "accent": True}]}]}]}}
         self.require_tool_success("replace_patch", {"patch": {
             "version": 2, "sample_rate": 8000,

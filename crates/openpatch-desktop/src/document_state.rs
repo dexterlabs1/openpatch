@@ -219,10 +219,10 @@ fn saved_content(
         }
         let node = &mut entry["node"];
         if let Some(state) = node["id"].as_str().and_then(|id| states.get(id)) {
-            let mut params: BTreeMap<String, f32> =
-                serde_json::from_value(node["params"].clone()).expect("serialized params");
-            state.write_params(&mut params);
-            node["params"] = json!(params);
+            let mut typed: openpatch_core::Node =
+                serde_json::from_value(node.clone()).expect("serialized native node");
+            state.write_node(&mut typed);
+            *node = serde_json::to_value(typed).expect("native node serializes");
         }
     }
     json!({"document":document,"persistent_bits":bits})
@@ -300,6 +300,7 @@ fn install_document_guarded(
 
 #[cfg(test)]
 mod tests {
+    include!("document_state_tests.rs");
     use super::*;
     use openpatch::control::Session;
 

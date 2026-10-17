@@ -38,6 +38,7 @@ mod rack264_vcf;
 pub mod rackmcp_sequence;
 #[doc(hidden)]
 pub use rack264_vcf::{Rack264VcfProbe, Rack264VcfSnapshot};
+pub use rackmcp_sequence::{RackMcpSequenceStatus, RackMcpTransport};
 mod rack264_vco;
 mod stereo_output;
 mod stock_delay;
@@ -163,7 +164,7 @@ pub use scope_measurement::{ScopeExtrema, ScopeMeasurements};
 mod saved_state;
 mod sum;
 mod viz;
-pub use saved_state::SavedModuleState;
+pub use saved_state::{FixedPatternName, SavedModuleState};
 mod routing;
 mod sequence;
 mod signal;
@@ -2041,6 +2042,60 @@ impl Engine {
             _ => false,
         }
     }
+    /// Apply a bounded RackMCP source request without allocation or target ownership changes.
+    /// Reset/seek/selection are consumed by the next processed sample; run changes are immediate.
+    pub fn rackmcp_sequence_transport(
+        &mut self,
+        handle: ModuleHandle,
+        request: RackMcpTransport,
+    ) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.rackmcp_sequence_transport(handle.node, request),
+            _ => false,
+        }
+    }
+
+    /// Return source publication plus current controls. Position/clock update every 64 samples.
+    pub fn rackmcp_sequence_status(&self, handle: ModuleHandle) -> Option<RackMcpSequenceStatus> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.rackmcp_sequence_status(handle.node),
+            _ => None,
+        }
+    }
+
+    /// Prepared source content identity, excluding only persisted selection.
+    pub fn rackmcp_sequence_content_fingerprint(&self, handle: ModuleHandle) -> Option<[u8; 32]> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.rackmcp_sequence_content_fingerprint(handle.node),
+            _ => None,
+        }
+    }
+
+    pub fn rackmcp_sequence_content_matches(
+        &self,
+        handle: ModuleHandle,
+        previous: &Self,
+        previous_handle: ModuleHandle,
+    ) -> bool {
+        if handle.generation != self.identity || previous_handle.generation != previous.identity {
+            return false;
+        }
+        match (&self.inner, &previous.inner) {
+            (EngineKind::Poly(current), EngineKind::Poly(previous)) => current
+                .rackmcp_sequence_content_matches(handle.node, previous, previous_handle.node),
+            _ => false,
+        }
+    }
+
     /// Compare compiled source sequence data without allocating or resolving
     /// strings. Native routing metadata is independent of source data loads.
     pub fn rackmcp_sequence_data_matches(
@@ -2433,6 +2488,31 @@ impl Engine {
         excluded: &[ModuleHandle],
         excluded_cables: &[CableHandle],
     ) -> bool {
+        self.handoff_state_from_excluding_routes_preserving_sequences(
+            previous,
+            excluded,
+            excluded_cables,
+            &[],
+        )
+    }
+
+    /// Preserve selected RackMCP runtime across selection-only authored overlays.
+    /// Handles resolve against self. Musical content and target identity still fence adoption.
+    pub fn handoff_state_from_excluding_routes_preserving_sequences(
+        &mut self,
+        previous: &mut Self,
+        excluded: &[ModuleHandle],
+        excluded_cables: &[CableHandle],
+        preserve_sequence_runtime: &[ModuleHandle],
+    ) -> bool {
+        let mut sequence_mask = [false; MAX_NODES];
+        for handle in preserve_sequence_runtime {
+            if handle.generation == self.identity {
+                if let Some(slot) = sequence_mask.get_mut(handle.node) {
+                    *slot = true;
+                }
+            }
+        }
         let mut mask = [false; MAX_NODES];
         for handle in excluded {
             if handle.generation == self.identity {
@@ -2458,7 +2538,7 @@ impl Engine {
                 false
             }
             (EngineKind::Poly(current), EngineKind::Poly(old)) => {
-                current.handoff_state_from_excluding(old, &mask, &cable_mask)
+                current.handoff_state_from_excluding(old, &mask, &cable_mask, &sequence_mask)
             }
             (EngineKind::Legacy(current), _) => {
                 current.port_lights.reset_epoch();
@@ -2487,6 +2567,31 @@ impl Engine {
         excluded: &[ModuleHandle],
         excluded_cables: &[CableHandle],
     ) {
+        self.adopt_state_from_excluding_routes_preserving_sequences(
+            previous,
+            excluded,
+            excluded_cables,
+            &[],
+        )
+    }
+
+    /// Preserve selected RackMCP runtime across selection-only authored overlays.
+    /// Handles resolve against self. Musical content and target identity still fence adoption.
+    pub fn adopt_state_from_excluding_routes_preserving_sequences(
+        &mut self,
+        previous: &Self,
+        excluded: &[ModuleHandle],
+        excluded_cables: &[CableHandle],
+        preserve_sequence_runtime: &[ModuleHandle],
+    ) {
+        let mut sequence_mask = [false; MAX_NODES];
+        for handle in preserve_sequence_runtime {
+            if handle.generation == self.identity {
+                if let Some(slot) = sequence_mask.get_mut(handle.node) {
+                    *slot = true;
+                }
+            }
+        }
         let mut mask = [false; MAX_NODES];
         for handle in excluded {
             if handle.generation == self.identity {
@@ -2511,7 +2616,7 @@ impl Engine {
                 current.adopt_port_lights(old, &mask);
             }
             (EngineKind::Poly(current), EngineKind::Poly(old)) => {
-                current.adopt_state_from_excluding(old, &mask, &cable_mask)
+                current.adopt_state_from_excluding(old, &mask, &cable_mask, &sequence_mask)
             }
             (EngineKind::Legacy(current), _) => current.port_lights.reset_epoch(),
             (EngineKind::Poly(current), _) => current.port_lights.reset_epoch(),

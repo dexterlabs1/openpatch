@@ -5,9 +5,9 @@ use crate::scope_transport::{self, ScopeFrame, ScopeProducer, ScopeReader};
 use openpatch::control::LiveModuleEvents;
 use openpatch::project_document::ExecutionDisposition;
 use openpatch_core::{
-    Cable, CableHandle, Engine, ModuleAction, ModuleControlState, ModuleHandle, ModuleLightState,
-    ModuleTelemetry, ParameterHandle, Patch, SavedModuleState, MAX_CABLES, MAX_MODULE_LIGHTS,
-    MAX_NODES,
+    Cable, CableHandle, Engine, FixedPatternName, ModuleAction, ModuleControlState, ModuleHandle,
+    ModuleLightState, ModuleTelemetry, ParameterHandle, Patch, RackMcpSequenceStatus,
+    RackMcpTransport, SavedModuleState, MAX_CABLES, MAX_MODULE_LIGHTS, MAX_NODES,
 };
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde_json::{json, Value};
@@ -31,13 +31,47 @@ struct Event {
     token: u64,
     action_epoch: u64,
     cancel_through_serial: u64,
-    action: ModuleAction,
+    action: PerformanceAction,
     sequence: u64,
     revision: u64,
     deadline: u64,
 }
+#[derive(Clone, Copy)]
+enum PerformanceAction {
+    Module(ModuleAction),
+    RackMcp {
+        requests: [Option<RackMcpTransport>; 2],
+        content_fingerprint: [u8; 32],
+    },
+}
+impl PerformanceAction {
+    fn is_release(self) -> bool {
+        matches!(self, Self::Module(action) if is_release(action))
+    }
+    fn apply(self, engine: &mut Engine, handle: ModuleHandle) -> bool {
+        match self {
+            Self::Module(action) => engine.handle_module_event(handle, action),
+            Self::RackMcp {
+                requests,
+                content_fingerprint,
+            } => {
+                if engine.rackmcp_sequence_content_fingerprint(handle) != Some(content_fingerprint)
+                {
+                    return false;
+                }
+                for request in requests.into_iter().flatten() {
+                    if !engine.rackmcp_sequence_transport(handle, request) {
+                        return false;
+                    }
+                }
+                true
+            }
+        }
+    }
+}
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ModuleKind {
+    RackMcpSequencer,
     Sequence,
     StockSeq3,
     StockQuantizer,
@@ -78,6 +112,7 @@ enum ModuleKind {
 impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
         match name {
+            "rackmcp_sequencer" => Some(Self::RackMcpSequencer),
             "seq3" => Some(Self::Sequence),
             "stock_seq3" => Some(Self::StockSeq3),
             "stock_quantizer" => Some(Self::StockQuantizer),
@@ -119,6 +154,7 @@ impl ModuleKind {
     }
     fn name(self) -> &'static str {
         match self {
+            Self::RackMcpSequencer => "rackmcp_sequencer",
             Self::Sequence => "seq3",
             Self::StockSeq3 => "stock_seq3",
             Self::StockQuantizer => "stock_quantizer",
@@ -319,12 +355,14 @@ struct Control {
     next_learn_serial: u64,
     stock_click_releases: BTreeMap<String, StockClickRelease>,
     execution: ExecutionRequest,
+    rackmcp_metadata: BTreeMap<String, ([u8; 32], Vec<String>)>,
 }
 #[derive(Clone, Copy)]
 struct ModuleSnapshot {
     revision: u64,
     frame: u64,
     state: Option<ModuleTelemetry>,
+    rackmcp_sequence: Option<(RackMcpSequenceStatus, [u8; 32])>,
     saved_state: Option<SavedModuleState>,
     controls: Option<ModuleControlState>,
     lights: Option<ModuleLightState>,
@@ -341,6 +379,9 @@ struct Meter {
     value: AtomicU32,
     flags: AtomicU32,
     saved_state: AtomicU32,
+    pattern_name: [AtomicU32; 8],
+    rackmcp_status: [AtomicU64; 12],
+    rackmcp_fingerprint: [AtomicU64; 4],
     random_values: [[AtomicU32; 16]; 7],
     random_rng: AtomicU32,
     shift_values: [AtomicU32; 8],
@@ -370,6 +411,9 @@ impl Meter {
             value: AtomicU32::new(0),
             flags: AtomicU32::new(0),
             saved_state: AtomicU32::new(0),
+            pattern_name: std::array::from_fn(|_| AtomicU32::new(0)),
+            rackmcp_status: std::array::from_fn(|_| AtomicU64::new(0)),
+            rackmcp_fingerprint: std::array::from_fn(|_| AtomicU64::new(0)),
             random_values: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU32::new(0))),
             random_rng: AtomicU32::new(0),
             shift_values: std::array::from_fn(|_| AtomicU32::new(0)),
@@ -405,8 +449,47 @@ impl Meter {
                 Ordering::SeqCst,
             );
         }
+        if let Some((status, fingerprint)) = snapshot.rackmcp_sequence {
+            flags |= 1 << 6;
+            let words = [
+                u64::from(status.running),
+                u64::from(status.bpm.to_bits()),
+                u64::from(status.swing.to_bits()),
+                u64::from(status.selected_pattern),
+                status.active_pattern as u64,
+                status.pending_pattern.map_or(256, u64::from),
+                status.step as u64,
+                status.loop_count as u64,
+                u64::from(status.beat.to_bits()),
+                u64::from(status.external_clock),
+                u64::from(status.pattern_count),
+                u64::from(status.lane_count),
+            ];
+            for (slot, word) in self.rackmcp_status.iter().zip(words) {
+                slot.store(word, Ordering::SeqCst);
+            }
+            for (slot, bytes) in self
+                .rackmcp_fingerprint
+                .iter()
+                .zip(fingerprint.as_chunks::<8>().0.iter())
+            {
+                slot.store(u64::from_le_bytes(*bytes), Ordering::SeqCst);
+            }
+        }
         self.saved_state.store(
             match snapshot.saved_state {
+                Some(SavedModuleState::RackMcpSelection(name)) => {
+                    let mut bytes = [0_u8; 32];
+                    bytes[..name.as_str().len()].copy_from_slice(name.as_str().as_bytes());
+                    for (slot, word) in self
+                        .pattern_name
+                        .iter()
+                        .zip(bytes.as_chunks::<4>().0.iter())
+                    {
+                        slot.store(u32::from_le_bytes(*word), Ordering::SeqCst);
+                    }
+                    10 | ((name.as_str().len() as u32) << 4)
+                }
                 Some(SavedModuleState::StockSeq3 {
                     running,
                     gates,
@@ -609,6 +692,53 @@ impl Meter {
                 (parameter_presence & (1 << index) != 0)
                     .then(|| f32::from_bits(self.parameters[index].load(Ordering::SeqCst)))
             });
+            let mut name_bytes = [0_u8; 32];
+            for (bytes, word) in name_bytes
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .zip(&self.pattern_name)
+            {
+                bytes.copy_from_slice(&word.load(Ordering::SeqCst).to_le_bytes());
+            }
+            let name_len = (saved_state >> 4) as usize;
+            let selection = (saved_state & 15 == 10 && name_len <= 32)
+                .then(|| {
+                    std::str::from_utf8(&name_bytes[..name_len])
+                        .ok()
+                        .and_then(FixedPatternName::new)
+                })
+                .flatten();
+            let words = self
+                .rackmcp_status
+                .each_ref()
+                .map(|word| word.load(Ordering::SeqCst));
+            let mut fingerprint = [0_u8; 32];
+            for (bytes, word) in fingerprint
+                .as_chunks_mut::<8>()
+                .0
+                .iter_mut()
+                .zip(&self.rackmcp_fingerprint)
+            {
+                bytes.copy_from_slice(&word.load(Ordering::SeqCst).to_le_bytes());
+            }
+            let rackmcp_sequence = (flags & (1 << 6) != 0).then_some((
+                RackMcpSequenceStatus {
+                    running: words[0] != 0,
+                    bpm: f32::from_bits(words[1] as u32),
+                    swing: f32::from_bits(words[2] as u32),
+                    selected_pattern: words[3] as u8,
+                    active_pattern: words[4] as i32,
+                    pending_pattern: (words[5] < 256).then_some(words[5] as u8),
+                    step: words[6] as i32,
+                    loop_count: words[7] as i64,
+                    beat: f32::from_bits(words[8] as u32),
+                    external_clock: words[9] != 0,
+                    pattern_count: words[10] as u8,
+                    lane_count: words[11] as u8,
+                },
+                fingerprint,
+            ));
             let after = self.serial.load(Ordering::SeqCst);
             if before != after {
                 continue;
@@ -618,6 +748,7 @@ impl Meter {
                     revision: actual_revision,
                     frame,
                     parameters,
+                    rackmcp_sequence,
                     state: (flags & 1 != 0).then_some(ModuleTelemetry {
                         step: value as u8,
                         length: (value >> 8) as u8,
@@ -641,6 +772,7 @@ impl Meter {
                             gate_mask: (saved_state >> 8) as u8,
                             passthrough: (saved_state & 64 != 0).then_some(saved_state & 128 != 0),
                         }),
+                        10 => selection.map(SavedModuleState::RackMcpSelection),
                         9 => ((saved_state >> 4) <= 4095).then_some(
                             SavedModuleState::StockQuantizerNotes((saved_state >> 4) as u16),
                         ),
@@ -994,6 +1126,17 @@ impl ModulePlan {
             let Some(state) = binding.desired_state else {
                 continue;
             };
+            if matches!(state, SavedModuleState::RackMcpSelection(_)) {
+                // History/preset preparation authors this selection into the
+                // typed receiving Node. Its constructor or explicit source
+                // data load owns first-advance timing; replaying a saved-state
+                // setter would replace that request with a wrap selection.
+                binding.applied_saved = binding.saved_generation;
+                if let Some((old, _)) = old {
+                    old.applied_saved = old.applied_saved.max(binding.saved_generation);
+                }
+                continue;
+            }
             let state = unconsumed_stock_assignment(
                 state,
                 &binding.stock_field_generations,
@@ -1032,10 +1175,45 @@ impl ModulePlan {
         }
     }
 
+    fn preserved_sequences(
+        &self,
+        previous: &Self,
+        engine: &Engine,
+        old_engine: &Engine,
+        host_resets: &[ModuleHandle],
+    ) -> [Option<ModuleHandle>; MAX_NODES] {
+        std::array::from_fn(|slot| {
+            let binding = self.states[slot]?;
+            let epoch = binding.sequence_load_epoch?;
+            let old = previous.states[slot]
+                .filter(|old| old.token == binding.token && old.sequence_load_epoch.is_some())?;
+            (epoch <= old.applied_sequence_load_epoch
+                && binding.initialize_generation <= old.applied_initialization
+                && !host_resets.contains(&binding.handle)
+                && engine.rackmcp_sequence_content_matches(binding.handle, old_engine, old.handle))
+            .then_some(binding.handle)
+        })
+    }
     #[cfg(test)]
     pub(super) fn adopt_state(&mut self, engine: &mut Engine, previous: &Self, old: &Engine) {
+        let preserve = self.preserved_sequences(previous, engine, old, &[]);
         self.with_adoption_exclusions(previous, |modules, cables| {
-            engine.adopt_state_from_excluding_routes(old, modules, cables);
+            if let Some(first) = preserve.iter().flatten().next() {
+                let mut handles = [*first; MAX_NODES];
+                let mut len = 0;
+                for handle in preserve.into_iter().flatten() {
+                    handles[len] = handle;
+                    len += 1;
+                }
+                engine.adopt_state_from_excluding_routes_preserving_sequences(
+                    old,
+                    modules,
+                    cables,
+                    &handles[..len],
+                );
+            } else {
+                engine.adopt_state_from_excluding_routes(old, modules, cables);
+            }
         });
     }
     /// Large Delay allocations move once; the caller must freeze the donor if
@@ -1047,8 +1225,22 @@ impl ModulePlan {
         old: &mut Engine,
         host_resets: &[ModuleHandle],
     ) -> bool {
+        let preserve = self.preserved_sequences(previous, engine, old, host_resets);
         let mut moved = false;
         self.with_adoption_exclusions(previous, |modules, cables| {
+            let mut preserved_count = 0;
+            // A preservation handle, when present, can initialize fixed storage.
+            let first_preserved = preserve.iter().flatten().next().copied();
+            let mut preserved = first_preserved.map(|first| [first; MAX_NODES]);
+            if let Some(handles) = preserved.as_mut() {
+                for handle in preserve.into_iter().flatten() {
+                    handles[preserved_count] = handle;
+                    preserved_count += 1;
+                }
+            }
+            let preserved = preserved
+                .as_ref()
+                .map_or(&[][..], |handles| &handles[..preserved_count]);
             let first = modules.first().or_else(|| host_resets.first());
             if let Some(first) = first {
                 let mut merged = [*first; MAX_NODES];
@@ -1059,9 +1251,19 @@ impl ModulePlan {
                         len += 1;
                     }
                 }
-                moved = engine.handoff_state_from_excluding_routes(old, &merged[..len], cables);
+                moved = engine.handoff_state_from_excluding_routes_preserving_sequences(
+                    old,
+                    &merged[..len],
+                    cables,
+                    preserved,
+                );
             } else {
-                moved = engine.handoff_state_from_excluding_routes(old, &[], cables);
+                moved = engine.handoff_state_from_excluding_routes_preserving_sequences(
+                    old,
+                    &[],
+                    cables,
+                    preserved,
+                );
             }
         });
         moved
@@ -1360,6 +1562,7 @@ impl Performance {
                     next_learn_serial: 1,
                     stock_click_releases: BTreeMap::new(),
                     execution: ExecutionRequest::default(),
+                    rackmcp_metadata: BTreeMap::new(),
                 }),
                 shared,
                 diagnostics,
@@ -1496,7 +1699,9 @@ impl Performance {
                 token: entry.token,
                 handle: if entry.kind.sequential() {
                     engine.resolve_module_telemetry(id)?
-                } else if entry.kind.learn_kind().is_some() {
+                } else if entry.kind == ModuleKind::RackMcpSequencer
+                    || entry.kind.learn_kind().is_some()
+                {
                     engine.resolve_module_state(id)?
                 } else if entry.kind.manual() {
                     engine.resolve_module_control(id)?
@@ -1813,6 +2018,31 @@ impl Performance {
                 .get(id)
                 .is_some_and(|entry| entry.token == release.token)
         });
+        control.rackmcp_metadata = patch
+            .nodes
+            .iter()
+            .filter_map(|node| {
+                if node.kind != "rackmcp_sequencer" {
+                    return None;
+                }
+                let default = openpatch_core::rackmcp_sequence::SequenceState::default();
+                let sequence = node.rackmcp_sequence.as_deref().unwrap_or(&default);
+                let fingerprint =
+                    openpatch_core::rackmcp_sequence::content_fingerprint(&sequence.data).ok()?;
+                Some((
+                    node.id.clone(),
+                    (
+                        fingerprint,
+                        sequence
+                            .data
+                            .patterns
+                            .iter()
+                            .map(|pattern| pattern.name.clone())
+                            .collect(),
+                    ),
+                ))
+            })
+            .collect();
         self.sync_midi_learns(&mut control, patch, revision);
         control.revision = revision;
     }
@@ -1968,6 +2198,14 @@ impl Performance {
     }
 }
 impl LiveModuleEvents for Performance {
+    fn rackmcp_transport(
+        &self,
+        id: &str,
+        requests: &[RackMcpTransport],
+        data: &openpatch_core::rackmcp_sequence::SequenceData,
+    ) -> Result<Value, String> {
+        self.enqueue_rackmcp(id, requests, data)
+    }
     fn supports_live_parameters(&self) -> bool {
         true
     }
@@ -2293,7 +2531,9 @@ impl LiveModuleEvents for Performance {
                     actual.and_then(|snapshot| snapshot.parameters[index])
                         .map(|value| ((*name).to_owned(), json!(value)))
                 }).collect::<serde_json::Map<String, Value>>(),"state":actual.and_then(|snapshot| {
-                    if let Some(SavedModuleState::StockQuantizerNotes(mask)) = snapshot.saved_state {
+                    if let Some(SavedModuleState::RackMcpSelection(name)) = snapshot.saved_state {
+                        Some(json!({"selected_pattern":name.as_str()}))
+                    } else if let Some(SavedModuleState::StockQuantizerNotes(mask)) = snapshot.saved_state {
                         Some(json!({"scale_mask":mask,"enabled_notes":std::array::from_fn::<_,12,_>(|i|mask & (1<<i)!=0)}))
                     } else if let Some(SavedModuleState::StockSeq3 { running, gates, passthrough }) = snapshot.saved_state {
                         Some(json!({"running":running,"gates":std::array::from_fn::<_,8,_>(|i| gates & (1 << i) != 0),
@@ -2312,6 +2552,16 @@ impl LiveModuleEvents for Performance {
                     } else {
                         snapshot.state.map(|state|json!({"step":state.step,"length":state.length,"running":state.running}))
                     }
+                }),
+                "rackmcp_sequence":actual.and_then(|snapshot| snapshot.rackmcp_sequence).map(|(status, fingerprint)| {
+                    let names = control.rackmcp_metadata.get(id).filter(|(expected, _)| *expected == fingerprint).map(|(_, names)| names);
+                    let name = |index: usize| names.and_then(|names| names.get(index)).cloned();
+                    let mut value = serde_json::to_value(status).expect("fixed status serializes");
+                    value["bar"] = json!(f64::from(status.beat) / 4.0);
+                    value["selected_pattern_name"] = json!(name(usize::from(status.selected_pattern)));
+                    value["active_pattern_name"] = json!(usize::try_from(status.active_pattern).ok().and_then(name));
+                    value["pending_pattern_name"] = json!(status.pending_pattern.and_then(|index| name(usize::from(index))));
+                    value
                 }),
                 "controls":actual.and_then(|snapshot|snapshot.controls),"lights":actual.and_then(|snapshot|snapshot.lights).and_then(module_lights_value)}))
         }).collect();
@@ -2358,7 +2608,7 @@ impl EventReader {
         for _ in 0..EVENT_CAPACITY + 1 {
             let event = self.head.take().or_else(|| self.queue.pop().ok());
             let Some(event) = event else { break };
-            if is_release(event.action) {
+            if event.action.is_release() {
                 if let Some(binding) =
                     plan.bindings[event.slot].filter(|binding| binding.token == event.token)
                 {
@@ -2453,16 +2703,20 @@ impl EventReader {
             per_node[event.slot] += 1;
             self.head = None;
             *budget -= 1;
-            if event.action == ModuleAction::MidiPanic && binding.kind == ModuleKind::MidiGate {
+            if matches!(
+                event.action,
+                PerformanceAction::Module(ModuleAction::MidiPanic)
+            ) && binding.kind == ModuleKind::MidiGate
+            {
                 let _ = self.shared.midi_learns[event.slot]
                     .cancel_armed_through(event.cancel_through_serial);
             }
-            if active.handle_module_event(binding.handle, event.action) {
+            if event.action.apply(active, binding.handle) {
                 if let Some((engine, plan)) = previous.as_mut() {
                     if let Some(old) =
                         plan.bindings[event.slot].filter(|old| old.token == event.token)
                     {
-                        if !engine.handle_module_event(old.handle, event.action) {
+                        if !event.action.apply(engine, old.handle) {
                             self.shared
                                 .crossfade_rejected
                                 .fetch_add(1, Ordering::Relaxed);
@@ -2542,6 +2796,9 @@ impl EventReader {
                             revision,
                             frame,
                             parameters,
+                            rackmcp_sequence: engine
+                                .rackmcp_sequence_status(binding.handle)
+                                .zip(engine.rackmcp_sequence_content_fingerprint(binding.handle)),
                             state: if binding.kind.sequential() {
                                 engine.module_telemetry(binding.handle)
                             } else {
@@ -2618,8 +2875,8 @@ mod tests {
 
     #[test]
     fn sequence_load_epochs_are_persistent_frozen_and_incarnation_bound() {
-        // This model deliberately has no action/parameter/light capability
-        // entry. Its load intent must use the persistent state incarnation.
+        // Transport/status now has a performance binding, but data-load intent
+        // still follows its independent persistent state incarnation.
         let patch: Patch = serde_json::from_value(json!({"version":2,
             "nodes":[{"id":"seq","kind":"rackmcp_sequencer"}]}))
         .unwrap();
@@ -2627,7 +2884,9 @@ mod tests {
         let (performance, _, _) = Performance::new(48_000);
         performance.sync_patch(&patch, 1);
         let original = performance.plan(&patch, &engine, 1).unwrap();
-        assert!(original.bindings.iter().all(Option::is_none));
+        let binding = original.bindings.iter().flatten().next().unwrap();
+        assert!(binding.kind == ModuleKind::RackMcpSequencer);
+        assert!(!binding.kind.accepts(ModuleAction::Clock));
         let loads = ["seq".into()];
         performance.sync_patch_with_intents(&patch, 2, &BTreeMap::new(), &loads);
         let assigned = performance.plan(&patch, &engine, 2).unwrap();
@@ -2924,6 +3183,7 @@ mod tests {
                     meter.write(
                         entry.token,
                         ModuleSnapshot {
+                            rackmcp_sequence: None,
                             parameters: [None; MAX_PUBLISHED_PARAMETERS],
                             revision: 7,
                             frame: 101,
@@ -3015,6 +3275,7 @@ mod tests {
                 writer_meter.write(
                     11 + frame % 2,
                     ModuleSnapshot {
+                        rackmcp_sequence: None,
                         parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: frame + 1,
                         frame,
@@ -3090,6 +3351,7 @@ mod tests {
                         shared.meters[slot].write(
                             slot as u64 + 11,
                             ModuleSnapshot {
+                                rackmcp_sequence: None,
                                 parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 revision: frame + 1,
                                 frame,
@@ -3166,6 +3428,7 @@ mod tests {
                 writer_meter.write(
                     entry.token,
                     ModuleSnapshot {
+                        rackmcp_sequence: None,
                         parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: 1,
                         frame,
@@ -3232,6 +3495,7 @@ mod tests {
                 meter.write(
                     entry.token,
                     ModuleSnapshot {
+                        rackmcp_sequence: None,
                         parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: 1,
                         frame: 2_001,
@@ -3301,6 +3565,7 @@ mod tests {
                         shared.meters[slot].write(
                             slot as u64 + 11,
                             ModuleSnapshot {
+                                rackmcp_sequence: None,
                                 parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 midi_learning: None,
                                 revision: 1,
@@ -3393,6 +3658,7 @@ mod tests {
                         shared.meters[slot].write(
                             slot as u64 + 11,
                             ModuleSnapshot {
+                                rackmcp_sequence: None,
                                 parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 midi_learning: None,
                                 revision: 1,
@@ -3468,6 +3734,7 @@ mod tests {
                         shared.meters[slot].write(
                             slot as u64 + 11,
                             ModuleSnapshot {
+                                rackmcp_sequence: None,
                                 parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 midi_learning: None,
                                 revision: 1,

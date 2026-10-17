@@ -1220,6 +1220,7 @@ impl PolyEngine {
         let parameter = match (self.nodes[node].kind.as_str(), name) {
             ("stock_vca", "level") => ParameterId::StockVcaLevel,
             ("rack264_vcf", "frequency") => ParameterId::Rack264VcfFrequency,
+            ("rackmcp_sequencer", "running") => ParameterId::RackMcpSequencerRunning,
             _ => {
                 return Err(format!(
                     "module '{id}' has no live parameter capability for '{name}'"
@@ -1236,6 +1237,9 @@ impl PolyEngine {
         use crate::live_parameters::ParameterId;
         match (&self.nodes.get(node)?.model, parameter) {
             (Model::StockVca(model), ParameterId::StockVcaLevel) => Some(model.level()),
+            (Model::RackMcpSequencer(model), ParameterId::RackMcpSequencerRunning) => {
+                Some(model.running())
+            }
             (Model::Rack264Vcf(model), ParameterId::Rack264VcfFrequency) => Some(model.frequency()),
             _ => None,
         }
@@ -1249,6 +1253,9 @@ impl PolyEngine {
         use crate::live_parameters::ParameterId;
         match (self.nodes.get_mut(node).map(|n| &mut n.model), parameter) {
             (Some(Model::StockVca(model)), ParameterId::StockVcaLevel) => model.set_level(value),
+            (Some(Model::RackMcpSequencer(model)), ParameterId::RackMcpSequencerRunning) => {
+                return model.set_running(value)
+            }
             (Some(Model::Rack264Vcf(model)), ParameterId::Rack264VcfFrequency) => {
                 model.set_frequency(value)
             }
@@ -1282,6 +1289,9 @@ impl PolyEngine {
                 }
                 if let Some(value) = old.parameter_value(old_index, parameter) {
                     match (&mut self.nodes[index].model, parameter) {
+                        (Model::RackMcpSequencer(model), ParameterId::RackMcpSequencerRunning) => {
+                            model.set_running(value);
+                        }
                         (Model::StockVca(model), ParameterId::StockVcaLevel) => {
                             model.set_level(value)
                         }
@@ -2354,6 +2364,51 @@ impl PolyEngine {
         }
         true
     }
+    pub(crate) fn rackmcp_sequence_transport(
+        &mut self,
+        index: usize,
+        request: crate::RackMcpTransport,
+    ) -> bool {
+        match self.nodes.get_mut(index).map(|node| &mut node.model) {
+            Some(Model::RackMcpSequencer(sequence)) => sequence.transport(request),
+            _ => false,
+        }
+    }
+
+    pub(crate) fn rackmcp_sequence_status(
+        &self,
+        index: usize,
+    ) -> Option<crate::RackMcpSequenceStatus> {
+        match self.nodes.get(index).map(|node| &node.model) {
+            Some(Model::RackMcpSequencer(sequence)) => Some(sequence.status()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn rackmcp_sequence_content_fingerprint(&self, index: usize) -> Option<[u8; 32]> {
+        match self.nodes.get(index).map(|node| &node.model) {
+            Some(Model::RackMcpSequencer(sequence)) => Some(sequence.content_fingerprint()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn rackmcp_sequence_content_matches(
+        &self,
+        index: usize,
+        previous: &Self,
+        previous_index: usize,
+    ) -> bool {
+        match (
+            self.nodes.get(index).map(|node| &node.model),
+            previous.nodes.get(previous_index).map(|node| &node.model),
+        ) {
+            (Some(Model::RackMcpSequencer(current)), Some(Model::RackMcpSequencer(previous))) => {
+                current.content_matches(previous)
+            }
+            _ => false,
+        }
+    }
+
     pub(crate) fn rackmcp_sequence_data_matches(
         &self,
         index: usize,
@@ -2457,6 +2512,7 @@ impl PolyEngine {
     }
     pub(crate) fn module_saved_state(&self, index: usize) -> Option<SavedModuleState> {
         match self.nodes.get(index).map(|node| &node.model) {
+            Some(Model::RackMcpSequencer(seq)) => Some(seq.saved_state()),
             Some(Model::Seq3(seq)) => Some(SavedModuleState::Seq3Run(seq.telemetry().running)),
             Some(Model::StockSeq3(seq)) => Some(seq.saved_state()),
             Some(Model::StockQuantizer(q)) => Some(q.saved_state()),
@@ -2470,6 +2526,9 @@ impl PolyEngine {
     }
     pub(crate) fn set_module_saved_state(&mut self, index: usize, state: SavedModuleState) -> bool {
         match (self.nodes.get_mut(index).map(|node| &mut node.model), state) {
+            (Some(Model::RackMcpSequencer(seq)), SavedModuleState::RackMcpSelection(name)) => {
+                seq.set_saved_selection(name)
+            }
             (Some(Model::Seq3(seq)), SavedModuleState::Seq3Run(running)) => {
                 seq.set_running(running);
                 true
@@ -3758,15 +3817,27 @@ impl PolyEngine {
     }
     #[cfg(test)]
     pub(crate) fn adopt_state_from(&mut self, old: &Self) {
-        self.adopt_state_from_excluding(old, &[false; MAX_NODES], &[false; MAX_CABLES]);
+        self.adopt_state_from_excluding(
+            old,
+            &[false; MAX_NODES],
+            &[false; MAX_CABLES],
+            &[false; MAX_NODES],
+        );
     }
     pub(crate) fn adopt_state_from_excluding(
         &mut self,
         old: &Self,
         excluded: &[bool; MAX_NODES],
         excluded_cables: &[bool; MAX_CABLES],
+        preserve_sequence_runtime: &[bool; MAX_NODES],
     ) {
-        self.adopt_state_impl(old, excluded, excluded_cables, true);
+        self.adopt_state_impl(
+            old,
+            excluded,
+            excluded_cables,
+            preserve_sequence_runtime,
+            true,
+        );
     }
     /// Transfer large Delay allocations instead of copying them. Once this
     /// returns true, the retiring engine must not process any more samples.
@@ -3775,8 +3846,15 @@ impl PolyEngine {
         old: &mut Self,
         excluded: &[bool; MAX_NODES],
         excluded_cables: &[bool; MAX_CABLES],
+        preserve_sequence_runtime: &[bool; MAX_NODES],
     ) -> bool {
-        self.adopt_state_impl(old, excluded, excluded_cables, false);
+        self.adopt_state_impl(
+            old,
+            excluded,
+            excluded_cables,
+            preserve_sequence_runtime,
+            false,
+        );
         if self.rate != old.rate {
             return false;
         }
@@ -3806,6 +3884,7 @@ impl PolyEngine {
         old: &Self,
         excluded: &[bool; MAX_NODES],
         excluded_cables: &[bool; MAX_CABLES],
+        preserve_sequence_runtime: &[bool; MAX_NODES],
         copy_delay: bool,
     ) {
         self.host_context_dirty = true;
@@ -3825,8 +3904,14 @@ impl PolyEngine {
                 continue;
             };
             if let Model::RackMcpSequencer(previous) = &old.nodes[previous].model {
-                self.sequence_ownership.acquire[index] = !sequence.claims_match(previous);
-                sequence.adopt(previous);
+                if preserve_sequence_runtime[index] {
+                    self.sequence_ownership.acquire[index] =
+                        !sequence.claims_match_preserving_selection(previous, true);
+                    sequence.adopt_preserving_selection(previous, true);
+                } else {
+                    self.sequence_ownership.acquire[index] = !sequence.claims_match(previous);
+                    sequence.adopt(previous);
+                }
             }
         }
         self.sequence_ownership

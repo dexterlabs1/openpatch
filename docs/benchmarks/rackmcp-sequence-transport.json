@@ -1,0 +1,110 @@
+{
+  "status": "Implemented source-derived live transport/status and typed selected-name persistence; not installed",
+  "source": {
+    "plugin": "RackMCP",
+    "model": "Sequencer",
+    "version": "2.0.0",
+    "commit": "285e84c5ff2d3ecef25890da07f578af6a0c5ca6",
+    "sdk": "2.6.6"
+  },
+  "implemented": {
+    "tools": [
+      "rackmcp_transport",
+      "inspect_rackmcp_sequence"
+    ],
+    "requests": "Play/stop/toggle/reset/select/seek; optional atomic name selection with non-seek action; now means next advance, wrap is default; seek finite bars 0..100000",
+    "delivery": "One bounded callback queue, complete-batch rejection, incarnation/revision/action/cancellation/deadline/content fences; no performance history entry or speaker startup",
+    "status": "Coherent actual model controls and 64-processed-sample source position/clock; compiled content-fenced names; explicit unavailable with no authored/offline fallback",
+    "selection": "One bounded runtime index and 32-byte UTF-8 name snapshot, projected through existing SavedModuleState/write_node into captures, presets, dirty observation and sequence-replacing history",
+    "running": "Actual model live parameter, inherited/captured with assignment epochs; not duplicated in SavedModuleState",
+    "adoption": "Explicit host preserve only same incarnation/musical content/no new load or reset; saved selection-only differences preserve pending requests/cache/owner; standalone full-data inferred load unchanged",
+    "history": "Unrelated parameter undo does not rewind performance selection; sequence-data history materializes selected name before compile; saved acknowledgment never queues a second selection"
+  },
+  "genuine_transport_reference": {
+    "passed": true,
+    "cases": 3,
+    "frames": 17584,
+    "outputs": "Every 18*(channel_count+16 canonical f32 bits) output word per frame",
+    "status": "All source statusJson fields and actual dataToJson desired name, before and after each process sample; IEEE exact numeric projection",
+    "no_targets_or_binding_correction": true,
+    "manifest_sha256": "2f0f7024499d991d2b45d52837cad1970fd8b5f8033e4e124e205bd745005d61",
+    "report_sha256": "cf422204b57553cede65a908ed0bc308d44b3f7110ec4c92ee5f8622a8199b54",
+    "production_entries": 96,
+    "changed_production_entries": 0
+  },
+  "existing_module_requalification": {
+    "cases": 9,
+    "frames": 25104,
+    "raw_comparison_passed": false,
+    "declared_native_binding_correction_audit_passed": true,
+    "all_18_outputs_exact_words": 7681824,
+    "explicit_correction_words": 1964,
+    "manifest_sha256": "f1c939ece6fc8151f8ee0a4269765006a212816706070c46cbfcb896eea50982",
+    "report_sha256": "3c3d44674872573d880df451c4af89dab3d63cbae95b11910b2c8969ac9f701b",
+    "audit_sha256": "c6eca6b134e1290b2d0f97f1210bc87b050a2a2625572ade660bb7e7a51ea43a",
+    "driver_change": "Explicit packet running assignment excluded from inheritance after running joined the live capability set. Source fixtures/expected outputs unchanged. Initial failed 006 retained."
+  },
+  "validation": {
+    "transport_core": {
+      "passed": 15,
+      "log": "transport-core-extended.log"
+    },
+    "cli_library": {
+      "passed": 355,
+      "ignored": 2,
+      "log": "transport-cli-all-final.log"
+    },
+    "core_unit_and_integration": {
+      "passed": 927,
+      "ignored": 3,
+      "unique_targets": 71,
+      "logs": [
+        "transport-core-all.log",
+        "transport-core-remaining.log"
+      ],
+      "note": "Initial run stopped on outdated VCA-only inheritance counts; affected test and 35 not-yet-executed targets passed after counting the new running capability. All 71 unique targets accounted for."
+    },
+    "actual_audio_callback": {
+      "passed": 229,
+      "ignored": 1,
+      "log": "transport-all-audio-final.log"
+    },
+    "performance_publication": {
+      "passed": 37,
+      "log": "transport-performance-002.log"
+    },
+    "document_dirty_state": {
+      "passed": 9,
+      "log": "transport-document-state-final.log"
+    },
+    "mcp_stdio": {
+      "passed": 5,
+      "log": "transport-stdio.log"
+    },
+    "core_doc_tests": {
+      "passed": 0,
+      "failed": 0,
+      "log": "transport-core-doc.log"
+    },
+    "format_and_diff": "passed",
+    "strict_clippy": {
+      "passed": true,
+      "scope": "Core, CLI and Desktop all-targets -D warnings",
+      "log": "transport-clippy-final.log"
+    }
+  },
+  "limits": [
+    "Native scheduling and healthy-rebinding corrections remain disclosed; not whole-module/whole-patch or hardware equality",
+    "Shared panel currently displays authored notation; live panel transport presentation remains follow-up",
+    "Bridge/Listen family implementation and one complete macOS milestone CI remain pending",
+    "Installed OpenPatch 0.2.6 build 8 unchanged; no package/version/install/native-window/audio-device actions"
+  ],
+  "private_evidence_root": "native-test-output/rack-control-import/",
+  "preserved_initial_failures": [
+    "CLI new-test JSON delimiter, then missing mock publication/default-selection fixture normalization and offline source label",
+    "Desktop new snapshot fixture fields, next-advance timing expectation and legacy selected-name capture normalization",
+    "Core existing source-target wrapper probe omitted explicit running assignment after capability extension; 006 retained, corrected 007 has only declared binding differences",
+    "Existing Core inheritance-count assertions and passive performance-binding assertion updated for the new running/transport capabilities",
+    "Clippy constant chunk conversion corrected to fixed array chunks"
+  ]
+}

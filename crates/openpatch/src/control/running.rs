@@ -66,6 +66,13 @@ pub(super) fn live_saved(
         return Err(format!("live state kind mismatch for module '{id}'"));
     }
     let state = match expected {
+        SavedModuleState::RackMcpSelection(_) => {
+            let name = module["state"]["selected_pattern"]
+                .as_str()
+                .and_then(openpatch_core::FixedPatternName::new)
+                .ok_or_else(|| format!("live selected pattern unavailable for module '{id}'"))?;
+            SavedModuleState::RackMcpSelection(name)
+        }
         SavedModuleState::MidiGateMappings(_) => {
             let rows = module["state"]["assignments"]
                 .as_array()
@@ -287,6 +294,7 @@ impl Session {
         } else {
             initial
         };
+        super::rackmcp_transport::validate_selection(node, value)?;
         // A preceding mapping edit in this transaction changes ownership only.
         // Overlay that candidate map on the captured live controller bank.
         let value = match (value, initial) {
@@ -542,7 +550,7 @@ impl Session {
                     assignments,
                     values,
                 };
-                state.write_params(&mut node.params);
+                state.write_node(node);
                 effects.full_midi_restores.insert(id.clone());
                 effects.working_saved.insert(id.clone(), state);
                 effects.after_saved.insert(id.clone(), state);
@@ -615,7 +623,7 @@ impl Session {
                         })
                 })
                 .collect(),
-            "apply_module_preset" | "remove_module" | "rotate_scale" => {
+            "apply_module_preset" | "set_rackmcp_sequence" | "remove_module" | "rotate_scale" => {
                 vec![string(args, "id")?.to_owned()]
             }
             "rotate_sequence"
@@ -646,6 +654,20 @@ impl Session {
             }
             _ => Vec::new(),
         };
+        // A transport selection belongs in history only when the operation
+        // replaces/removes sequence data. Parameter undo must not rewind it.
+        let targets: Vec<_> = targets
+            .into_iter()
+            .filter(|id| {
+                !candidate
+                    .nodes
+                    .iter()
+                    .any(|node| node.id == *id && node.kind == "rackmcp_sequencer")
+                    || matches!(name, "remove_module" | "set_rackmcp_sequence")
+                    || (name == "apply_module_preset"
+                        && args["preset"].get("rackmcp_sequence").is_some())
+            })
+            .collect();
         // A continuing keyboard paint gesture owns this complete twelve-bit
         // bank. Its last accepted assignment is already in history even when
         // the callback has not published that revision. Reuse only that exact
@@ -683,7 +705,8 @@ impl Session {
             // stale gate/Run/passthrough parameters from the original graph.
             if let Some(
                 state @ (SavedModuleState::StockSeq3 { .. }
-                | SavedModuleState::StockQuantizerNotes(_)),
+                | SavedModuleState::StockQuantizerNotes(_)
+                | SavedModuleState::RackMcpSelection(_)),
             ) = state
             {
                 let node = candidate
@@ -691,7 +714,7 @@ impl Session {
                     .iter_mut()
                     .find(|node| node.id == *id)
                     .unwrap();
-                state.write_params(&mut node.params);
+                state.write_node(node);
             }
         }
         // Intermediate duplicate IDs are legal until final graph validation.
@@ -769,6 +792,12 @@ impl Session {
                     .find(|node| node.id == id)
                     .and_then(SavedModuleState::from_node);
                 if let Some(current) = current {
+                    if matches!(current, SavedModuleState::RackMcpSelection(_)) {
+                        effects.working_saved.insert(id.clone(), current);
+                        effects.after_saved.insert(id.clone(), current);
+                        // The explicit source-data epoch owns selection loading.
+                        continue;
+                    }
                     if let SavedModuleState::StockSeq3 {
                         mut running,
                         gates,
@@ -1056,7 +1085,7 @@ impl Session {
                                 .iter_mut()
                                 .find(|node| node.id == id)
                                 .unwrap();
-                            value.write_params(&mut node.params);
+                            value.write_node(node);
                         }
                         let working = if let SavedModuleState::MidiCcMappings(assignments) = value {
                             if let Some(SavedModuleState::MidiCc { values, .. }) =
@@ -1097,7 +1126,7 @@ impl Session {
                 .find(|node| node.id == id)
                 .unwrap();
             if name == "duplicate_modules" {
-                value.write_params(&mut node.params);
+                value.write_node(node);
             }
             effects.replaced.insert(id.clone());
             effects.working_saved.insert(id.clone(), value);

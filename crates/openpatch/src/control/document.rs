@@ -587,7 +587,7 @@ impl Session {
                     .find(|current| current.id == node.id && current.kind == node.kind)
                 {
                     if let Some(state) = SavedModuleState::from_node(current) {
-                        state.write_params(&mut node.params);
+                        state.write_node(node);
                     }
                     for &key in openpatch_core::runtime_parameter_names(&current.kind) {
                         if let Some(value) = current.params.get(key) {
@@ -597,7 +597,7 @@ impl Session {
                 }
             }
             if let Some(assignment) = target.restore_saved.get(&node.id) {
-                assignment.write_params(&mut node.params);
+                assignment.write_node(node);
             }
         }
         target.document = if has_source(&target.document) {

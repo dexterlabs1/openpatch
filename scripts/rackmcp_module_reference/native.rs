@@ -34,7 +34,7 @@ fn main(){
         let data_changed=action==1&&f["versions"][version]!=f["versions"][index];if action==1{version=index;}
         if next!=controls||data_changed {
             let mut replacement=patch(&f,version,next.0,next.1,next.2,next.3).compile().unwrap();
-            replacement.adopt_state_from(&engine);replacement.inherit_parameter_values(&engine,&[],&[]);engine=replacement;observed=taps(&engine);controls=next;
+            replacement.adopt_state_from(&engine);let running=replacement.resolve_parameter("seq","running").unwrap();replacement.inherit_parameter_values(&engine,&[],&[running]);engine=replacement;observed=taps(&engine);controls=next;
         }
         if action==1&&!data_changed{let h=engine.resolve_module_state("seq").unwrap();assert!(engine.reload_rackmcp_sequence_data(h));}
         let manual=c[8].parse::<i32>().unwrap();if manual>=0&&controls.3 {let (module,name)=TARGETS[manual as usize];let h=engine.resolve_parameter(module,name).unwrap();assert!(engine.set_parameter_value(h,c[9].parse().unwrap()));}

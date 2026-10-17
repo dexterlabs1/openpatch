@@ -186,8 +186,8 @@ visibility, bypass freeze/resume, edits, adoption, publication, save and history
 Actual callback processing/adoption is allocation/deallocation-free in the tested
 workflows. The dedicated Signal Atlas rack/browser panel displays authored
 selection/notes/drum hits/accents, never an invented live playhead. Direct
-transport/seek/status publication,
-Bridge and Listen capture remain open; this is not whole-module or whole-patch
+transport/seek/status publication is now implemented below. Bridge and Listen
+capture remain open; this is not whole-module or whole-patch
 qualification.
 
 ## Genuine wrapper finding and deliberate host correction
@@ -274,3 +274,54 @@ even when no module is unresolved; explicit Partial playback runs the supported
 graph with these omissions disclosed in the UI and MCP. The same complete-document
 validation protects audio tickets, offline rendering, history, replacement and
 save/reopen without filtering or rewriting authoritative sequence state.
+
+
+## Live transport and saved selection
+
+`rackmcp_transport` queues play/stop/toggle/reset/select/seek through the bounded
+callback queue. Select uses a pattern name; other non-seek actions can include
+an atomic selection. `quantize: "now"` waits for the next advance; the default
+`"wrap"` waits for the pattern boundary. Seek requires finite bars in 0..100000.
+Requests coalesce by kind before processing, in source reset → seek → selection
+consumption order. Stop retains phase. A receipt acknowledges acceptance, not
+callback application; transport creates no revision or history entry.
+
+Requests retain incarnation, action epoch, revision, cancellation, deadline and
+content-identity fences. The content hash includes pattern ordering and excludes
+only `selectedPattern`; an index queued for old data cannot select a different
+pattern after a reorder. Full queues reject a whole selection/action batch.
+Suspended, closed, bypassed or unsupported execution rejects before enqueue.
+The native callback-delivery boundary differs from source cross-thread atomics.
+
+`inspect_rackmcp_sequence` returns coherent actual status or explicit unavailable.
+Position/clock retain the source's 64-processed-sample publication cadence;
+current running, desired selection and unconsumed pending selection remain
+separate from that position. Active/pending/desired names use matching compiled
+content only. No authored playhead or offline fallback is supplied. The shared
+panel still shows authored notation; live panel transport presentation is a
+separate UI follow-up.
+
+Running uses the actual model's bounded live parameter. Desired selection uses
+one adapter index and a bounded UTF-8 name snapshot through `SavedModuleState`.
+Project/preset capture, dirty observation and sequence-replacing history project
+that name onto typed sequence data, preserving original imported source bytes.
+An unrelated parameter undo never rewinds subsequent transport selection.
+History materializes selection before compilation; its saved-state acknowledgment
+does not queue a second selection or replace the genuine load's first-advance
+behavior. Core's explicit selection setter remains available independently.
+
+Ordinary same-incarnation graph adoption may preserve runtime across a saved
+selection-only difference when musical content matches and there is no fresh
+lifecycle, host reset or new explicit load epoch. This preserves pending requests,
+cache and ownership. Standalone adoption keeps the full-data inferred load
+contract. Explicit equal/selection-only data loads still reset lane caches and
+acquire targets once in document order.
+
+The [transport reference](../scripts/rackmcp_module_reference/README.md#separate-transport-and-status-comparison)
+passes 3 genuine SDK/source cases, 17,584 frames, comparing every output and every
+status field before and after each sample exactly. It contains no target lanes,
+so the separately retained SDK binding correction does not enter that proof.
+[Native transport checks](benchmarks/rackmcp-sequence-transport.json) also cover
+actual shared-session audio, save/reopen, history and allocation-free callback
+adoption. This is bounded wrapper qualification, not full Rack scheduling,
+Bridge/Listen, whole-patch or hardware equivalence.

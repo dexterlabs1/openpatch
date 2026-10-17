@@ -6093,6 +6093,8 @@ mod tests {
     include!("stock_vca_audio_tests.rs");
     include!("live_parameter_audio_tests.rs");
     include!("sequence_load_audio_tests.rs");
+    include!("rackmcp_transport_audio_tests.rs");
+    include!("rackmcp_transport_session_tests.rs");
     include!("imported_sequence_audio_tests.rs");
     include!("stock_delay_audio_tests.rs");
     include!("stock_lfo_audio_tests.rs");

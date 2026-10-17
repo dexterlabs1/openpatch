@@ -94,6 +94,7 @@ impl Session {
             } else {
                 initial
             };
+            super::rackmcp_transport::validate_selection(node, state)?;
             saved_states.insert(node.id.clone(), state);
             match state {
                 SavedModuleState::Seq3Run(value)
@@ -103,7 +104,8 @@ impl Session {
                 SavedModuleState::PushHold(value) => {
                     holding.insert(node.id.clone(), value);
                 }
-                SavedModuleState::StockSeq3Fields { .. }
+                SavedModuleState::RackMcpSelection(_)
+                | SavedModuleState::StockSeq3Fields { .. }
                 | SavedModuleState::StockQuantizerNotes(_)
                 | SavedModuleState::RandomValues { .. }
                 | SavedModuleState::ShiftRegister { .. }
@@ -196,7 +198,7 @@ impl Session {
         let mut patch = self.patch.clone();
         for node in &mut patch.nodes {
             if let Some(state) = captured.saved_states.get(&node.id) {
-                state.write_params(&mut node.params);
+                state.write_node(node);
             }
             if let Some(values) = parameters.get(&node.id) {
                 node.params

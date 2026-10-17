@@ -446,9 +446,13 @@ fn rackmcp_automation_actual_callback_publication_history_and_saved_reopen() {
             serde_json::json!({"filename":"rackmcp-effective.json"}),
         )
         .unwrap();
+    let mut expected_saved_node = session.patch().nodes[0].clone();
+    openpatch_core::SavedModuleState::from_node(&expected_saved_node)
+        .unwrap()
+        .write_node(&mut expected_saved_node);
     assert_eq!(
         reopened.patch().nodes[0].rackmcp_sequence,
-        session.patch().nodes[0].rackmcp_sequence
+        expected_saved_node.rackmcp_sequence
     );
     let mut engine = reopened.patch().compile().unwrap();
     let gain = engine.resolve_parameter("vca", "level").unwrap();

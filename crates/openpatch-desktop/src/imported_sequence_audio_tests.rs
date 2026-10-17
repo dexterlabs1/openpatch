@@ -128,7 +128,26 @@ fn imported_sequence_shared_session_callback_preserves_bindings_and_gates_saved_
         }))
         .unwrap(),
     );
-    let expected_sequence = edited_sequence.clone();
+    // Capture persists the effective default selection as an explicit typed
+    // name. Normalize that field while retaining full lane/target equality.
+    let mut expected_node = shared
+        .lock()
+        .unwrap()
+        .patch()
+        .nodes
+        .iter()
+        .find(|node| node.id == "automation")
+        .unwrap()
+        .clone();
+    expected_node.rackmcp_sequence = Some(edited_sequence.clone());
+    openpatch_core::SavedModuleState::from_node(&expected_node)
+        .unwrap()
+        .write_node(&mut expected_node);
+    let expected_sequence = expected_node.rackmcp_sequence.unwrap();
+    assert_eq!(
+        expected_sequence.data.selected_pattern.as_deref(),
+        Some("A")
+    );
     execute_shared(
         &shared,
         "set_rackmcp_sequence",

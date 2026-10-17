@@ -240,7 +240,11 @@ fn sequence_load_equal_data_preserves_current_playhead() {
 #[test]
 fn sequence_load_shared_equal_preset_undo_redo_rearm_constant_lane() {
     let patch = sequence_load_patch();
-    let preset = openpatch::presets::capture(&patch.nodes[0], None).unwrap();
+    let preset = openpatch::presets::capture_state(
+        &patch.nodes[0],
+        openpatch_core::SavedModuleState::from_node(&patch.nodes[0]),
+    )
+    .unwrap();
     let (mut callback, mut updates, mut retired) = sequence_callback(&patch);
     let workspace = tempfile::tempdir().unwrap();
     let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
@@ -413,8 +417,16 @@ fn sequence_load_competing_owner_survives_graph_reorder_rate_and_winner_deletion
 #[test]
 fn sequence_load_shared_competing_equal_presets_batch_undo_redo_follow_action_order() {
     let patch = competing_sequence_load_patch();
-    let preset_a = openpatch::presets::capture(&patch.nodes[0], None).unwrap();
-    let preset_b = openpatch::presets::capture(&patch.nodes[1], None).unwrap();
+    let preset_a = openpatch::presets::capture_state(
+        &patch.nodes[0],
+        openpatch_core::SavedModuleState::from_node(&patch.nodes[0]),
+    )
+    .unwrap();
+    let preset_b = openpatch::presets::capture_state(
+        &patch.nodes[1],
+        openpatch_core::SavedModuleState::from_node(&patch.nodes[1]),
+    )
+    .unwrap();
     let (mut callback, mut updates, mut retired) = sequence_callback(&patch);
     let workspace = tempfile::tempdir().unwrap();
     let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
