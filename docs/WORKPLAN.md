@@ -35,6 +35,14 @@ Sine LFO, Low-pass and Gain now use the detailed native treatment, bringing the 
 
 [Native utility panels and matching thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-modulation-utilities.png). **82 focused checks passed**, including actual Session edits/undo, numeric entry, keyboard zero-Hz recovery, socket picking, text clearance, library search, shared rack/browser rendering and configured guides compared with the engine. Strict desktop Clippy, formatting and light/dark mesh review passed. The preceding `703c26b` analog-voice checkpoint passed GitHub CI. No DSP sources, frozen references or installed app changed. Next: Stock VCO and ADSR EG, preserving real phase/stage telemetry and PUSH behavior.
 
+### Stock oscillator and envelope continuation
+
+Stock VCO and ADSR EG now extend the detailed design to nine native panels. The VCO has larger tuning/width knobs around four nominal wave shapes, separate signed modulation controls and engine-driven phase/mode lights. ADSR EG retains all eight controls and guarded PUSH, with larger real stage/gate lamps, a configured normalized envelope guide and the actual CV → depth → base → clamp path. Both use the approved faceplate, rotary hardware, beige readouts and metallic sockets; widths, socket rows and port identities remain stable.
+
+MCP construction cues follow all six VCO controls and all eight ADSR controls at their new positions, with human-unit readouts and grouped editing history. Display guides are explicitly configured, not live samples: the oscillator omits reconstruction/DC-blocker dynamics; the envelope shows a continuous-time stage shape with normalized time. Existing actual telemetry stays separate.
+
+**84 focused checks passed**, including all fourteen MCP control anchors and five cable workflows; strict desktop Clippy and formatting passed. Final light/dark native meshes were inspected. The preceding utility CI run exposed four stale jack-coordinate tests; those workflows and the related cancellation fixture now select actual named ports. Detailed results and the native capture are recorded in the [review notes](../design/reviews/signal-atlas-two-modules-v1/README.md). Next: Stock LFO and Stock VCF, then the remaining catalog families. Installed 0.2.5 build 7 remains unchanged; no DSP sources or frozen references changed.
+
 The following catalog batches describe existing development source, not an approved final design.
 
 ### First catalog batch in progress

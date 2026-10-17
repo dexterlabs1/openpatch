@@ -306,10 +306,16 @@ fn adsr_eg_shared_browser_text_fits_at_rack_and_thumbnail_scales() {
                 "DECAY",
                 "SUSTAIN",
                 "RELEASE",
-                "CV DEPTH",
                 "1  100  10k ms",
                 "0  50  100%",
-                "−100  0  +100%",
+                "CV DEPTH ±100%",
+                "12 V TARGET",
+                "CONFIGURED SHAPE",
+                "TIME NORMALIZED",
+                "CV/10 × DEPTH",
+                "A/D/S/R CV",
+                "+ BASE",
+                "0–1",
                 "ENV",
                 "PUSH",
                 "A CV",
@@ -318,7 +324,7 @@ fn adsr_eg_shared_browser_text_fits_at_rack_and_thumbnail_scales() {
                 "R CV",
             ] {
                 assert!(
-                    texts.iter().any(|(t, _)| t == required),
+                    texts.iter().any(|(t, _)| t.contains(required)),
                     "missing {required}"
                 );
             }
@@ -345,7 +351,7 @@ fn adsr_eg_stage_and_gate_lamps_use_only_actual_engine_telemetry() {
     let mut rack = Rack::default();
     let patch = patch();
     let centers = (0..4)
-        .map(|i| at(pos2(35.0 + i as f32 * 80.0, 86.0)))
+        .map(|i| at(pos2(35.0 + i as f32 * 80.0, 64.0)))
         .chain([at(pos2(267.0, 367.0))])
         .collect::<Vec<_>>();
     let colors = |output: egui::FullOutput| {
@@ -358,7 +364,7 @@ fn adsr_eg_stage_and_gate_lamps_use_only_actual_engine_telemetry() {
                     .filter_map(|s| match &s.shape {
                         egui::Shape::Circle(c)
                             if c.center.distance(*center) < 0.1
-                                && (c.radius - crate::lighting::lamp_radius(2.5)).abs() < 0.1 =>
+                                && (c.radius - crate::lighting::lamp_radius(2.4)).abs() < 0.1 =>
                         {
                             Some(c.fill)
                         }
@@ -437,5 +443,94 @@ fn adsr_eg_push_releases_on_exit_focus_bypass_modal_and_engine_loss() {
             );
         }
         assert!(rack.held_manual.is_none(), "{cause}");
+    }
+}
+
+#[test]
+fn adsr_eg_configured_guide_tracks_sustain_and_survives_dark_room_without_fake_lamps() {
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let mut patch = patch();
+    let paths = |output: &egui::FullOutput| {
+        output
+            .shapes
+            .iter()
+            .filter_map(|s| {
+                if let egui::Shape::Path(p) = &s.shape {
+                    (p.points.len() > 2
+                        && p.stroke.color
+                            == egui::epaint::ColorMode::Solid(Color32::from_rgb(226, 181, 96)))
+                    .then(|| p.points.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    let light = frame_output(&ctx, &mut rack, &patch, 0.0, vec![]).1;
+    rack.set_room_brightness(0.0);
+    let dark = frame_output(&ctx, &mut rack, &patch, 1.0, vec![]).1;
+    let a = paths(&light);
+    let b = paths(&dark);
+    assert_eq!(a.len(), 1);
+    assert_eq!(a, b, "configured guide stays emissive");
+    patch.nodes[0].params.insert("sustain".into(), 0.1);
+    let changed = frame_output(&ctx, &mut rack, &patch, 2.0, vec![]).1;
+    let c = paths(&changed);
+    assert_eq!(c.len(), 1);
+    assert_ne!(b, c);
+    assert!(
+        rack.module_lights.is_empty(),
+        "configured shape must not manufacture stage/gate telemetry"
+    );
+}
+
+#[test]
+fn adsr_eg_mcp_motion_follows_all_eight_rotaries_and_their_human_units() {
+    use crate::construction_motion::{Marker, MotionMode};
+    for (i, parameter) in ADSR_EG_PARAMS.iter().enumerate() {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let before = patch();
+        let mut after = before.clone();
+        let old = if i < 4 { 0.5 } else { 0.0 };
+        let new = if i < 4 { 0.75 } else { 0.5 };
+        after.nodes[0].params.insert((*parameter).into(), new);
+        frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+        let now = std::time::Instant::now();
+        let receipt = json!({"plan_id":19,"completed_steps":1,"last_revision":10,"current_revision":10,
+            "last_commit":{"age_ms":0,"invalidate_existing_cables":false,"plan_id":19,
+            "step_index":0,"before_revision":9,"revision":10,"label":"Shape envelope",
+            "new_modules":[],"new_cables":[],"parameter_changes":[{"id":"env","kind":"adsr_eg","parameter":parameter,"old_effective":old,"new_effective":new}]}});
+        rack.observe_construction_transition_at(
+            &before,
+            &after,
+            9,
+            10,
+            &receipt,
+            MotionMode::Full,
+            now,
+        );
+        rack.set_construction_clock_override(Some(now + std::time::Duration::from_millis(150)));
+        assert!(
+            frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10)
+                .0
+                .is_none()
+        );
+        let anchor = &rack.construction_anchors[&("env".into(), (*parameter).into())];
+        let Some(Marker::Rotary {
+            center,
+            radius,
+            old: from,
+            new: to,
+        }) = anchor.marker.as_ref()
+        else {
+            panic!("{parameter}: missing knob cue")
+        };
+        assert!(center.distance(at(adsr_eg_knob_rect(i).center())) < 0.001);
+        assert!((*radius - if i < 4 { 31.0 } else { 23.0 }).abs() < 0.001);
+        assert!(from < to);
+        assert_eq!(anchor.old_text, adsr_eg_parameter_value(i, old));
+        assert_eq!(anchor.new_text, adsr_eg_parameter_value(i, new));
     }
 }

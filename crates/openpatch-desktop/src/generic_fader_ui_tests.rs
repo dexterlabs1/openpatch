@@ -775,7 +775,7 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
         ("ladder_vcf", "cutoff", 1200.0, pos2(65.5, 93.5)),
         ("ladder_vcf", "resonance", 0.3, pos2(47.0, 198.0)),
         ("ladder_vcf", "drive", 1.0, pos2(163.0, 198.0)),
-        ("adsr_eg", "attack", 0.5, pos2(58.0, 136.0)),
+        ("adsr_eg", "attack", 0.5, pos2(58.0, 173.0)),
         ("lfo", "frequency", 2.0, pos2(56.142857, 93.5)),
         ("lfo", "amplitude", 0.5, pos2(40.285713,198.0)),
         ("lfo", "offset", 0.5, pos2(139.71428,198.0)),

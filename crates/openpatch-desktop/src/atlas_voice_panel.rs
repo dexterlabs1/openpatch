@@ -382,6 +382,12 @@ fn paint_atlas_voice_socket(
             INK
         },
     );
+    paint_atlas_socket_hardware(painter, center, u, connected);
+}
+
+// Stock panels retain their caption/target geometry and share this metallic
+// hardware at the same outer radius.
+fn paint_atlas_socket_hardware(painter: &egui::Painter, center: Pos2, u: f32, connected: bool) {
     painter.circle_filled(
         center + vec2(1.5, 3.0) * u,
         32.0 * u,

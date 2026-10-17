@@ -235,7 +235,7 @@ fn generic_parameter_hardware(
 ) -> GenericParameterHardware {
     if has_choices {
         GenericParameterHardware::Choice
-    } else if atlas_voice(kind) {
+    } else if atlas_voice(kind) || kind == "stock_vco" {
         GenericParameterHardware::Rotary {
             body_radius: layout_radius,
             target_half: layout_radius + 3.0,
@@ -3757,39 +3757,6 @@ impl Rack {
                     }
                     continue;
                 }
-                if *name == "frequency" && node.kind == "stock_vco" {
-                    // P is V/OCT, F is signed FM input and A is FM depth.
-                    // Both formulas remain visible because linear_fm selects
-                    // between the exponential and linear-frequency laws.
-                    painter.text(
-                        point(width * 0.5, 75.0),
-                        Align2::CENTER_CENTER,
-                        "EXP target: C4·2^(T/12+V+F·A)",
-                        crate::panel_skin::print_font(painter.ctx(), 9.0 * self.zoom),
-                        INK,
-                    );
-                    painter.text(
-                        point(width * 0.5, 92.0),
-                        Align2::CENTER_CENTER,
-                        "LIN target: C4·2^(T/12+V)+C4·F·A",
-                        crate::panel_skin::print_font(painter.ctx(), 9.0 * self.zoom),
-                        INK,
-                    );
-                    painter.text(
-                        point(width * 0.5, 109.0),
-                        Align2::CENTER_CENTER,
-                        "T=FREQ(st) · V=PITCH(V/OCT) · F=FM(V) · A=DEPTH",
-                        crate::panel_skin::print_font(painter.ctx(), 8.0 * self.zoom),
-                        MUTED,
-                    );
-                    painter.text(
-                        point(width * 0.5, 126.0),
-                        Align2::CENTER_CENTER,
-                        "PWM/10×DEPTH→SQUARE WIDTH · SYNC→PHASE",
-                        crate::panel_skin::print_font(painter.ctx(), 8.0 * self.zoom),
-                        MUTED,
-                    );
-                }
                 if *name == "rate" && node.kind == "stock_lfo" {
                     // Rate is log2; FM depth multiplies its frequency ratio.
                     painter.text(
@@ -3854,10 +3821,13 @@ impl Rack {
                 }
                 if node.kind == "stock_vco" && matches!(*name, "linear_fm" | "soft_sync") {
                     let enabled = value_or_default(node, name, spec) >= 0.5;
-                    let x = if *name == "linear_fm" { 184.0 } else { 268.0 };
+                    let toggle = stock_vco_mode_rect(name);
                     let response = crate::panel_skin::toggle_button(
                         ui,
-                        Rect::from_min_size(point(x, 39.0), vec2(78.0, 24.0) * self.zoom),
+                        Rect::from_min_size(
+                            point(toggle.min.x, toggle.min.y),
+                            toggle.size() * self.zoom,
+                        ),
                         if *name == "linear_fm" {
                             "Linear FM"
                         } else {
@@ -4225,7 +4195,9 @@ impl Rack {
                         random_parameter_position(index),
                         if *name == "unipolar" { 10.0 } else { 14.0 },
                     )
-                } else if matches!(node.kind.as_str(), "stock_lfo" | "stock_vco") {
+                } else if node.kind == "stock_vco" {
+                    stock_vco_control(name)
+                } else if node.kind == "stock_lfo" {
                     let column = match *name {
                         "frequency" | "rate" => 0,
                         "pulse_width" => 1,
@@ -4460,7 +4432,10 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if atlas_voice(&node.kind) {
+                let value_center = if node.kind == "stock_vco" {
+                    let local = stock_vco_value_center(name);
+                    point(local.x, local.y)
+                } else if atlas_voice(&node.kind) {
                     let local = AtlasVoiceLayout { width }.value_center(&node.kind, name);
                     point(local.x, local.y)
                 } else {
@@ -4746,7 +4721,7 @@ impl Rack {
                         self.zoom,
                     );
                 } else if let GenericParameterHardware::Rotary { body_radius, .. } = hardware {
-                    let paint_rotary = if atlas_voice(&node.kind) {
+                    let paint_rotary = if atlas_voice(&node.kind) || node.kind == "stock_vco" {
                         paint_atlas_voice_rotary
                     } else {
                         crate::panel_skin::signal_atlas_rotary
@@ -4769,7 +4744,9 @@ impl Rack {
                         self.zoom,
                     );
                 }
-                if !atlas_voice(&node.kind) {
+                if node.kind == "stock_vco" {
+                    stock_vco_control_print(&painter, rect.min, name, self.zoom);
+                } else if !atlas_voice(&node.kind) {
                     crate::panel_skin::control_label(
                         &painter,
                         center - vec2(0.0, (radius + label_gap) * self.zoom),
@@ -4812,7 +4789,7 @@ impl Rack {
                         &painter, center, &node.kind, name, radius, self.zoom,
                     );
                 }
-                let paint_readout = if atlas_voice(&node.kind) {
+                let paint_readout = if atlas_voice(&node.kind) || node.kind == "stock_vco" {
                     paint_atlas_voice_readout
                 } else {
                     crate::panel_skin::readout
@@ -12531,7 +12508,7 @@ fn paint_panel(
 ) {
     // One faceplate material across the catalog and its browser previews.
     // Bespoke mixer/process layouts own their section dividers.
-    if atlas_voice(&node.kind) {
+    if atlas_voice(&node.kind) || matches!(node.kind.as_str(), "stock_vco" | "adsr_eg") {
         paint_atlas_voice_face(painter, rect, node, zoom);
     } else {
         crate::panel_skin::signal_atlas_face(painter, rect, zoom);
@@ -12591,7 +12568,7 @@ fn paint_panel(
         );
         lighting.preserve(painter, selection_start);
     }
-    if atlas_voice(&node.kind) {
+    if atlas_voice(&node.kind) || matches!(node.kind.as_str(), "stock_vco" | "adsr_eg") {
         if master {
             paint_jack_light(
                 painter,
@@ -12843,7 +12820,11 @@ fn paint_jack(
             );
         }
     }
-    crate::panel_skin::socket(painter, center, connected, zoom, port_scale);
+    if matches!(kind, "stock_vco" | "adsr_eg") {
+        paint_atlas_socket_hardware(painter, center, 10.3 * zoom * port_scale / 32.0, connected);
+    } else {
+        crate::panel_skin::socket(painter, center, connected, zoom, port_scale);
+    }
 }
 
 /// Kept at the readable 10.5/9.5-point type used by existing enlarged Stock
@@ -17587,8 +17568,8 @@ mod tests {
         let mut patch = openpatch_core::demo_patch();
         patch.cables.clear();
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-        let tone_out = pos2(129.0, 386.0);
-        let vca_input = pos2(464.0, 344.0);
+        let tone_out = fixture_jack(&rack, &patch, "tone", "out", false);
+        let vca_input = fixture_jack(&rack, &patch, "vca", "signal", true);
         let action = drag(&ctx, &mut rack, &patch, 1.0, vca_input, tone_out);
         assert!(
             matches!(action, Some(RackAction::Command("connect", args)) if args["from"] == "tone" && args["to"] == "vca")
@@ -17598,7 +17579,8 @@ mod tests {
         patch.version = 2;
         let original = serde_json::to_value(&patch).unwrap();
         // Drop within the snap zone, beyond the actual socket's painted edge.
-        let filter_input = pos2(654.0 + 16.0, 344.0);
+        let filter_center = fixture_jack(&rack, &patch, "filter", "signal", true);
+        let filter_input = filter_center + vec2(10.3 * port_material_scale("lowpass") + 3.0, 0.0);
         let action = drag(&ctx, &mut rack, &patch, 2.0, vca_input, filter_input);
         let Some(RackAction::Command("apply_edits", args)) = action else {
             panic!("expected one atomic replacement");
@@ -17620,7 +17602,7 @@ mod tests {
             "dragging must never mutate the live graph before validation"
         );
 
-        let target = pos2(654.0, 344.0);
+        let target = filter_center;
         frame(
             &ctx,
             &mut rack,
@@ -17660,26 +17642,14 @@ mod tests {
         let patch = openpatch_core::demo_patch();
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
         let before = serde_json::to_value(&patch).unwrap();
+        let vca_input = fixture_jack(&rack, &patch, "vca", "signal", true);
+        let filter_input = fixture_jack(&rack, &patch, "filter", "signal", true);
+        let output = fixture_jack(&rack, &patch, "out", "out", false);
         // Output feeds back into its own upstream VCA: rejected before dispatch.
-        assert!(drag(
-            &ctx,
-            &mut rack,
-            &patch,
-            1.0,
-            pos2(804.0, 386.0),
-            pos2(464.0, 344.0)
-        )
-        .is_none());
+        assert!(drag(&ctx, &mut rack, &patch, 1.0, output, vca_input).is_none());
         assert!(rack.pending.is_none());
         assert!(matches!(
-            drag(
-                &ctx,
-                &mut rack,
-                &patch,
-                2.0,
-                pos2(464.0, 344.0),
-                pos2(600.0, 600.0)
-            ),
+            drag(&ctx, &mut rack, &patch, 2.0, vca_input, pos2(600.0, 600.0)),
             Some(RackAction::Command("disconnect", _))
         ));
         assert!(rack.pending.is_none());
@@ -17689,8 +17659,8 @@ mod tests {
             &patch,
             3.0,
             vec![
-                egui::Event::PointerMoved(pos2(464.0, 344.0)),
-                button(pos2(464.0, 344.0), true),
+                egui::Event::PointerMoved(vca_input),
+                button(vca_input, true),
             ],
         );
         frame(
@@ -17721,7 +17691,7 @@ mod tests {
             &mut rack,
             &patch,
             3.3,
-            vec![button(pos2(654.0, 344.0), false)]
+            vec![button(filter_input, false)]
         )
         .is_none());
         assert_eq!(serde_json::to_value(&patch).unwrap(), before);
@@ -17907,9 +17877,9 @@ mod tests {
             ..Patch::default()
         };
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-        let split_out16 = pos2(264.0, 373.0);
-        let a_signal = pos2(374.0, 344.0);
-        let b_signal = pos2(524.0, 344.0);
+        let split_out16 = fixture_jack(&rack, &patch, "split", "out16", false);
+        let a_signal = fixture_jack(&rack, &patch, "a", "signal", true);
+        let b_signal = fixture_jack(&rack, &patch, "b", "signal", true);
         let action = drag(&ctx, &mut rack, &patch, 1.0, split_out16, a_signal);
         assert!(
             matches!(action, Some(RackAction::Command("connect", args)) if args["from"] == "split" && args["output"] == "out16" && args["to"] == "a")
@@ -17941,7 +17911,8 @@ mod tests {
             None,
             &openpatch_core::catalog()
         ));
-        let action = drag(&ctx, &mut rack, &patch, 3.0, split_out16, pos2(84.0, 199.0));
+        let split_out1 = fixture_jack(&rack, &patch, "split", "out1", false);
+        let action = drag(&ctx, &mut rack, &patch, 3.0, split_out16, split_out1);
         let Some(RackAction::Command("apply_edits", args)) = action else {
             panic!("expected a named source replacement");
         };
@@ -18177,14 +18148,9 @@ mod tests {
                 ..Patch::default()
             };
             frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-            let action = drag(
-                &ctx,
-                &mut rack,
-                &patch,
-                1.0,
-                pos2(99.0, 386.0),
-                pos2(74.0, 344.0),
-            );
+            let output = fixture_jack(&rack, &patch, "loop", "out", false);
+            let input = fixture_jack(&rack, &patch, "loop", "signal", true);
+            let action = drag(&ctx, &mut rack, &patch, 1.0, output, input);
             if version == 1 {
                 assert!(action.is_none());
             } else {
@@ -18271,7 +18237,7 @@ mod tests {
         let mut patch = openpatch_core::demo_patch();
         patch.cables.clear();
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-        let output = pos2(129.0, 386.0);
+        let output = fixture_jack(&rack, &patch, "tone", "out", false);
         frame(
             &ctx,
             &mut rack,
@@ -18283,7 +18249,7 @@ mod tests {
         assert!(
             matches!(rack.pending.as_ref().map(|pending| &pending.origin), Some(CableEnd::Output { node, port }) if node == "tone" && port == "out")
         );
-        let input = pos2(464.0, 344.0);
+        let input = fixture_jack(&rack, &patch, "vca", "signal", true);
         frame(
             &ctx,
             &mut rack,
