@@ -102,6 +102,16 @@ The concrete [parameter authority decision](RACKMCP_PARAMETER_AUTHORITY.md) cove
 typed target handles, native scheduling, explicit assignment intent and coherent
 effective-value capture; it is the next implementation boundary.
 
+**Effective-value checkpoint:** generation-bound native parameter handles now
+write the real VCA/filter controls, with an explicit bounded inheritance API
+covering assignment/fresh-instance/rate rules. Desktop publication and project
+save share one coherent observation; saved copies retain the actual values and
+fresh reopen reproduces rendered gain. No automatic adoption or undo intent is
+enabled yet. Next carry explicit parameter assignment intent through shared
+transactions/history and prepared callback plans, then activate inheritance and
+the sequencer target writes. No new catalog kind, import mapping or installation
+is included in this checkpoint.
+
 Close one imported musical workflow using the actual RackMCP 2.0.0 sequencers
 and supported voice chain. The reference checkout is pinned at
 `285e84c5ff2d3ecef25890da07f578af6a0c5ca6`; its plugin source is clean.

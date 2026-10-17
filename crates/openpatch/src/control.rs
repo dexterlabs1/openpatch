@@ -155,6 +155,12 @@ impl MidiLearnReceipt {
 pub trait LiveModuleEvents: Send + Sync {
     fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String>;
     fn snapshot(&self) -> Value;
+    /// Effective native raw parameter values are present in the same fenced
+    /// module snapshot as persistent state. Older backends retain authored
+    /// parameter behavior and must not be described as live parameter sources.
+    fn supports_live_parameters(&self) -> bool {
+        false
+    }
     fn learn_midi(
         &self,
         kind: openpatch_core::MidiLearnKind,

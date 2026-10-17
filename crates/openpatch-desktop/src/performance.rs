@@ -6,7 +6,8 @@ use openpatch::control::LiveModuleEvents;
 use openpatch::project_document::ExecutionDisposition;
 use openpatch_core::{
     Cable, CableHandle, Engine, ModuleAction, ModuleControlState, ModuleHandle, ModuleLightState,
-    ModuleTelemetry, Patch, SavedModuleState, MAX_CABLES, MAX_MODULE_LIGHTS, MAX_NODES,
+    ModuleTelemetry, ParameterHandle, Patch, SavedModuleState, MAX_CABLES, MAX_MODULE_LIGHTS,
+    MAX_NODES,
 };
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde_json::{json, Value};
@@ -18,6 +19,9 @@ use std::sync::{
 
 pub(super) const EVENT_CAPACITY: usize = 512;
 const FUTURE_SECONDS: u64 = 2;
+// This transport bounds each module's published capability set. Compilation
+// rejects a larger set instead of silently omitting effective values.
+const MAX_PUBLISHED_PARAMETERS: usize = 8;
 pub(crate) fn rack_scope_kind(kind: &str) -> bool {
     matches!(kind, "scope" | "stock_scope")
 }
@@ -66,6 +70,7 @@ enum ModuleKind {
     StockOctave,
     StockVco,
     Rack264Vco,
+    Rack264Vcf,
     StockScope,
     WavetableVco,
     WavetableLfo,
@@ -105,6 +110,7 @@ impl ModuleKind {
             "stock_octave" => Some(Self::StockOctave),
             "stock_vco" => Some(Self::StockVco),
             "rack264_vco" => Some(Self::Rack264Vco),
+            "rack264_vcf" => Some(Self::Rack264Vcf),
             "stock_scope" => Some(Self::StockScope),
             "wavetable_vco" => Some(Self::WavetableVco),
             "wavetable_lfo" => Some(Self::WavetableLfo),
@@ -145,10 +151,14 @@ impl ModuleKind {
             Self::StockOctave => "stock_octave",
             Self::StockVco => "stock_vco",
             Self::Rack264Vco => "rack264_vco",
+            Self::Rack264Vcf => "rack264_vcf",
             Self::StockScope => "stock_scope",
             Self::WavetableVco => "wavetable_vco",
             Self::WavetableLfo => "wavetable_lfo",
         }
+    }
+    fn parameter_names(self) -> &'static [&'static str] {
+        openpatch_core::runtime_parameter_names(self.name())
     }
     fn learn_kind(self) -> Option<openpatch_core::MidiLearnKind> {
         openpatch_core::MidiLearnKind::from_module_kind(self.name())
@@ -311,6 +321,9 @@ struct ModuleSnapshot {
     controls: Option<ModuleControlState>,
     lights: Option<ModuleLightState>,
     midi_learning: Option<(u64, u8)>,
+    // Indices correspond to ModuleKind::parameter_names(). This is a copy of
+    // the actual model fields at the observation boundary, never an owner.
+    parameters: [Option<f32>; MAX_PUBLISHED_PARAMETERS],
 }
 struct Meter {
     serial: AtomicU64,
@@ -336,6 +349,8 @@ struct Meter {
     playing_notes: AtomicU32,
     octave_shift: AtomicU32,
     brightness: [AtomicU32; MAX_MODULE_LIGHTS * 2],
+    parameters: [AtomicU32; MAX_PUBLISHED_PARAMETERS],
+    parameter_presence: AtomicU32,
 }
 impl Meter {
     fn new() -> Self {
@@ -363,6 +378,8 @@ impl Meter {
             playing_notes: AtomicU32::new(u32::MAX),
             octave_shift: AtomicU32::new(0),
             brightness: std::array::from_fn(|_| AtomicU32::new(0)),
+            parameters: std::array::from_fn(|_| AtomicU32::new(0)),
+            parameter_presence: AtomicU32::new(0),
         }
     }
     fn write(&self, token: u64, snapshot: ModuleSnapshot) {
@@ -518,6 +535,15 @@ impl Meter {
                 self.brightness[index].store(value.to_bits(), Ordering::SeqCst);
             }
         }
+        let mut parameter_presence = 0;
+        for (index, value) in snapshot.parameters.iter().enumerate() {
+            if let Some(value) = value.filter(|value| value.is_finite()) {
+                self.parameters[index].store(value.to_bits(), Ordering::SeqCst);
+                parameter_presence |= 1 << index;
+            }
+        }
+        self.parameter_presence
+            .store(parameter_presence, Ordering::SeqCst);
         self.flags.store(flags, Ordering::SeqCst);
         self.serial.fetch_add(1, Ordering::SeqCst);
     }
@@ -570,6 +596,11 @@ impl Meter {
                     f32::from_bits(self.brightness[row * 2 + col].load(Ordering::SeqCst))
                 })
             });
+            let parameter_presence = self.parameter_presence.load(Ordering::SeqCst);
+            let parameters = std::array::from_fn(|index| {
+                (parameter_presence & (1 << index) != 0)
+                    .then(|| f32::from_bits(self.parameters[index].load(Ordering::SeqCst)))
+            });
             let after = self.serial.load(Ordering::SeqCst);
             if before != after {
                 continue;
@@ -578,6 +609,7 @@ impl Meter {
                 ModuleSnapshot {
                     revision: actual_revision,
                     frame,
+                    parameters,
                     state: (flags & 1 != 0).then_some(ModuleTelemetry {
                         step: value as u8,
                         length: (value >> 8) as u8,
@@ -859,6 +891,7 @@ pub(super) struct ModulePlan {
     scope_cursor: usize,
     scope_interval: u64,
     pub bindings: [Option<Binding>; MAX_NODES],
+    parameters: Box<[[Option<ParameterHandle>; MAX_PUBLISHED_PARAMETERS]; MAX_NODES]>,
     pub states: Box<[Option<StateBinding>; MAX_NODES]>,
     pub fresh_states: [Option<ModuleHandle>; MAX_NODES],
     // Compile/control owns these fixed-capacity allocations. Queued graph
@@ -875,6 +908,10 @@ impl Default for ModulePlan {
             scope_cursor: 0,
             scope_interval: 1,
             bindings: [None; MAX_NODES],
+            parameters: vec![[None; MAX_PUBLISHED_PARAMETERS]; MAX_NODES]
+                .into_boxed_slice()
+                .try_into()
+                .expect("fixed parameter binding capacity"),
             states: vec![None; MAX_NODES]
                 .into_boxed_slice()
                 .try_into()
@@ -1302,6 +1339,18 @@ impl Performance {
             {
                 continue;
             }
+            let names = entry.kind.parameter_names();
+            if names.len() > MAX_PUBLISHED_PARAMETERS {
+                return Err(format!(
+                    "Too many published parameters for {}",
+                    entry.kind.name()
+                ));
+            }
+            let mut parameters = [None; MAX_PUBLISHED_PARAMETERS];
+            for (slot, name) in parameters.iter_mut().zip(names) {
+                *slot = Some(engine.resolve_parameter(id, name)?);
+            }
+            plan.parameters[entry.slot] = parameters;
             plan.bindings[entry.slot] = Some(Binding {
                 token: entry.token,
                 handle: if entry.kind.sequential() {
@@ -1311,7 +1360,14 @@ impl Performance {
                 } else if entry.kind.manual() {
                     engine.resolve_module_control(id)?
                 } else {
-                    engine.resolve_module_lights(id)?
+                    engine.resolve_module_lights(id).or_else(|error| {
+                        parameters
+                            .iter()
+                            .flatten()
+                            .next()
+                            .map(|handle| handle.module())
+                            .ok_or(error)
+                    })?
                 },
                 kind: entry.kind,
                 release_epoch: 0,
@@ -1499,6 +1555,9 @@ impl Performance {
     }
 }
 impl LiveModuleEvents for Performance {
+    fn supports_live_parameters(&self) -> bool {
+        true
+    }
     fn supports_document_execution(&self) -> bool {
         true
     }
@@ -1966,7 +2025,11 @@ impl LiveModuleEvents for Performance {
         }
         let modules: serde_json::Map<String, Value> = control.entries.iter().zip(snapshots).map(|((id, entry), actual)| {
             (id.clone(), json!({"kind":entry.kind.name(),"bypassed":entry.bypassed,"available":actual.is_some(),
-                "revision":actual.map(|snapshot| snapshot.revision),"frame":actual.map(|snapshot|snapshot.frame),"state":actual.and_then(|snapshot| {
+                "instance":entry.token,"revision":actual.map(|snapshot| snapshot.revision),"frame":actual.map(|snapshot|snapshot.frame),
+                "parameters":entry.kind.parameter_names().iter().enumerate().filter_map(|(index, name)| {
+                    actual.and_then(|snapshot| snapshot.parameters[index])
+                        .map(|value| ((*name).to_owned(), json!(value)))
+                }).collect::<serde_json::Map<String, Value>>(),"state":actual.and_then(|snapshot| {
                     if let Some(SavedModuleState::StockQuantizerNotes(mask)) = snapshot.saved_state {
                         Some(json!({"scale_mask":mask,"enabled_notes":std::array::from_fn::<_,12,_>(|i|mask & (1<<i)!=0)}))
                     } else if let Some(SavedModuleState::StockSeq3 { running, gates, passthrough }) = snapshot.saved_state {
@@ -2201,11 +2264,21 @@ impl EventReader {
             );
             for (slot, binding) in plan.bindings.iter().enumerate() {
                 if let Some(binding) = binding {
+                    let parameters = plan.parameters[slot]
+                        .map(|handle| handle.and_then(|handle| engine.parameter_value(handle)));
+                    let valid =
+                        plan.parameters[slot]
+                            .iter()
+                            .zip(parameters)
+                            .all(|(handle, value)| {
+                                handle.is_none() || value.is_some_and(|value| value.is_finite())
+                            });
                     self.shared.meters[slot].write(
-                        binding.token,
+                        if valid { binding.token } else { 0 },
                         ModuleSnapshot {
                             revision,
                             frame,
+                            parameters,
                             state: if binding.kind.sequential() {
                                 engine.module_telemetry(binding.handle)
                             } else {
@@ -2264,6 +2337,151 @@ mod tests {
     include!("stock_quantizer_performance_tests.rs");
     include!("stock_octave_performance_tests.rs");
 
+    fn effective_parameter_patch() -> Patch {
+        serde_json::from_value(json!({
+            "version":2,"sample_rate":48000,
+            "nodes":[
+                {"id":"signal","kind":"poly_constant","params":{"v1":5}},
+                {"id":"vca1","kind":"stock_vca"},
+                {"id":"vca2","kind":"stock_vca"},
+                {"id":"vcf1","kind":"rack264_vcf"},
+                {"id":"vcf2","kind":"rack264_vcf"}
+            ],
+            "cables":[{"from":"signal","to":"vca1","input":"signal"}],
+            "output":"vca1","output_port":"out"
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn untargeted_effective_parameters_publish_actual_values_with_the_module_frame() {
+        let patch = effective_parameter_patch();
+        let mut engine = patch.compile().unwrap();
+        let (performance, reader, _) = Performance::new(48_000);
+        assert!(performance.supports_live_parameters());
+        performance.sync_patch(&patch, 1);
+        let plan = performance.plan(&patch, &engine, 1).unwrap();
+        for (id, key, value) in [
+            ("vca1", "level", 0.25),
+            ("vca2", "level", 0.75),
+            ("vcf1", "frequency", 0.2),
+            ("vcf2", "frequency", 0.7),
+        ] {
+            assert!(engine.set_parameter_value(engine.resolve_parameter(id, key).unwrap(), value));
+        }
+        let mut output = [openpatch_core::PortFrame::default(); 64];
+        engine.process_poly_block(&mut output);
+        assert_eq!(output[63].values[0], 1.25);
+        reader.publish(&engine, &plan, 1, 64);
+        let capture = performance.snapshot();
+        assert_eq!(capture["coherent"], true);
+        assert_eq!(capture["frame"], 64);
+        for (id, key) in [
+            ("vca1", "level"),
+            ("vca2", "level"),
+            ("vcf1", "frequency"),
+            ("vcf2", "frequency"),
+        ] {
+            let module = &capture["modules"][id];
+            assert_eq!(module["available"], true);
+            assert_eq!(module["frame"], 64);
+            assert_eq!(module["revision"], 1);
+            assert!(module["instance"].as_u64().unwrap() > 0);
+            let actual = engine
+                .parameter_value(engine.resolve_parameter(id, key).unwrap())
+                .unwrap();
+            assert_eq!(module["parameters"][key].as_f64(), Some(f64::from(actual)));
+        }
+        assert!(capture["modules"]["vcf1"]["lights"].is_null());
+        assert!(capture["modules"]["vcf1"]["state"].is_null());
+        assert!(capture["modules"]["vca1"]["lights"].is_object());
+        assert!(engine.set_parameter_value(engine.resolve_parameter("vca1", "level").unwrap(), 0.5));
+        // Readers see one completed observation, even when the actual engine
+        // has advanced. Parameter reads do not bypass the module publication.
+        assert_eq!(
+            performance.snapshot()["modules"]["vca1"]["parameters"]["level"],
+            0.25
+        );
+        reader.publish(&engine, &plan, 1, 128);
+        let next = performance.snapshot();
+        assert_eq!(next["modules"]["vca1"]["parameters"]["level"], 0.5);
+        assert_eq!(next["modules"]["vca1"]["frame"], 128);
+        assert_eq!(patch.nodes[1].params.get("level"), None);
+    }
+
+    #[test]
+    fn effective_parameter_publication_rejects_old_revisions_and_foreign_engine_handles() {
+        let patch = effective_parameter_patch();
+        let engine = patch.compile().unwrap();
+        let foreign = patch.compile().unwrap();
+        let (performance, reader, _) = Performance::new(48_000);
+        performance.sync_patch(&patch, 1);
+        let plan = performance.plan(&patch, &engine, 1).unwrap();
+        reader.publish(&engine, &plan, 1, 64);
+        assert_eq!(performance.snapshot()["modules"]["vca1"]["available"], true);
+        // Even reuse of the same frame must invalidate this packet: an engine
+        // cannot publish values using another engine's compiled handles.
+        reader.publish(&foreign, &plan, 1, 64);
+        let invalid = performance.snapshot();
+        for id in ["vca1", "vca2", "vcf1", "vcf2"] {
+            assert_eq!(invalid["modules"][id]["available"], false);
+            assert_eq!(invalid["modules"][id]["parameters"], json!({}));
+        }
+        performance.sync_patch(&patch, 2);
+        reader.publish(&engine, &plan, 1, 128);
+        assert_eq!(
+            performance.snapshot()["modules"]["vca1"]["available"],
+            false
+        );
+        let current = performance.plan(&patch, &engine, 2).unwrap();
+        reader.publish(&engine, &current, 2, 192);
+        let valid = performance.snapshot();
+        assert_eq!(valid["modules"]["vca1"]["available"], true);
+        assert_eq!(valid["modules"]["vca1"]["revision"], 2);
+        assert_eq!(valid["modules"]["vca1"]["frame"], 192);
+    }
+
+    #[test]
+    fn effective_parameter_publication_cannot_revive_retired_or_recreated_targets() {
+        let patch = effective_parameter_patch();
+        let engine = patch.compile().unwrap();
+        let (performance, reader, _) = Performance::new(48_000);
+        performance.sync_patch(&patch, 1);
+        let old = performance.plan(&patch, &engine, 1).unwrap();
+        reader.publish(&engine, &old, 1, 64);
+        let old_instance = performance.snapshot()["modules"]["vca1"]["instance"].clone();
+        performance.retire_modules(&["vca1".into(), "vcf1".into()]);
+        performance.sync_patch(&patch, 2);
+        reader.publish(&engine, &old, 2, 128);
+        let stale = performance.snapshot();
+        for id in ["vca1", "vcf1"] {
+            assert_eq!(stale["modules"][id]["available"], false);
+            assert_eq!(stale["modules"][id]["parameters"], json!({}));
+        }
+        assert_ne!(stale["modules"]["vca1"]["instance"], old_instance);
+        let stale_compilation = performance.plan(&patch, &engine, 1).unwrap();
+        reader.publish(&engine, &stale_compilation, 2, 128);
+        assert_eq!(
+            performance.snapshot()["modules"]["vca1"]["available"],
+            false
+        );
+        let replacement = patch.compile().unwrap();
+        let current = performance.plan(&patch, &replacement, 2).unwrap();
+        reader.publish(&replacement, &current, 2, 192);
+        assert_eq!(performance.snapshot()["modules"]["vcf1"]["available"], true);
+        let mut deleted = patch.clone();
+        deleted
+            .nodes
+            .retain(|node| node.id != "vca1" && node.id != "vcf1");
+        deleted.cables.clear();
+        deleted.output = Some("signal".into());
+        performance.sync_patch(&deleted, 3);
+        reader.publish(&engine, &old, 3, 256);
+        let after_delete = performance.snapshot();
+        assert!(after_delete["modules"].get("vca1").is_none());
+        assert!(after_delete["modules"].get("vcf1").is_none());
+    }
+
     #[test]
     fn merge_count_packets_clear_absent_invalid_and_foreign_fields_independently() {
         assert!(ModuleKind::from_name("poly_merge") == Some(ModuleKind::Merge));
@@ -2287,6 +2505,7 @@ mod tests {
                     meter.write(
                         entry.token,
                         ModuleSnapshot {
+                            parameters: [None; MAX_PUBLISHED_PARAMETERS],
                             revision: 7,
                             frame: 101,
                             state: None,
@@ -2376,6 +2595,7 @@ mod tests {
                 writer_meter.write(
                     11 + frame % 2,
                     ModuleSnapshot {
+                        parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: frame + 1,
                         frame,
                         state: None,
@@ -2449,6 +2669,7 @@ mod tests {
                         shared.meters[slot].write(
                             slot as u64 + 11,
                             ModuleSnapshot {
+                                parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 revision: frame + 1,
                                 frame,
                                 state: None,
@@ -2523,6 +2744,7 @@ mod tests {
                 writer_meter.write(
                     entry.token,
                     ModuleSnapshot {
+                        parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: 1,
                         frame,
                         state: None,
@@ -2588,6 +2810,7 @@ mod tests {
                 meter.write(
                     entry.token,
                     ModuleSnapshot {
+                        parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: 1,
                         frame: 2_001,
                         state: None,
@@ -2655,6 +2878,7 @@ mod tests {
                         shared.meters[slot].write(
                             slot as u64 + 11,
                             ModuleSnapshot {
+                                parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 midi_learning: None,
                                 revision: 1,
                                 frame,
@@ -2745,6 +2969,7 @@ mod tests {
                         shared.meters[slot].write(
                             slot as u64 + 11,
                             ModuleSnapshot {
+                                parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 midi_learning: None,
                                 revision: 1,
                                 frame,
@@ -2818,6 +3043,7 @@ mod tests {
                         shared.meters[slot].write(
                             slot as u64 + 11,
                             ModuleSnapshot {
+                                parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 midi_learning: None,
                                 revision: 1,
                                 frame,

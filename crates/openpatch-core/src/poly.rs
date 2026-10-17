@@ -1177,6 +1177,95 @@ pub(crate) struct PolyEngine {
     pub(crate) port_lights: crate::port_lights::Observer,
 }
 impl PolyEngine {
+    pub(crate) fn resolve_parameter(
+        &self,
+        id: &str,
+        name: &str,
+    ) -> Result<(usize, crate::live_parameters::ParameterId), String> {
+        use crate::live_parameters::ParameterId;
+        let node = *self
+            .node_lookup
+            .get(id)
+            .ok_or_else(|| format!("unknown module '{id}'"))?;
+        let parameter = match (self.nodes[node].kind.as_str(), name) {
+            ("stock_vca", "level") => ParameterId::StockVcaLevel,
+            ("rack264_vcf", "frequency") => ParameterId::Rack264VcfFrequency,
+            _ => {
+                return Err(format!(
+                    "module '{id}' has no live parameter capability for '{name}'"
+                ))
+            }
+        };
+        Ok((node, parameter))
+    }
+    pub(crate) fn parameter_value(
+        &self,
+        node: usize,
+        parameter: crate::live_parameters::ParameterId,
+    ) -> Option<f32> {
+        use crate::live_parameters::ParameterId;
+        match (&self.nodes.get(node)?.model, parameter) {
+            (Model::StockVca(model), ParameterId::StockVcaLevel) => Some(model.level()),
+            (Model::Rack264Vcf(model), ParameterId::Rack264VcfFrequency) => Some(model.frequency()),
+            _ => None,
+        }
+    }
+    pub(crate) fn set_parameter_value(
+        &mut self,
+        node: usize,
+        parameter: crate::live_parameters::ParameterId,
+        value: f32,
+    ) -> bool {
+        use crate::live_parameters::ParameterId;
+        match (self.nodes.get_mut(node).map(|n| &mut n.model), parameter) {
+            (Some(Model::StockVca(model)), ParameterId::StockVcaLevel) => model.set_level(value),
+            (Some(Model::Rack264Vcf(model)), ParameterId::Rack264VcfFrequency) => {
+                model.set_frequency(value)
+            }
+            _ => return false,
+        }
+        true
+    }
+    pub(crate) fn inherit_parameter_values(
+        &mut self,
+        old: &Self,
+        excluded: &[bool; MAX_NODES],
+        assigned: &[u8; MAX_NODES],
+    ) -> usize {
+        use crate::live_parameters::ParameterId;
+        let mut copied = 0;
+        // Node IDs/indices and bounded models were compiled off the callback.
+        // No temporary map/strings/refcounts are created by this walk.
+        for (id, &index) in &self.node_lookup {
+            if excluded[index] {
+                continue;
+            }
+            let Some(&old_index) = old.node_lookup.get(id) else {
+                continue;
+            };
+            if self.nodes[index].kind != old.nodes[old_index].kind {
+                continue;
+            }
+            for &parameter in ParameterId::for_kind(&self.nodes[index].kind) {
+                if assigned[index] & parameter.mask() != 0 {
+                    continue;
+                }
+                if let Some(value) = old.parameter_value(old_index, parameter) {
+                    match (&mut self.nodes[index].model, parameter) {
+                        (Model::StockVca(model), ParameterId::StockVcaLevel) => {
+                            model.set_level(value)
+                        }
+                        (Model::Rack264Vcf(model), ParameterId::Rack264VcfFrequency) => {
+                            model.set_frequency(value)
+                        }
+                        _ => continue,
+                    }
+                    copied += 1;
+                }
+            }
+        }
+        copied
+    }
     pub(crate) fn host_cable_registry(&self) -> Vec<HostCableSnapshot> {
         let mut names = vec![""; self.nodes.len()];
         for (name, &index) in &self.node_lookup {

@@ -55,6 +55,12 @@ pub(crate) struct StockVca {
     lights: ModuleLightState,
 }
 impl StockVca {
+    pub(crate) fn level(&self) -> f32 {
+        self.level
+    }
+    pub(crate) fn set_level(&mut self, level: f32) {
+        self.level = level;
+    }
     pub(crate) fn build(node: &Node, rate: u32) -> Result<Self, String> {
         for name in node.params.keys() {
             if name != "level" && name != "response" {

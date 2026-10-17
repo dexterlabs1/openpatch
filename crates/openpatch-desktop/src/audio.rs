@@ -6037,6 +6037,7 @@ mod tests {
     include!("midi_gate_host_tests.rs");
     include!("stock_vcf_audio_tests.rs");
     include!("stock_vca_audio_tests.rs");
+    include!("live_parameter_audio_tests.rs");
     include!("stock_delay_audio_tests.rs");
     include!("stock_lfo_audio_tests.rs");
     include!("stock_vco_audio_tests.rs");

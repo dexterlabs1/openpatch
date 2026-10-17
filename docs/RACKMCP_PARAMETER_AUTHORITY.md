@@ -1,8 +1,10 @@
 # RackMCP parameter automation: implementation decision
 
 Concrete follow-on to the [sequence contract](RACKMCP_SEQUENCE_CONTRACT.md).
-The source engine primitives are qualified; the host behavior below is **not yet
-implemented**. Preserve the [shared document authority](COMPATIBILITY_DECISION.md).
+The source engine primitives are qualified. Core target capabilities, coherent
+publication and project-save overlays are implemented; automatic assignment/
+adoption, history, ownership and sequencer scheduling below remain open. Preserve
+the [shared document authority](COMPATIBILITY_DECISION.md).
 
 The control document records authored intent. The active engine owns effective
 parameter values. Automation submits no patch, revision or undo entry. Graph
@@ -73,3 +75,27 @@ deletion/recreation. Observe actual rendered audio and effective readback,
 unchanged automation history and unresolved-target preservation. Check zero
 callback allocation/deallocation through processing, adoption and retirement
 saturation. Then integrate panels/import and live Listen, before milestone CI.
+
+## Implemented checkpoint
+
+Core resolves generation-bound handles and native raw descriptors for VCA level
+and the older VCF's frequency. Direct writes change actual DSP fields. Explicit
+effective-value inheritance supports receiving assignments, fresh exclusions and
+rate changes independently of DSP history; callers must still supply assignment
+intent. Existing general graph adoption retains its old behavior until the
+desktop intent path is integrated. The callback does not automatically call the
+new inheritance method yet.
+
+Desktop parameter values share the module meter's serial, incarnation, revision
+and callback frame. Capability bindings are prepared for untargeted modules too.
+The current publication transport supports eight values per model and refuses
+larger capability sets explicitly. No second mutable DSP value bank is created.
+
+Native project save uses one coherent backend observation for saved state and
+effective parameters, validates identity/revision/frame/raw bounds, and overlays
+only a cloned document. Legacy backends retain their explicit authored-value
+behavior. Lightweight dirty observation remains unchanged. A real headless
+callback→shared Session→file→fresh reopen test preserves the effective values and
+rendered gain without changing live revision/history. Callback publication and
+saturated graph retirement use no heap activity. This does not establish source
+target scheduling, edit/undo authority or a registered RackMCP workflow.

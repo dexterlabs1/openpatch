@@ -23,7 +23,7 @@ const NAMES: [&str; 6] = [
 const C4: f32 = 261.6256;
 const SEED: [u64; 2] = [0x123456789abcdef0, 0xfedcba9876543210];
 
-fn frequency_bounds() -> (f32, f32) {
+pub(crate) fn frequency_bounds() -> (f32, f32) {
     (
         ((C4 / 8000.0).log2() + 5.0) / 10.0,
         ((8000.0 / C4).log2() + 5.0) / 10.0,
@@ -176,6 +176,12 @@ pub(crate) struct Rack264Vcf {
 }
 
 impl Rack264Vcf {
+    pub(crate) fn frequency(&self) -> f32 {
+        self.parameters[0]
+    }
+    pub(crate) fn set_frequency(&mut self, frequency: f32) {
+        self.parameters[0] = frequency;
+    }
     pub(crate) fn build(node: &Node, rate: u32) -> Result<Self, String> {
         for name in node.params.keys() {
             if !NAMES.contains(&name.as_str()) {

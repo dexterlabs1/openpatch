@@ -24,6 +24,10 @@ use std::io::{self, BufWriter, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod live_parameters;
+pub use live_parameters::{
+    runtime_parameter_descriptor, runtime_parameter_names, ParameterDescriptor, ParameterHandle,
+};
 mod adsr_eg;
 mod analog;
 mod score;

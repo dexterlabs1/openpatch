@@ -44,6 +44,49 @@ unsafe impl GlobalAlloc for TrackingAllocator {
 static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 
 #[test]
+fn live_parameters_write_render_and_cross_rate_handoff_use_no_heap() {
+    let mut patch: openpatch_core::Patch = serde_json::from_value(serde_json::json!({
+        "version":2,"sample_rate":48000,
+        "nodes":[{"id":"source","kind":"poly_constant","params":{"v1":5}},
+                 {"id":"vca","kind":"stock_vca","params":{}},
+                 {"id":"filter","kind":"rack264_vcf","params":{}}],
+        "cables":[{"from":"source","to":"vca","input":"signal"},
+                  {"from":"vca","to":"filter","input":"signal"}],
+        "output":"filter","output_port":"lowpass"
+    }))
+    .unwrap();
+    let mut a = patch.compile().unwrap();
+    let gain = a.resolve_parameter("vca", "level").unwrap();
+    let cutoff = a.resolve_parameter("filter", "frequency").unwrap();
+    patch.sample_rate = 96000;
+    let mut b = patch.compile().unwrap();
+    let receiving_gain = b.resolve_parameter("vca", "level").unwrap();
+    let receiving_cutoff = b.resolve_parameter("filter", "frequency").unwrap();
+    let mut out = [openpatch_core::PortFrame::default(); 1];
+    ALLOCATIONS.with(|n| n.set(0));
+    DEALLOCATIONS.with(|n| n.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    for frame in 0..4096 {
+        if frame % 32 == 0 {
+            a.set_parameter_value(gain, (frame % 128) as f32 / 128.0);
+            a.set_parameter_value(cutoff, 0.1 + (frame % 127) as f32 / 200.0);
+        }
+        a.process_poly_block(&mut out);
+        b.adopt_state_from(&a);
+        b.inherit_parameter_values(&a, &[], &[]);
+        b.parameter_value(receiving_gain);
+        b.parameter_descriptor(receiving_cutoff);
+        b.process_poly_block(&mut out);
+    }
+    // Explicit assignment/fresh incarnation filtering is stack-only as well.
+    b.inherit_parameter_values(&a, &[receiving_gain.module()], &[receiving_cutoff]);
+    TRACKING.with(|enabled| enabled.set(false));
+    assert!(out[0].values.iter().all(|v| v.is_finite()));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+}
+
+#[test]
 fn rackmcp_sequence_transport_data_adoption_and_lanes_use_no_heap() {
     use openpatch_core::rackmcp_sequence::{Player, SequenceData};
     let first: SequenceData = serde_json::from_value(serde_json::json!({

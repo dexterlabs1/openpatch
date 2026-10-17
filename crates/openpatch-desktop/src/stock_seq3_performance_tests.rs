@@ -71,6 +71,7 @@ fn stock_seq3_meter_preserves_all_durable_bits_and_copublishes_controls_telemetr
                 meter.write(
                     entry.token,
                     ModuleSnapshot {
+                        parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: 7,
                         frame: u64::from(gates),
                         state: Some(state),
@@ -93,6 +94,7 @@ fn stock_seq3_meter_preserves_all_durable_bits_and_copublishes_controls_telemetr
     meter.write(
         entry.token,
         ModuleSnapshot {
+            parameters: [None; MAX_PUBLISHED_PARAMETERS],
             revision: 8,
             frame: 1000,
             state: None,
@@ -142,6 +144,7 @@ fn stock_seq3_snapshot_cannot_tear_full_flags_controls_or_nineteen_light_groups(
                 shared.meters[0].write(
                     53,
                     ModuleSnapshot {
+                        parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: frame + 1,
                         frame,
                         state: Some(ModuleTelemetry {
@@ -221,6 +224,7 @@ fn stock_seq3_selective_state_tag_eight_roundtrips_every_optional_flag_and_gate_
                 meter.write(
                     entry.token,
                     ModuleSnapshot {
+                        parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: 1,
                         frame: 1,
                         state: None,
@@ -246,6 +250,7 @@ fn stock_seq3_selective_state_tag_eight_roundtrips_every_optional_flag_and_gate_
         meter.write(
             entry.token,
             ModuleSnapshot {
+                parameters: [None; MAX_PUBLISHED_PARAMETERS],
                 revision: 1,
                 frame: 1,
                 state: None,
@@ -300,6 +305,7 @@ fn performance_wire_lights_publish_logical_groups_instead_of_callback_storage_ca
             performance.shared.meters[0].write(
                 47,
                 ModuleSnapshot {
+                    parameters: [None; MAX_PUBLISHED_PARAMETERS],
                     revision: 1,
                     frame,
                     state: None,

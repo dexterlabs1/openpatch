@@ -1,0 +1,56 @@
+{
+  "status": "effective parameter capability/publication/save checkpoint; automatic callback inheritance and history intent remain open",
+  "platform": "macOS ARM, headless; no native audio device/window qualification",
+  "capabilities": {
+    "stock_vca": [
+      "level"
+    ],
+    "rack264_vcf": [
+      "frequency"
+    ]
+  },
+  "validation": {
+    "core_render_handle_and_inheritance_tests": 6,
+    "core_zero_heap_test": 1,
+    "control_project_capture_tests": 9,
+    "desktop_performance_tests": 24,
+    "desktop_callback_save_and_retirement_tests": 2,
+    "core_cli_desktop_all_targets_clippy": "passed with warnings denied",
+    "formatting": "passed"
+  },
+  "observed_behavior": [
+    "Actual VCA output follows direct effective gain",
+    "Direct VCF control writes match parameter rebuild with preserved DSP history",
+    "Foreign handles and invalid raw values refused",
+    "Explicit receiving assignments/fresh exclusions and cross-rate inheritance in Core API",
+    "Untargeted parameters share module incarnation/revision/frame publication",
+    "Actual callback\u2192Session\u2192save file\u2192fresh load reproduces effective parameters and rendered gain without history mutation",
+    "Callback publication and saturated retirement do not allocate/deallocate"
+  ],
+  "limits": [
+    "Core inheritance API not yet invoked automatically by desktop adoption",
+    "No shared explicit parameter assignment/undo integration yet",
+    "Current publication transport supports eight values per model; larger sets fail explicitly",
+    "No sequencer registration, source mapping, target dispatch, Bridge or Listen capture yet",
+    "No installation or full milestone CI"
+  ],
+  "source_sha256": {
+    "crates/openpatch-core/src/live_parameters.rs": "223425b43517fcfe430b509bddfb329344d5c7696db7a11fb0f86ca296e5188b",
+    "crates/openpatch-core/src/poly.rs": "6de26fb5053ad28f7617b2116cd61a89464184c0409999ee2448b20b4f6e4020",
+    "crates/openpatch-desktop/src/performance.rs": "abcaf59316a0a4a7b41a6d936454e507c71942becf7a40e75403682aa09f05ce",
+    "crates/openpatch/src/control/project_capture.rs": "69270a348062358f702b729c05134255249a8bd175a677357cacac01a4d4b408"
+  },
+  "local_evidence": [
+    "native-test-output/rack-control-import/live-parameters-004.log",
+    "native-test-output/rack-control-import/parameter-heap-004.log",
+    "native-test-output/rack-control-import/parameter-capture-002.log",
+    "native-test-output/rack-control-import/parameter-performance-002.log",
+    "native-test-output/rack-control-import/parameter-audio-001.log",
+    "native-test-output/rack-control-import/parameter-audio-002.log",
+    "native-test-output/rack-control-import/parameter-clippy-002.log"
+  ],
+  "preserved_failure_notes": {
+    "parameter-audio-001.log": "Retirement test passed; save fixture used a disallowed .openpatch suffix. Correct .json fixture passes parameter-audio-002.log.",
+    "parameter-clippy-001.log": "Two style diagnostics corrected; final parameter-clippy-002.log passes."
+  }
+}

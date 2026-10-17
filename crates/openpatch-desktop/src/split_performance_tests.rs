@@ -1,5 +1,5 @@
 fn split_packet(revision: u64, frame: u64, channels: Option<u8>, present: bool) -> ModuleSnapshot {
-    ModuleSnapshot {
+    ModuleSnapshot { parameters: [None; MAX_PUBLISHED_PARAMETERS],
         revision, frame, state: None, saved_state: None, controls: None, midi_learning: None,
         lights: present.then_some(ModuleLightState { input_channels: channels, count: 0, ..Default::default() }),
     }
