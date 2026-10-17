@@ -2344,19 +2344,22 @@ mod tests {
         };
         render(); // egui measures a newly opened window before painting it.
         let output = render();
-        fn tempo_rect(shape: &egui::Shape) -> Option<Rect> {
+        fn tempo_rect(shape: &egui::Shape, expected: &str) -> Option<Rect> {
             match shape {
-                egui::Shape::Text(text) if text.galley.text().ends_with(" BPM") => {
+                egui::Shape::Text(text) if text.galley.text() == expected => {
                     Some(Rect::from_min_size(text.pos, text.galley.size()))
                 }
-                egui::Shape::Vec(children) => children.iter().find_map(tempo_rect),
+                egui::Shape::Vec(children) => children.iter().find_map(|s| tempo_rect(s, expected)),
                 _ => None,
             }
         }
+        let spec = &seq3["params"]["tempo"];
+        let expected =
+            crate::rack::parameter_value("tempo", spec["default"].as_f64().unwrap() as f32, spec);
         let tempo = output
             .shapes
             .iter()
-            .find_map(|shape| tempo_rect(&shape.shape))
+            .find_map(|shape| tempo_rect(&shape.shape, &expected))
             .expect("inspection paints the actual native tempo field");
         assert!(viewport.contains_rect(tempo));
         assert!(

@@ -872,8 +872,18 @@ fn accepted_stock_vco_construction_edits_anchor_all_six_controls_and_manual_togg
 
 #[test]
 fn accepted_stock_seq3_edits_anchor_every_scalar_and_durable_control_and_manual_press_takes_over() {
+    assert_seq3_construction_controls("stock_seq3");
+}
+#[test]
+fn accepted_legacy_seq3_edits_anchor_every_scalar_and_saved_control_and_manual_press_takes_over() {
+    assert_seq3_construction_controls("seq3");
+}
+fn assert_seq3_construction_controls(kind: &str) {
     let mut changes = vec![
-        ("tempo".to_owned(), 2.0),
+        (
+            "tempo".to_owned(),
+            if kind == "stock_seq3" { 2.0 } else { 240.0 },
+        ),
         ("steps".into(), 5.0),
         ("tempo_amount".into(), 0.5),
         ("steps_amount".into(), 0.5),
@@ -891,7 +901,11 @@ fn accepted_stock_seq3_edits_anchor_every_scalar_and_durable_control_and_manual_
     for batch in changes.chunks(8) {
         let workspace = tempfile::tempdir().unwrap();
         let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
-        let before = patch("stock_seq3", "tempo", 1.0);
+        let before = patch(
+            kind,
+            "tempo",
+            if kind == "stock_seq3" { 1.0 } else { 120.0 },
+        );
         session.replace_patch(before.clone(), None).unwrap();
         let previous = session.revision();
         let shared = session.into_shared();
@@ -960,7 +974,7 @@ fn accepted_stock_seq3_edits_anchor_every_scalar_and_durable_control_and_manual_
             .as_array()
             .unwrap()
             .iter()
-            .find(|m| m["kind"] == "stock_seq3")
+            .find(|m| m["kind"] == kind)
             .unwrap();
         let mut preview = ModulePreview::new(module);
         preview.patch = after.clone();
@@ -995,15 +1009,16 @@ fn accepted_stock_seq3_edits_anchor_every_scalar_and_durable_control_and_manual_
             },
         );
         assert!(preview.renderer.construction_anchors.is_empty());
-        assert!(!text(&out).iter().any(|t| t.contains(" → ")));
+        // Configured clock-path arrows are static notation, not edit cues.
+        for anchor in rack.construction_anchors.values() {
+            let cue = format!("{} → {}", anchor.old_text, anchor.new_text);
+            assert!(!text(&out).iter().any(|t| t == &cue));
+        }
         // A pointer press on the real control cancels the corresponding cue.
-        // Faders use their actual track center, not the union's lower readout.
+        // Rotaries use their actual center, not the union's lower readout.
         for (index, (name, mut at)) in targets.into_iter().enumerate() {
             if stock_seq3_scalar(&name) {
-                let local = sequence_cell(&name).map_or_else(
-                    || stock_seq3_parameter_position(&name),
-                    |(row, col)| pos2(238.0 + col as f32 * 67.0, 123.0 + row as f32 * 71.5),
-                );
+                let (local, _) = atlas_sequence_control(&name);
                 at = pos2(24.0, 12.0) + local.to_vec2();
             }
             let t = 0.3 + index as f64 * 0.3;
@@ -1019,7 +1034,7 @@ fn accepted_stock_seq3_edits_anchor_every_scalar_and_durable_control_and_manual_
             );
             assert!(
                 rack.construction_animation
-                    .parameter("target", "stock_seq3", &name)
+                    .parameter("target", kind, &name)
                     .is_none(),
                 "{name} manual takeover"
             );

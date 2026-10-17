@@ -116,7 +116,7 @@ fn darkroom_live_lamps_survive_while_inactive_and_missing_lamps_dim() {
         (
             "rescale",
             176.5,
-            294.0,
+            299.0,
             2.2,
             2,
             0,
@@ -380,11 +380,14 @@ fn darkroom_hovered_connected_jack_keeps_patching_guidance_visible() {
 fn darkroom_active_inline_editors_keep_text_background_caret_and_typed_actions() {
     for (kind, parameter, local, typed, expected) in [
         (
-            "seq3",
-            "tempo",
-            Rect::from_min_size(pos2(20.0, 99.0), vec2(175.0, 24.0)),
-            "144",
-            144.0,
+            "poly_constant",
+            "v1",
+            Rect::from_min_size(
+                pos2(40.0, 127.0),
+                vec2((panel_width("poly_constant") - 40.0) / 4.0 - 24.0, 24.0),
+            ),
+            "-4.25",
+            -4.25,
         ),
         ("scope", "time", scope_control_rect(2), "0.125", 0.125),
     ] {

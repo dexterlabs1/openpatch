@@ -21,6 +21,8 @@ include!("parameter_choice.rs");
 include!("stock_lfo_panel.rs");
 include!("stock_vco_panel.rs");
 include!("stock_seq3_panel.rs");
+include!("sequence_panel.rs");
+include!("atlas_sequence_panels.rs");
 include!("stock_quantizer_panel.rs");
 include!("quantizer_keyboard.rs");
 include!("stock_vca_mix_panel.rs");
@@ -83,6 +85,8 @@ fn port_material_scale(kind: &str) -> f32 {
         "sample_hold" | "mult" | "switch_1to4" | "switch_4to1" => REDESIGNED_PORT_SCALE,
         "random" => 1.07,
         "stock_process" => STOCK_PROCESS_PORT_SCALE,
+        "seq3" => 1.20,
+        "stock_seq3" => 1.07,
         "stock_delay" => 1.20, // y380 sockets must remain inside the 396-point panel.
         "modal_resonator" => REDESIGNED_PORT_SCALE,
         "crossfade" | "quantizer" | "stock_quantizer" | "poly_sum" | "mid_side"
@@ -127,6 +131,12 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
     use JackCaptionPlacement::*;
     match (kind, port, output) {
         ("stock_lfo" | "stock_vco" | "stock_noise" | "stock_process", _, _) => ExistingEnlarged,
+        (
+            "seq3",
+            "step1" | "step2" | "step3" | "step4" | "step5" | "step6" | "step7" | "step8",
+            true,
+        ) => Above(22.0),
+        ("seq3", _, _) => Above(23.0),
         ("mult", _, _) => Above(25.0),
         ("switch_1to4" | "switch_4to1", "clock" | "reset", false) => Above(25.0),
         ("switch_1to4" | "switch_4to1", _, false) => Left(34.0),
@@ -267,6 +277,7 @@ fn generic_parameter_hardware(
     } else if kind == "sample_hold"
         || atlas_stochastic_rotary(kind, parameter)
         || atlas_voltage_kind(kind)
+        || atlas_sequence_kind(kind)
         || atlas_oscillator(kind)
         || kind == "svf_filter"
         || atlas_voice(kind)
@@ -3317,7 +3328,9 @@ impl Rack {
                 }
             }
             if node.kind == "seq3" {
-                if let Some(edit) = self.sequence_panel(ui, node, module, rect) {
+                if let Some(edit) =
+                    self.sequence_panel(ui, node, module, rect, revision, mode.is_interactive())
+                {
                     action = Some(edit);
                 }
             }
@@ -3573,6 +3586,9 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if atlas_sequence_kind(&node.kind) {
+                paint_atlas_sequence_guide(&painter, rect, &node.kind, self.zoom);
+            }
             if matches!(node.kind.as_str(), "quantizer" | "stock_quantizer") {
                 let mask = if node.kind == "stock_quantizer" {
                     self.stock_quantizer_states
@@ -3806,7 +3822,7 @@ impl Rack {
                     || (node.kind == "rescale"
                         && matches!(*name, "multiplier" | "reflect_min" | "reflect_max"))
                     || is_sequential_switch(&node.kind)
-                    || (node.kind == "seq3" && sequence_cell(name).is_none())
+                    || (node.kind == "seq3" && !stock_seq3_scalar(name))
                     || (node.kind == "stock_seq3" && !stock_seq3_scalar(name))
                 {
                     continue;
@@ -4206,24 +4222,8 @@ impl Rack {
                     "macro_voice" => 8.0,
                     _ => 13.0,
                 };
-                let (knob_position, radius) = if let Some((row, column)) = sequence_cell(name)
-                    .filter(|_| matches!(node.kind.as_str(), "seq3" | "stock_seq3"))
-                {
-                    (
-                        pos2(
-                            238.0 + column as f32 * 67.0,
-                            123.0
-                                + row as f32
-                                    * if node.kind == "stock_seq3" {
-                                        71.5
-                                    } else {
-                                        73.0
-                                    },
-                        ),
-                        17.0,
-                    )
-                } else if node.kind == "stock_seq3" {
-                    (stock_seq3_parameter_position(name), 18.0)
+                let (knob_position, radius) = if atlas_sequence_kind(&node.kind) {
+                    atlas_sequence_control(name)
                 } else if node.kind == "audio_stereo" {
                     (pos2(width * 0.5, 130.0 + index as f32 * 120.0), 30.0)
                 } else if node.kind == "score_sequencer" {
@@ -4371,7 +4371,11 @@ impl Rack {
                 } else {
                     1.0
                 };
-                let display_value = if node.kind == "svf_filter" {
+                let display_value = if atlas_sequence_kind(&node.kind) && *name == "steps" {
+                    format!("{value:.0} steps")
+                } else if node.kind == "seq3" && name.ends_with("_amount") {
+                    format!("{value:.2}×")
+                } else if node.kind == "svf_filter" {
                     atlas_svf_value(name, value, spec)
                 } else if atlas_voice(&node.kind) {
                     atlas_voice_value(&node.kind, name, value, spec)
@@ -4507,7 +4511,10 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if atlas_voltage_kind(&node.kind) {
+                let value_center = if atlas_sequence_kind(&node.kind) {
+                    let local = atlas_sequence_value_center(name);
+                    point(local.x, local.y)
+                } else if atlas_voltage_kind(&node.kind) {
                     let local = match node.kind.as_str() {
                         "rescale" => atlas_rescale_value_center(name),
                         "quantizer" | "stock_quantizer" => atlas_quantizer_value_center(&node.kind),
@@ -4546,7 +4553,13 @@ impl Rack {
                 } else {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
-                let readout_width = if atlas_voltage_kind(&node.kind) {
+                let readout_width = if atlas_sequence_kind(&node.kind) {
+                    if sequence_cell(name).is_some() {
+                        54.0
+                    } else {
+                        78.0
+                    }
+                } else if atlas_voltage_kind(&node.kind) {
                     match node.kind.as_str() {
                         "attenuverter" => 78.0,
                         "crossfade" => 120.0,
@@ -4854,6 +4867,7 @@ impl Rack {
                     let paint_rotary = if node.kind == "sample_hold"
                         || atlas_stochastic_rotary(&node.kind, name)
                         || atlas_voltage_kind(&node.kind)
+                        || atlas_sequence_kind(&node.kind)
                         || atlas_oscillator(&node.kind)
                         || node.kind == "svf_filter"
                         || atlas_voice(&node.kind)
@@ -4885,7 +4899,9 @@ impl Rack {
                         self.zoom,
                     );
                 }
-                if node.kind == "rescale" {
+                if atlas_sequence_kind(&node.kind) {
+                    paint_atlas_sequence_print(&painter, rect, &node.kind, name, self.zoom);
+                } else if node.kind == "rescale" {
                     paint_atlas_rescale_print(&painter, rect, name, self.zoom);
                 } else if matches!(node.kind.as_str(), "quantizer" | "stock_quantizer") {
                     paint_atlas_quantizer_print(&painter, rect, &node.kind, self.zoom);
@@ -4977,9 +4993,12 @@ impl Rack {
                         &painter, center, &node.kind, name, radius, self.zoom,
                     );
                 }
-                let paint_readout = if node.kind == "sample_hold"
+                let paint_readout = if atlas_sequence_kind(&node.kind) {
+                    paint_atlas_sequence_readout
+                } else if node.kind == "sample_hold"
                     || atlas_stochastic_kind(&node.kind)
                     || atlas_voltage_kind(&node.kind)
+                    || atlas_sequence_kind(&node.kind)
                     || atlas_oscillator(&node.kind)
                     || node.kind == "svf_filter"
                     || atlas_voice(&node.kind)
@@ -4988,7 +5007,8 @@ impl Rack {
                     || matches!(
                         node.kind.as_str(),
                         "stock_vco" | "stock_lfo" | "mix6" | "stock_mix"
-                    ) {
+                    )
+                {
                     paint_atlas_voice_readout
                 } else {
                     crate::panel_skin::readout
@@ -5018,7 +5038,11 @@ impl Rack {
                         .parameter(&node.id, &node.kind, name)
                     {
                         let old = cue.old;
-                        let old_text = if node.kind == "svf_filter" {
+                        let old_text = if atlas_sequence_kind(&node.kind) && *name == "steps" {
+                            format!("{old:.0} steps")
+                        } else if node.kind == "seq3" && name.ends_with("_amount") {
+                            format!("{old:.2}×")
+                        } else if node.kind == "svf_filter" {
                             atlas_svf_value(name, old, spec)
                         } else if atlas_voice(&node.kind) {
                             atlas_voice_value(&node.kind, name, old, spec)
@@ -6928,176 +6952,6 @@ impl Rack {
                 crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
                 INK,
             );
-        }
-        action
-    }
-
-    fn sequence_panel(
-        &mut self,
-        ui: &mut egui::Ui,
-        node: &Node,
-        module: Option<&Value>,
-        rect: Rect,
-    ) -> Option<RackAction> {
-        let painter = ui.painter().clone();
-        let zoom = self.zoom;
-        let point = |x, y| rect.min + vec2(x, y) * zoom;
-        let specs = module.and_then(|m| m["params"].as_object());
-        let value = |name: &str, fallback: f32| {
-            node.params
-                .get(name)
-                .copied()
-                .or_else(|| specs?.get(name)?["default"].as_f64().map(|v| v as f32))
-                .unwrap_or(fallback)
-        };
-        let state = self.sequence_states.get(&node.id).copied();
-        let length = state.map_or(value("steps", 8.0) as usize, |s| s.length as usize);
-        let mut action = None;
-        painter.line_segment(
-            [point(207.0, 72.0), point(207.0, 385.0)],
-            Stroke::new(zoom, Color32::from_gray(174)),
-        );
-        for (name, label, x, y, w, suffix) in [
-            ("tempo", "TEMPO", 20.0, 99.0, 175.0, " BPM"),
-            ("steps", "LENGTH", 20.0, 152.0, 175.0, " steps"),
-            ("tempo_amount", "TEMPO CV", 20.0, 206.0, 80.0, "×"),
-            ("steps_amount", "LENGTH CV", 114.0, 206.0, 80.0, "×"),
-        ] {
-            painter.text(
-                point(x, y - 12.0),
-                Align2::LEFT_CENTER,
-                label,
-                crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
-                INK,
-            );
-            if let Some(spec) = specs.and_then(|p| p.get(name)) {
-                if let Some(edit) = self.compact_parameter(
-                    ui,
-                    node,
-                    name,
-                    spec,
-                    Rect::from_min_size(point(x, y), vec2(w, 24.0) * zoom),
-                    suffix,
-                ) {
-                    action = Some(edit);
-                }
-            }
-        }
-        for (name, label, y) in [
-            ("passthrough", "Pass clock gate", 245.0),
-            ("running", "Start running on load", 275.0),
-        ] {
-            let enabled = value(name, if name == "running" { 1.0 } else { 0.0 }) != 0.0;
-            if panel_button(
-                ui,
-                &painter,
-                Rect::from_min_size(point(20.0, y), vec2(175.0, 23.0) * zoom),
-                ui.id().with((&node.id, name)),
-                label,
-                enabled,
-                true,
-                zoom,
-            ) {
-                action = Some(RackAction::Command(
-                    "set_parameter",
-                    json!({"id":node.id,"parameter":name,"value":if enabled{0.0}else{1.0}}),
-                ));
-            }
-        }
-        for (index, (event, label)) in [("clock", "Clock"), ("run", "Run"), ("reset", "Reset")]
-            .iter()
-            .enumerate()
-        {
-            if panel_button(
-                ui,
-                &painter,
-                Rect::from_min_size(
-                    point(20.0 + index as f32 * 60.0, 309.0),
-                    vec2(55.0, 25.0) * zoom,
-                ),
-                ui.id().with((&node.id, "perform", event)),
-                label,
-                *event == "run" && state.is_some_and(|s| s.running),
-                self.performance_available && !node.bypassed,
-                zoom,
-            ) {
-                action = Some(RackAction::Command(
-                    "trigger_module",
-                    json!({"id":node.id,"action":event}),
-                ));
-            }
-        }
-        let text = if node.bypassed {
-            state.map_or("Bypassed · frozen".into(), |s| {
-                format!("Bypassed · frozen at {} / {}", s.step, s.length)
-            })
-        } else {
-            state.map_or("Waiting for live engine".into(), |s| {
-                format!(
-                    "{} · step {} / {}",
-                    if s.running { "Running" } else { "Stopped" },
-                    s.step,
-                    s.length
-                )
-            })
-        };
-        painter.text(
-            point(107.0, 345.0),
-            Align2::CENTER_CENTER,
-            text,
-            crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
-            MUTED,
-        );
-        for row in 0..3 {
-            painter.text(
-                point(203.0, 123.0 + row as f32 * 73.0),
-                Align2::RIGHT_CENTER,
-                format!("{}", row + 1),
-                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
-                MUTED,
-            );
-        }
-        for column in 0..8 {
-            let x = 238.0 + column as f32 * 67.0;
-            let current = state.is_some_and(|s| s.step as usize == column + 1);
-            if column >= length || current {
-                painter.rect_filled(
-                    Rect::from_min_max(point(x - 29.0, 72.0), point(x + 29.0, 303.0)),
-                    3.0,
-                    if current {
-                        Color32::from_rgb(177, 202, 182)
-                    } else {
-                        Color32::from_rgb(194, 196, 191)
-                    },
-                );
-            }
-            let gate = format!("gate{}", column + 1);
-            let enabled = value(&gate, 1.0) != 0.0;
-            if panel_button(
-                ui,
-                &painter,
-                Rect::from_center_size(point(x, 85.0), vec2(31.0, 22.0) * zoom),
-                ui.id().with((&node.id, "gate", column)),
-                &format!("{}", column + 1),
-                enabled,
-                true,
-                zoom,
-            ) {
-                action = Some(RackAction::Command(
-                    "set_parameter",
-                    json!({"id":node.id,"parameter":gate,"value":if enabled{0.0}else{1.0}}),
-                ));
-            }
-            if current {
-                self.lighting.circle(
-                    &painter,
-                    point(x + 23.0, 85.0),
-                    3.0 * zoom,
-                    Color32::from_rgb(51, 137, 80),
-                    1.0,
-                    0.0,
-                );
-            }
         }
         action
     }
@@ -11287,6 +11141,7 @@ fn paint_panel(
         || atlas_stochastic_kind(&node.kind)
         || atlas_capture_routing_kind(&node.kind)
         || atlas_voltage_kind(&node.kind)
+        || atlas_sequence_kind(&node.kind)
         || matches!(
             node.kind.as_str(),
             "stock_vco"
@@ -11376,6 +11231,7 @@ fn paint_panel(
         || atlas_stochastic_kind(&node.kind)
         || atlas_capture_routing_kind(&node.kind)
         || atlas_voltage_kind(&node.kind)
+        || atlas_sequence_kind(&node.kind)
         || matches!(
             node.kind.as_str(),
             "stock_vco"
@@ -11661,6 +11517,7 @@ fn paint_jack(
     if atlas_stochastic_kind(kind)
         || atlas_capture_routing_kind(kind)
         || atlas_voltage_kind(kind)
+        || atlas_sequence_kind(kind)
         || matches!(
             kind,
             "stock_vco"
@@ -16176,7 +16033,7 @@ mod tests {
         rack.set_sequence_states(BTreeMap::new(), true);
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
         for (index, x) in [47.5, 107.5, 167.5].into_iter().enumerate() {
-            let target = pos2(24.0 + x, 333.5);
+            let target = pos2(24.0 + x, 323.5);
             frame(
                 &ctx,
                 &mut rack,
@@ -16193,7 +16050,7 @@ mod tests {
             )
             .is_none());
         }
-        let target = pos2(100.0, 298.5);
+        let target = pos2(178.0, 289.0);
         frame(
             &ctx,
             &mut rack,
@@ -16274,7 +16131,7 @@ mod tests {
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
         let origin = pos2(24.0, 12.0);
         // Last cell is independently editable without hitting a neighbouring value.
-        let cell = origin + vec2(707.0, 269.0);
+        let cell = origin + vec2(707.0, 256.0);
         frame(
             &ctx,
             &mut rack,
@@ -16299,7 +16156,7 @@ mod tests {
             1.2,
             vec![button(cell - vec2(0.0, 12.0), false)],
         );
-        let gate = origin + vec2(707.0, 85.0);
+        let gate = origin + vec2(707.0, 73.0);
         frame(
             &ctx,
             &mut rack,
@@ -16311,7 +16168,7 @@ mod tests {
         assert!(
             matches!(action,Some(RackAction::Command("set_parameter",ref args))if args["parameter"]=="gate8"&&args["value"]==0.0)
         );
-        let clock = origin + vec2(47.0, 320.0);
+        let clock = origin + vec2(47.0, 311.0);
         for (time, available) in [(3.0, false), (4.0, true)] {
             rack.set_sequence_states(
                 BTreeMap::from([(
@@ -19495,6 +19352,9 @@ mod tests {
         include!("large_socket_ui_tests.rs");
     }
 
+    mod atlas_sequence_ui_tests {
+        include!("atlas_sequence_ui_tests.rs");
+    }
     mod quantizer_atlas_ui_tests {
         include!("quantizer_atlas_ui_tests.rs");
     }

@@ -324,6 +324,16 @@ fn paint_atlas_voice_readout(
     width: f32,
     zoom: f32,
 ) {
+    paint_atlas_voice_readout_size(painter, center, text, width, zoom, 9.0);
+}
+fn paint_atlas_voice_readout_size(
+    painter: &egui::Painter,
+    center: Pos2,
+    text: &str,
+    width: f32,
+    zoom: f32,
+    font_size: f32,
+) {
     let rect = Rect::from_center_size(center, vec2(width, 14.0 * zoom));
     painter.rect_filled(rect, 1.7 * zoom, Color32::from_rgb(222, 212, 184));
     painter.rect_stroke(
@@ -332,7 +342,7 @@ fn paint_atlas_voice_readout(
         Stroke::new(0.5 * zoom, Color32::from_rgb(177, 168, 140)),
         egui::StrokeKind::Inside,
     );
-    let mut font = crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom);
+    let mut font = crate::panel_skin::print_font(painter.ctx(), font_size * zoom);
     let measured = painter.layout_no_wrap(text.into(), font.clone(), INK);
     font.size *= ((width - 3.0 * zoom) / measured.size().x.max(1.0)).min(1.0);
     painter.text(center, Align2::CENTER_CENTER, text, font, INK);
