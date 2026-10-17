@@ -1,12 +1,15 @@
 //! Control-thread telemetry registry and bounded sequencer performance events. The only
 //! producer is behind a control-only mutex; the audio consumer never locks.
 use super::audio_diagnostics::{Diagnostics, Recorder};
+use crate::listen_capture::{self, CaptureProducer, CaptureService, StartRequest, Target};
 use crate::scope_transport::{self, ScopeFrame, ScopeProducer, ScopeReader};
 use openpatch::control::LiveModuleEvents;
 use openpatch::project_document::ExecutionDisposition;
 use openpatch_core::{
-    Cable, CableHandle, Engine, ModuleAction, ModuleControlState, ModuleHandle, ModuleLightState,
-    ModuleTelemetry, Patch, SavedModuleState, MAX_CABLES, MAX_MODULE_LIGHTS, MAX_NODES,
+    Cable, CableHandle, Engine, FixedPatternName, ListenSink, ListenStatus, ModuleAction,
+    ModuleControlState, ModuleHandle, ModuleLightState, ModuleTelemetry, ParameterHandle, Patch,
+    RackMcpSequenceStatus, RackMcpTransport, SavedModuleState, MAX_CABLES, MAX_MODULE_LIGHTS,
+    MAX_NODES,
 };
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde_json::{json, Value};
@@ -18,6 +21,9 @@ use std::sync::{
 
 pub(super) const EVENT_CAPACITY: usize = 512;
 const FUTURE_SECONDS: u64 = 2;
+// This transport bounds each module's published capability set. Compilation
+// rejects a larger set instead of silently omitting effective values.
+const MAX_PUBLISHED_PARAMETERS: usize = 8;
 pub(crate) fn rack_scope_kind(kind: &str) -> bool {
     matches!(kind, "scope" | "stock_scope")
 }
@@ -27,13 +33,52 @@ struct Event {
     token: u64,
     action_epoch: u64,
     cancel_through_serial: u64,
-    action: ModuleAction,
+    action: PerformanceAction,
     sequence: u64,
     revision: u64,
     deadline: u64,
 }
+type ScopeCaptureBuffers<'a> = (
+    &'a [Option<openpatch_core::ResolvedTap>; 2],
+    &'a mut [[openpatch_core::TapSample; 2]],
+);
+#[derive(Clone, Copy)]
+enum PerformanceAction {
+    Module(ModuleAction),
+    RackMcp {
+        requests: [Option<RackMcpTransport>; 2],
+        content_fingerprint: [u8; 32],
+    },
+}
+impl PerformanceAction {
+    fn is_release(self) -> bool {
+        matches!(self, Self::Module(action) if is_release(action))
+    }
+    fn apply(self, engine: &mut Engine, handle: ModuleHandle) -> bool {
+        match self {
+            Self::Module(action) => engine.handle_module_event(handle, action),
+            Self::RackMcp {
+                requests,
+                content_fingerprint,
+            } => {
+                if engine.rackmcp_sequence_content_fingerprint(handle) != Some(content_fingerprint)
+                {
+                    return false;
+                }
+                for request in requests.into_iter().flatten() {
+                    if !engine.rackmcp_sequence_transport(handle, request) {
+                        return false;
+                    }
+                }
+                true
+            }
+        }
+    }
+}
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ModuleKind {
+    RackMcpSequencer,
+    RackMcpListen,
     Sequence,
     StockSeq3,
     StockQuantizer,
@@ -66,6 +111,7 @@ enum ModuleKind {
     StockOctave,
     StockVco,
     Rack264Vco,
+    Rack264Vcf,
     StockScope,
     WavetableVco,
     WavetableLfo,
@@ -73,6 +119,8 @@ enum ModuleKind {
 impl ModuleKind {
     fn from_name(name: &str) -> Option<Self> {
         match name {
+            "rackmcp_sequencer" => Some(Self::RackMcpSequencer),
+            "rackmcp_listen" => Some(Self::RackMcpListen),
             "seq3" => Some(Self::Sequence),
             "stock_seq3" => Some(Self::StockSeq3),
             "stock_quantizer" => Some(Self::StockQuantizer),
@@ -105,6 +153,7 @@ impl ModuleKind {
             "stock_octave" => Some(Self::StockOctave),
             "stock_vco" => Some(Self::StockVco),
             "rack264_vco" => Some(Self::Rack264Vco),
+            "rack264_vcf" => Some(Self::Rack264Vcf),
             "stock_scope" => Some(Self::StockScope),
             "wavetable_vco" => Some(Self::WavetableVco),
             "wavetable_lfo" => Some(Self::WavetableLfo),
@@ -113,6 +162,8 @@ impl ModuleKind {
     }
     fn name(self) -> &'static str {
         match self {
+            Self::RackMcpSequencer => "rackmcp_sequencer",
+            Self::RackMcpListen => "rackmcp_listen",
             Self::Sequence => "seq3",
             Self::StockSeq3 => "stock_seq3",
             Self::StockQuantizer => "stock_quantizer",
@@ -145,10 +196,14 @@ impl ModuleKind {
             Self::StockOctave => "stock_octave",
             Self::StockVco => "stock_vco",
             Self::Rack264Vco => "rack264_vco",
+            Self::Rack264Vcf => "rack264_vcf",
             Self::StockScope => "stock_scope",
             Self::WavetableVco => "wavetable_vco",
             Self::WavetableLfo => "wavetable_lfo",
         }
+    }
+    fn parameter_names(self) -> &'static [&'static str] {
+        openpatch_core::runtime_parameter_names(self.name())
     }
     fn learn_kind(self) -> Option<openpatch_core::MidiLearnKind> {
         openpatch_core::MidiLearnKind::from_module_kind(self.name())
@@ -250,6 +305,13 @@ struct Entry {
     kind: ModuleKind,
     bypassed: bool,
     action_epoch: u64,
+    parameter_epochs: [u64; MAX_PUBLISHED_PARAMETERS],
+}
+/// Ordered document events remain comparable across skipped graph revisions.
+#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+struct SequenceLoadEpoch {
+    revision: u64,
+    order: usize,
 }
 struct StateEntry {
     slot: usize,
@@ -262,6 +324,7 @@ struct StateEntry {
     saved_revision: u64,
     desired_state: Option<SavedModuleState>,
     stock_field_generations: [u64; 10],
+    sequence_load_epoch: SequenceLoadEpoch,
 }
 type RouteSignature = (String, String, String, String, String, String);
 fn route_signature(patch: &Patch, cable: &Cable) -> RouteSignature {
@@ -301,16 +364,22 @@ struct Control {
     next_learn_serial: u64,
     stock_click_releases: BTreeMap<String, StockClickRelease>,
     execution: ExecutionRequest,
+    rackmcp_metadata: BTreeMap<String, ([u8; 32], Vec<String>)>,
 }
 #[derive(Clone, Copy)]
 struct ModuleSnapshot {
     revision: u64,
     frame: u64,
     state: Option<ModuleTelemetry>,
+    rackmcp_sequence: Option<(RackMcpSequenceStatus, [u8; 32])>,
+    listen: Option<ListenStatus>,
     saved_state: Option<SavedModuleState>,
     controls: Option<ModuleControlState>,
     lights: Option<ModuleLightState>,
     midi_learning: Option<(u64, u8)>,
+    // Indices correspond to ModuleKind::parameter_names(). This is a copy of
+    // the actual model fields at the observation boundary, never an owner.
+    parameters: [Option<f32>; MAX_PUBLISHED_PARAMETERS],
 }
 struct Meter {
     serial: AtomicU64,
@@ -320,6 +389,12 @@ struct Meter {
     value: AtomicU32,
     flags: AtomicU32,
     saved_state: AtomicU32,
+    pattern_name: [AtomicU32; 8],
+    listen_frames: AtomicU64,
+    listen_dropped: AtomicU32,
+    listen_flags: AtomicU32,
+    rackmcp_status: [AtomicU64; 12],
+    rackmcp_fingerprint: [AtomicU64; 4],
     random_values: [[AtomicU32; 16]; 7],
     random_rng: AtomicU32,
     shift_values: [AtomicU32; 8],
@@ -336,6 +411,8 @@ struct Meter {
     playing_notes: AtomicU32,
     octave_shift: AtomicU32,
     brightness: [AtomicU32; MAX_MODULE_LIGHTS * 2],
+    parameters: [AtomicU32; MAX_PUBLISHED_PARAMETERS],
+    parameter_presence: AtomicU32,
 }
 impl Meter {
     fn new() -> Self {
@@ -347,6 +424,12 @@ impl Meter {
             value: AtomicU32::new(0),
             flags: AtomicU32::new(0),
             saved_state: AtomicU32::new(0),
+            pattern_name: std::array::from_fn(|_| AtomicU32::new(0)),
+            listen_frames: AtomicU64::new(0),
+            listen_dropped: AtomicU32::new(0),
+            listen_flags: AtomicU32::new(0),
+            rackmcp_status: std::array::from_fn(|_| AtomicU64::new(0)),
+            rackmcp_fingerprint: std::array::from_fn(|_| AtomicU64::new(0)),
             random_values: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU32::new(0))),
             random_rng: AtomicU32::new(0),
             shift_values: std::array::from_fn(|_| AtomicU32::new(0)),
@@ -363,6 +446,8 @@ impl Meter {
             playing_notes: AtomicU32::new(u32::MAX),
             octave_shift: AtomicU32::new(0),
             brightness: std::array::from_fn(|_| AtomicU32::new(0)),
+            parameters: std::array::from_fn(|_| AtomicU32::new(0)),
+            parameter_presence: AtomicU32::new(0),
         }
     }
     fn write(&self, token: u64, snapshot: ModuleSnapshot) {
@@ -380,8 +465,59 @@ impl Meter {
                 Ordering::SeqCst,
             );
         }
+        if let Some(status) = snapshot.listen {
+            flags |= 1 << 7;
+            self.listen_frames
+                .store(status.frames_seen, Ordering::SeqCst);
+            self.listen_dropped.store(status.dropped, Ordering::SeqCst);
+            self.listen_flags.store(
+                u32::from(status.left_connected)
+                    | (u32::from(status.right_connected) << 1)
+                    | (u32::from(status.capturing) << 2),
+                Ordering::SeqCst,
+            );
+        }
+        if let Some((status, fingerprint)) = snapshot.rackmcp_sequence {
+            flags |= 1 << 6;
+            let words = [
+                u64::from(status.running),
+                u64::from(status.bpm.to_bits()),
+                u64::from(status.swing.to_bits()),
+                u64::from(status.selected_pattern),
+                status.active_pattern as u64,
+                status.pending_pattern.map_or(256, u64::from),
+                status.step as u64,
+                status.loop_count as u64,
+                u64::from(status.beat.to_bits()),
+                u64::from(status.external_clock),
+                u64::from(status.pattern_count),
+                u64::from(status.lane_count),
+            ];
+            for (slot, word) in self.rackmcp_status.iter().zip(words) {
+                slot.store(word, Ordering::SeqCst);
+            }
+            for (slot, bytes) in self
+                .rackmcp_fingerprint
+                .iter()
+                .zip(fingerprint.as_chunks::<8>().0.iter())
+            {
+                slot.store(u64::from_le_bytes(*bytes), Ordering::SeqCst);
+            }
+        }
         self.saved_state.store(
             match snapshot.saved_state {
+                Some(SavedModuleState::RackMcpSelection(name)) => {
+                    let mut bytes = [0_u8; 32];
+                    bytes[..name.as_str().len()].copy_from_slice(name.as_str().as_bytes());
+                    for (slot, word) in self
+                        .pattern_name
+                        .iter()
+                        .zip(bytes.as_chunks::<4>().0.iter())
+                    {
+                        slot.store(u32::from_le_bytes(*word), Ordering::SeqCst);
+                    }
+                    10 | ((name.as_str().len() as u32) << 4)
+                }
                 Some(SavedModuleState::StockSeq3 {
                     running,
                     gates,
@@ -518,6 +654,15 @@ impl Meter {
                 self.brightness[index].store(value.to_bits(), Ordering::SeqCst);
             }
         }
+        let mut parameter_presence = 0;
+        for (index, value) in snapshot.parameters.iter().enumerate() {
+            if let Some(value) = value.filter(|value| value.is_finite()) {
+                self.parameters[index].store(value.to_bits(), Ordering::SeqCst);
+                parameter_presence |= 1 << index;
+            }
+        }
+        self.parameter_presence
+            .store(parameter_presence, Ordering::SeqCst);
         self.flags.store(flags, Ordering::SeqCst);
         self.serial.fetch_add(1, Ordering::SeqCst);
     }
@@ -570,6 +715,66 @@ impl Meter {
                     f32::from_bits(self.brightness[row * 2 + col].load(Ordering::SeqCst))
                 })
             });
+            let parameter_presence = self.parameter_presence.load(Ordering::SeqCst);
+            let parameters = std::array::from_fn(|index| {
+                (parameter_presence & (1 << index) != 0)
+                    .then(|| f32::from_bits(self.parameters[index].load(Ordering::SeqCst)))
+            });
+            let mut name_bytes = [0_u8; 32];
+            for (bytes, word) in name_bytes
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .zip(&self.pattern_name)
+            {
+                bytes.copy_from_slice(&word.load(Ordering::SeqCst).to_le_bytes());
+            }
+            let name_len = (saved_state >> 4) as usize;
+            let selection = (saved_state & 15 == 10 && name_len <= 32)
+                .then(|| {
+                    std::str::from_utf8(&name_bytes[..name_len])
+                        .ok()
+                        .and_then(FixedPatternName::new)
+                })
+                .flatten();
+            let words = self
+                .rackmcp_status
+                .each_ref()
+                .map(|word| word.load(Ordering::SeqCst));
+            let mut fingerprint = [0_u8; 32];
+            for (bytes, word) in fingerprint
+                .as_chunks_mut::<8>()
+                .0
+                .iter_mut()
+                .zip(&self.rackmcp_fingerprint)
+            {
+                bytes.copy_from_slice(&word.load(Ordering::SeqCst).to_le_bytes());
+            }
+            let rackmcp_sequence = (flags & (1 << 6) != 0).then_some((
+                RackMcpSequenceStatus {
+                    running: words[0] != 0,
+                    bpm: f32::from_bits(words[1] as u32),
+                    swing: f32::from_bits(words[2] as u32),
+                    selected_pattern: words[3] as u8,
+                    active_pattern: words[4] as i32,
+                    pending_pattern: (words[5] < 256).then_some(words[5] as u8),
+                    step: words[6] as i32,
+                    loop_count: words[7] as i64,
+                    beat: f32::from_bits(words[8] as u32),
+                    external_clock: words[9] != 0,
+                    pattern_count: words[10] as u8,
+                    lane_count: words[11] as u8,
+                },
+                fingerprint,
+            ));
+            let listen_flags = self.listen_flags.load(Ordering::SeqCst);
+            let listen = (flags & (1 << 7) != 0).then_some(ListenStatus {
+                frames_seen: self.listen_frames.load(Ordering::SeqCst),
+                dropped: self.listen_dropped.load(Ordering::SeqCst),
+                left_connected: listen_flags & 1 != 0,
+                right_connected: listen_flags & 2 != 0,
+                capturing: listen_flags & 4 != 0,
+            });
             let after = self.serial.load(Ordering::SeqCst);
             if before != after {
                 continue;
@@ -578,6 +783,9 @@ impl Meter {
                 ModuleSnapshot {
                     revision: actual_revision,
                     frame,
+                    parameters,
+                    rackmcp_sequence,
+                    listen,
                     state: (flags & 1 != 0).then_some(ModuleTelemetry {
                         step: value as u8,
                         length: (value >> 8) as u8,
@@ -601,6 +809,7 @@ impl Meter {
                             gate_mask: (saved_state >> 8) as u8,
                             passthrough: (saved_state & 64 != 0).then_some(saved_state & 128 != 0),
                         }),
+                        10 => selection.map(SavedModuleState::RackMcpSelection),
                         9 => ((saved_state >> 4) <= 4095).then_some(
                             SavedModuleState::StockQuantizerNotes((saved_state >> 4) as u16),
                         ),
@@ -767,6 +976,7 @@ struct Shared {
     meters: Box<[Meter; MAX_NODES]>,
     saved_acknowledgments: Box<[StateAcknowledgment; MAX_NODES]>,
     sampled_sequence: AtomicU64,
+    published_sample_rate: AtomicU32,
     backend: u64,
     closed: AtomicBool,
     // One writer (the audio callback) surrounds the complete meter batch.
@@ -822,6 +1032,7 @@ pub(super) struct Performance {
     pub(super) diagnostics: Arc<Diagnostics>,
     shared: Arc<Shared>,
     rate: u32,
+    listen: CaptureService,
 }
 #[derive(Clone, Copy)]
 pub(super) struct Binding {
@@ -840,6 +1051,8 @@ pub(super) struct StateBinding {
     applied_saved: u64,
     desired_state: Option<SavedModuleState>,
     stock_field_generations: [u64; 10],
+    sequence_load_epoch: Option<SequenceLoadEpoch>,
+    applied_sequence_load_epoch: SequenceLoadEpoch,
 }
 #[derive(Clone, Copy, Debug)]
 pub(super) struct CableBinding {
@@ -859,7 +1072,14 @@ pub(super) struct ModulePlan {
     scope_cursor: usize,
     scope_interval: u64,
     pub bindings: [Option<Binding>; MAX_NODES],
+    parameters: Box<[[Option<ParameterHandle>; MAX_PUBLISHED_PARAMETERS]; MAX_NODES]>,
+    parameter_epochs: Box<[[u64; MAX_PUBLISHED_PARAMETERS]; MAX_NODES]>,
+    // Sized to this graph's actual capabilities on the control thread. Avoid
+    // a maximum-capacity ParameterHandle array on the callback stack.
+    parameter_assignments: Box<[ParameterHandle]>,
     pub states: Box<[Option<StateBinding>; MAX_NODES]>,
+    // Sorted by persistent event order on the control thread.
+    sequence_load_order: Box<[usize]>,
     pub fresh_states: [Option<ModuleHandle>; MAX_NODES],
     // Compile/control owns these fixed-capacity allocations. Queued graph
     // moves carry pointers; retired graphs free them back on the control side.
@@ -875,11 +1095,21 @@ impl Default for ModulePlan {
             scope_cursor: 0,
             scope_interval: 1,
             bindings: [None; MAX_NODES],
+            parameters: vec![[None; MAX_PUBLISHED_PARAMETERS]; MAX_NODES]
+                .into_boxed_slice()
+                .try_into()
+                .expect("fixed parameter binding capacity"),
+            parameter_epochs: vec![[0; MAX_PUBLISHED_PARAMETERS]; MAX_NODES]
+                .into_boxed_slice()
+                .try_into()
+                .expect("fixed parameter epoch capacity"),
+            parameter_assignments: Box::default(),
             states: vec![None; MAX_NODES]
                 .into_boxed_slice()
                 .try_into()
                 .ok()
                 .expect("fixed state binding capacity"),
+            sequence_load_order: Box::default(),
             fresh_states: [None; MAX_NODES],
             cables: vec![None; MAX_CABLES]
                 .into_boxed_slice()
@@ -935,6 +1165,17 @@ impl ModulePlan {
             let Some(state) = binding.desired_state else {
                 continue;
             };
+            if matches!(state, SavedModuleState::RackMcpSelection(_)) {
+                // History/preset preparation authors this selection into the
+                // typed receiving Node. Its constructor or explicit source
+                // data load owns first-advance timing; replaying a saved-state
+                // setter would replace that request with a wrap selection.
+                binding.applied_saved = binding.saved_generation;
+                if let Some((old, _)) = old {
+                    old.applied_saved = old.applied_saved.max(binding.saved_generation);
+                }
+                continue;
+            }
             let state = unconsumed_stock_assignment(
                 state,
                 &binding.stock_field_generations,
@@ -973,10 +1214,45 @@ impl ModulePlan {
         }
     }
 
+    fn preserved_sequences(
+        &self,
+        previous: &Self,
+        engine: &Engine,
+        old_engine: &Engine,
+        host_resets: &[ModuleHandle],
+    ) -> [Option<ModuleHandle>; MAX_NODES] {
+        std::array::from_fn(|slot| {
+            let binding = self.states[slot]?;
+            let epoch = binding.sequence_load_epoch?;
+            let old = previous.states[slot]
+                .filter(|old| old.token == binding.token && old.sequence_load_epoch.is_some())?;
+            (epoch <= old.applied_sequence_load_epoch
+                && binding.initialize_generation <= old.applied_initialization
+                && !host_resets.contains(&binding.handle)
+                && engine.rackmcp_sequence_content_matches(binding.handle, old_engine, old.handle))
+            .then_some(binding.handle)
+        })
+    }
     #[cfg(test)]
     pub(super) fn adopt_state(&mut self, engine: &mut Engine, previous: &Self, old: &Engine) {
+        let preserve = self.preserved_sequences(previous, engine, old, &[]);
         self.with_adoption_exclusions(previous, |modules, cables| {
-            engine.adopt_state_from_excluding_routes(old, modules, cables);
+            if let Some(first) = preserve.iter().flatten().next() {
+                let mut handles = [*first; MAX_NODES];
+                let mut len = 0;
+                for handle in preserve.into_iter().flatten() {
+                    handles[len] = handle;
+                    len += 1;
+                }
+                engine.adopt_state_from_excluding_routes_preserving_sequences(
+                    old,
+                    modules,
+                    cables,
+                    &handles[..len],
+                );
+            } else {
+                engine.adopt_state_from_excluding_routes(old, modules, cables);
+            }
         });
     }
     /// Large Delay allocations move once; the caller must freeze the donor if
@@ -988,8 +1264,22 @@ impl ModulePlan {
         old: &mut Engine,
         host_resets: &[ModuleHandle],
     ) -> bool {
+        let preserve = self.preserved_sequences(previous, engine, old, host_resets);
         let mut moved = false;
         self.with_adoption_exclusions(previous, |modules, cables| {
+            let mut preserved_count = 0;
+            // A preservation handle, when present, can initialize fixed storage.
+            let first_preserved = preserve.iter().flatten().next().copied();
+            let mut preserved = first_preserved.map(|first| [first; MAX_NODES]);
+            if let Some(handles) = preserved.as_mut() {
+                for handle in preserve.into_iter().flatten() {
+                    handles[preserved_count] = handle;
+                    preserved_count += 1;
+                }
+            }
+            let preserved = preserved
+                .as_ref()
+                .map_or(&[][..], |handles| &handles[..preserved_count]);
             let first = modules.first().or_else(|| host_resets.first());
             if let Some(first) = first {
                 let mut merged = [*first; MAX_NODES];
@@ -1000,12 +1290,104 @@ impl ModulePlan {
                         len += 1;
                     }
                 }
-                moved = engine.handoff_state_from_excluding_routes(old, &merged[..len], cables);
+                moved = engine.handoff_state_from_excluding_routes_preserving_sequences(
+                    old,
+                    &merged[..len],
+                    cables,
+                    preserved,
+                );
             } else {
-                moved = engine.handoff_state_from_excluding_routes(old, &[], cables);
+                moved = engine.handoff_state_from_excluding_routes_preserving_sequences(
+                    old,
+                    &[],
+                    cables,
+                    preserved,
+                );
             }
         });
         moved
+    }
+    /// Frozen assignment epochs belong to these compiled graphs, never to the
+    /// current control registry. A skipped assignment plan still changes the
+    /// later receiver's epoch; identical authored floats remain assignments.
+    pub(super) fn inherit_parameters_with_host_exclusions(
+        &mut self,
+        engine: &mut Engine,
+        previous: &Self,
+        old: &Engine,
+        host_resets: &[ModuleHandle],
+    ) {
+        let Some(first) = self.parameter_assignments.first().copied() else {
+            return;
+        };
+        let mut assigned_count = 0;
+        for (slot, parameters) in self.parameters.iter().enumerate() {
+            let same_instance = self.bindings[slot].is_some_and(|binding| {
+                previous.bindings[slot].is_some_and(|old| old.token == binding.token)
+            });
+            for (index, handle) in parameters.iter().enumerate() {
+                let Some(handle) = handle else { continue };
+                if !same_instance
+                    || self.parameter_epochs[slot][index] != previous.parameter_epochs[slot][index]
+                {
+                    self.parameter_assignments[assigned_count] = *handle;
+                    assigned_count += 1;
+                }
+            }
+        }
+        let mut fresh = [first.module(); MAX_NODES];
+        let mut fresh_count = 0;
+        self.with_adoption_exclusions(previous, |modules, _| {
+            for handle in modules.iter().chain(host_resets) {
+                if !fresh[..fresh_count].contains(handle) {
+                    fresh[fresh_count] = *handle;
+                    fresh_count += 1;
+                }
+            }
+        });
+        engine.inherit_parameter_values(
+            old,
+            &fresh[..fresh_count],
+            &self.parameter_assignments[..assigned_count],
+        );
+    }
+    /// Consume frozen load requests in document event order after DSP adoption.
+    /// Constructors and changed-data adoption already load source state; their
+    /// explicit event only claims ownership, preserving first-load selection.
+    /// Applied fences follow the donor so late prepared plans cannot reclaim.
+    pub(super) fn reload_sequences_with_host_exclusions(
+        &mut self,
+        engine: &mut Engine,
+        previous: &Self,
+        old_engine: &Engine,
+        host_resets: &[ModuleHandle],
+    ) {
+        for &slot in &self.sequence_load_order {
+            let binding = self.states[slot]
+                .as_mut()
+                .expect("compiled sequence binding");
+            let epoch = binding
+                .sequence_load_epoch
+                .expect("compiled sequence epoch");
+            let old = previous.states[slot]
+                .filter(|old| old.token == binding.token && old.sequence_load_epoch.is_some());
+            let applied = old.map_or(SequenceLoadEpoch::default(), |old| {
+                old.applied_sequence_load_epoch
+            });
+            binding.applied_sequence_load_epoch = applied.max(epoch);
+            if epoch <= applied {
+                continue;
+            }
+            let equal_adopted_data = !host_resets.contains(&binding.handle)
+                && old.is_some_and(|old| {
+                    engine.rackmcp_sequence_data_matches(binding.handle, old_engine, old.handle)
+                });
+            if equal_adopted_data {
+                engine.reload_rackmcp_sequence_data(binding.handle);
+            } else {
+                engine.claim_rackmcp_sequence_targets(binding.handle);
+            }
+        }
     }
     /// Exclusions are fixed stack storage; no control registry reaches audio.
     fn with_adoption_exclusions(
@@ -1079,6 +1461,7 @@ impl ModulePlan {
 }
 pub(super) struct EventReader {
     queue: Consumer<Event>,
+    listen: CaptureProducer,
     head: Option<Event>,
     shared: Arc<Shared>,
 }
@@ -1106,6 +1489,9 @@ impl Performance {
             && control.execution.disposition == disposition
         {
             return;
+        }
+        if !disposition.is_runnable() {
+            self.listen.invalidate_unless(|_| false);
         }
         self.shared.execution_serial.fetch_add(1, Ordering::SeqCst);
         let cancel_events =
@@ -1148,6 +1534,7 @@ impl Performance {
     pub(super) fn new(rate: u32) -> (Arc<Self>, EventReader, Recorder) {
         let (diagnostics, timing) = Diagnostics::new(rate);
         let (queue, input) = RingBuffer::new(EVENT_CAPACITY);
+        let (listen, listen_producer) = listen_capture::channel();
         let shared = Arc::new(Shared {
             execution_serial: AtomicU64::new(0),
             execution_revision: AtomicU64::new(0),
@@ -1176,6 +1563,7 @@ impl Performance {
                 .ok()
                 .expect("fixed state acknowledgment capacity"),
             sampled_sequence: AtomicU64::new(0),
+            published_sample_rate: AtomicU32::new(rate),
             backend: NEXT_MIDI_BACKEND.fetch_add(1, Ordering::Relaxed),
             closed: AtomicBool::new(false),
             publish_serial: AtomicU64::new(0),
@@ -1201,6 +1589,7 @@ impl Performance {
         });
         let reader = EventReader {
             queue: input,
+            listen: listen_producer,
             head: None,
             shared: shared.clone(),
         };
@@ -1219,10 +1608,12 @@ impl Performance {
                     next_learn_serial: 1,
                     stock_click_releases: BTreeMap::new(),
                     execution: ExecutionRequest::default(),
+                    rackmcp_metadata: BTreeMap::new(),
                 }),
                 shared,
                 diagnostics,
                 rate,
+                listen,
             }),
             reader,
             timing,
@@ -1238,6 +1629,24 @@ impl Performance {
             .control
             .lock()
             .map_err(|_| "Module event registry poisoned")?;
+        // An old snapshot cannot reconstruct epochs after newer registry intent.
+        // Already-prepared graphs retain their frozen epochs and remain valid.
+        if revision < control.revision
+            && patch
+                .nodes
+                .iter()
+                .any(|node| node.kind == "rackmcp_sequencer")
+        {
+            return Err("Stale sequence load plan revision".into());
+        }
+        if revision < control.revision
+            && patch
+                .nodes
+                .iter()
+                .any(|node| !openpatch_core::runtime_parameter_names(&node.kind).is_empty())
+        {
+            return Err("Stale live parameter plan revision".into());
+        }
         let mut plan = ModulePlan {
             execution: ExecutionRequest {
                 revision,
@@ -1269,11 +1678,29 @@ impl Performance {
                     applied_saved: 0,
                     desired_state: entry.desired_state,
                     stock_field_generations: entry.stock_field_generations,
+                    sequence_load_epoch: (node.kind == "rackmcp_sequencer")
+                        .then_some(entry.sequence_load_epoch),
+                    // Only the callback consumes explicit ordered events.
+                    applied_sequence_load_epoch: SequenceLoadEpoch::default(),
                 });
             } else {
                 plan.fresh_states[index] = Some(handle);
             }
         }
+        let mut sequence_load_order: Vec<_> = plan
+            .states
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, binding)| {
+                binding.and_then(|binding| binding.sequence_load_epoch.map(|epoch| (epoch, slot)))
+            })
+            .collect();
+        sequence_load_order.sort_unstable_by_key(|&(epoch, _)| epoch);
+        plan.sequence_load_order = sequence_load_order
+            .into_iter()
+            .map(|(_, slot)| slot)
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
         if patch.version == 2 {
             for (index, cable) in patch.cables.iter().enumerate() {
                 let Some(id) = cable.id.as_ref() else {
@@ -1302,16 +1729,38 @@ impl Performance {
             {
                 continue;
             }
+            let names = entry.kind.parameter_names();
+            if names.len() > MAX_PUBLISHED_PARAMETERS {
+                return Err(format!(
+                    "Too many published parameters for {}",
+                    entry.kind.name()
+                ));
+            }
+            let mut parameters = [None; MAX_PUBLISHED_PARAMETERS];
+            for (slot, name) in parameters.iter_mut().zip(names) {
+                *slot = Some(engine.resolve_parameter(id, name)?);
+            }
+            plan.parameters[entry.slot] = parameters;
+            plan.parameter_epochs[entry.slot] = entry.parameter_epochs;
             plan.bindings[entry.slot] = Some(Binding {
                 token: entry.token,
                 handle: if entry.kind.sequential() {
                     engine.resolve_module_telemetry(id)?
-                } else if entry.kind.learn_kind().is_some() {
+                } else if entry.kind == ModuleKind::RackMcpSequencer
+                    || entry.kind.learn_kind().is_some()
+                {
                     engine.resolve_module_state(id)?
                 } else if entry.kind.manual() {
                     engine.resolve_module_control(id)?
                 } else {
-                    engine.resolve_module_lights(id)?
+                    engine.resolve_module_lights(id).or_else(|error| {
+                        parameters
+                            .iter()
+                            .flatten()
+                            .next()
+                            .map(|handle| handle.module())
+                            .ok_or(error)
+                    })?
                 },
                 kind: entry.kind,
                 release_epoch: 0,
@@ -1345,7 +1794,311 @@ impl Performance {
                 next_frame: 0,
             });
         }
+        plan.parameter_assignments = plan
+            .parameters
+            .iter()
+            .flatten()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
         Ok(plan)
+    }
+    /// Control precondition: assignments match native capabilities in the
+    /// validated receiving patch, including materialized defaults; source loads
+    /// name receiving sequencers. Both intent sets commit under this one lock.
+    fn sync_patch_intents(
+        &self,
+        patch: &Patch,
+        revision: u64,
+        assignments: &BTreeMap<String, BTreeMap<String, f32>>,
+        sequence_loads: &[String],
+    ) {
+        let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        if revision < control.revision || self.shared.closed.load(Ordering::Acquire) {
+            return;
+        }
+        // The trait's sync boundary is infallible. Reject invalid control intent
+        // explicitly before mutating any registry state instead of truncating it.
+        for (id, parameters) in assignments {
+            let node = patch
+                .nodes
+                .iter()
+                .find(|node| node.id == *id)
+                .expect("parameter assignment target is absent from patch");
+            assert_eq!(
+                patch.version, 2,
+                "live parameter assignment requires patch version 2"
+            );
+            for (name, value) in parameters {
+                let descriptor = openpatch_core::runtime_parameter_descriptor(&node.kind, name)
+                    .expect("unknown live parameter assignment key");
+                assert!(
+                    value.is_finite() && *value >= descriptor.min && *value <= descriptor.max,
+                    "invalid live parameter assignment value"
+                );
+                assert!(
+                    node.params
+                        .get(name)
+                        .is_some_and(|authored| authored.to_bits() == value.to_bits()),
+                    "live parameter assignment differs from receiving patch"
+                );
+            }
+        }
+        for (index, id) in sequence_loads.iter().enumerate() {
+            assert!(
+                !sequence_loads[..index].contains(id),
+                "duplicate sequence load target"
+            );
+            assert!(
+                patch.version == 2
+                    && patch
+                        .nodes
+                        .iter()
+                        .any(|node| { node.id == *id && node.kind == "rackmcp_sequencer" }),
+                "sequence load target must be a receiving version-2 RackMCP sequencer"
+            );
+        }
+        let assignment_epoch = assignments
+            .values()
+            .any(|parameters| !parameters.is_empty())
+            .then(|| {
+                revision
+                    .checked_add(1)
+                    .expect("parameter assignment epoch exhausted")
+            });
+        let sequence_load_revision = (!sequence_loads.is_empty()).then(|| {
+            revision
+                .checked_add(1)
+                .expect("sequence load epoch exhausted")
+        });
+        if control.execution.generation != 0 && revision > control.execution.revision {
+            let disposition = control.execution.disposition;
+            self.set_execution(&mut control, revision, disposition);
+        }
+        control.cable_entries.retain(|id, entry| {
+            patch.cables.iter().any(|cable| {
+                cable.id.as_ref() == Some(id) && route_signature(patch, cable) == entry.route
+            })
+        });
+        let mut cable_used = [false; MAX_CABLES];
+        for entry in control.cable_entries.values() {
+            cable_used[entry.slot] = true;
+        }
+        for cable in &patch.cables {
+            let Some(id) = cable.id.as_ref() else {
+                continue;
+            };
+            if control.cable_entries.contains_key(id) {
+                continue;
+            }
+            let Some(slot) = cable_used.iter().position(|used| !used) else {
+                break;
+            };
+            cable_used[slot] = true;
+            let token = control.next_token;
+            control.next_token = control.next_token.wrapping_add(1).max(1);
+            control.cable_entries.insert(
+                id.clone(),
+                CableEntry {
+                    slot,
+                    token,
+                    born_revision: revision,
+                    route: route_signature(patch, cable),
+                },
+            );
+        }
+        control.state_entries.retain(|id, entry| {
+            patch
+                .nodes
+                .iter()
+                .any(|node| node.id == *id && node.kind == entry.kind)
+        });
+        {
+            let Control {
+                scope_readers,
+                state_entries,
+                ..
+            } = &mut *control;
+            scope_readers.retain(|id, _| {
+                state_entries.get(id).is_some_and(|entry| {
+                    rack_scope_kind(&entry.kind)
+                        && patch
+                            .nodes
+                            .iter()
+                            .any(|node| node.id == *id && node.kind == entry.kind)
+                })
+            });
+        }
+        let mut state_used = [false; MAX_NODES];
+        for entry in control.state_entries.values() {
+            state_used[entry.slot] = true;
+        }
+        for node in &patch.nodes {
+            if control.state_entries.contains_key(&node.id) {
+                continue;
+            }
+            let Some(slot) = state_used.iter().position(|used| !used) else {
+                break;
+            };
+            state_used[slot] = true;
+            let token = control.next_token;
+            control.next_token = control.next_token.wrapping_add(1).max(1);
+            control.state_entries.insert(
+                node.id.clone(),
+                StateEntry {
+                    slot,
+                    token,
+                    born_revision: revision,
+                    kind: node.kind.clone(),
+                    initialize_generation: 0,
+                    initialize_revision: revision,
+                    saved_generation: 0,
+                    saved_revision: revision,
+                    desired_state: SavedModuleState::from_node(node),
+                    stock_field_generations: [0; 10],
+                    sequence_load_epoch: SequenceLoadEpoch::default(),
+                },
+            );
+        }
+        for (order, id) in sequence_loads.iter().enumerate() {
+            let entry = control
+                .state_entries
+                .get_mut(id)
+                .expect("sequence load target has no state entry");
+            entry.sequence_load_epoch = entry.sequence_load_epoch.max(SequenceLoadEpoch {
+                revision: sequence_load_revision.expect("nonempty sequence load"),
+                order: order + 1,
+            });
+        }
+        control.entries.retain(|id, entry| {
+            let retained = patch.version == 2
+                && patch.nodes.iter().any(|node| {
+                    node.id == *id && ModuleKind::from_name(&node.kind) == Some(entry.kind)
+                });
+            if !retained {
+                self.shared.desired[entry.slot].store(0, Ordering::Release);
+            }
+            retained
+        });
+        let mut used = [false; MAX_NODES];
+        for entry in control.entries.values() {
+            used[entry.slot] = true;
+        }
+        let cancel_through_serial = control.next_learn_serial.saturating_sub(1);
+        if patch.version == 2 {
+            for (node, kind) in patch
+                .nodes
+                .iter()
+                .filter_map(|node| ModuleKind::from_name(&node.kind).map(|kind| (node, kind)))
+            {
+                if let Some(entry) = control.entries.get_mut(&node.id) {
+                    if node.bypassed && !entry.bypassed {
+                        // Cancel pending actions without replacing DSP identity.
+                        // This survives a bypass/resume coalesced before audio.
+                        entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
+                        self.shared.action_epochs[entry.slot]
+                            .store(entry.action_epoch, Ordering::Release);
+                        if entry.kind.has_safety_release() {
+                            self.shared.emergency_learn_cutoffs[entry.slot]
+                                .store(cancel_through_serial, Ordering::Release);
+                            self.shared.emergency_release_epochs[entry.slot]
+                                .fetch_add(1, Ordering::Release);
+                            self.shared
+                                .emergency_release_requests
+                                .fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                    entry.bypassed = node.bypassed;
+                    continue;
+                }
+                let Some(slot) = used.iter().position(|used| !used) else {
+                    break;
+                };
+                used[slot] = true;
+                let token = control.next_token;
+                control.next_token = control.next_token.wrapping_add(1).max(1);
+                control.entries.insert(
+                    node.id.clone(),
+                    Entry {
+                        slot,
+                        token,
+                        born_revision: revision,
+                        kind,
+                        bypassed: node.bypassed,
+                        action_epoch: 1,
+                        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
+                    },
+                );
+                self.shared.emergency_release_epochs[slot].store(0, Ordering::Release);
+                self.shared.emergency_learn_cutoffs[slot].store(0, Ordering::Release);
+                self.shared.action_epochs[slot].store(1, Ordering::Release);
+                self.shared.desired[slot].store(token, Ordering::Release);
+            }
+        }
+        for (id, parameters) in assignments {
+            if parameters.is_empty() {
+                continue;
+            }
+            let entry = control
+                .entries
+                .get_mut(id)
+                .expect("live parameter assignment target has no capability entry");
+            for name in parameters.keys() {
+                let index = entry
+                    .kind
+                    .parameter_names()
+                    .iter()
+                    .position(|key| *key == name)
+                    .expect("unknown live parameter assignment key");
+                entry.parameter_epochs[index] =
+                    assignment_epoch.expect("nonempty parameter assignment");
+            }
+        }
+        let Control {
+            entries,
+            stock_click_releases,
+            ..
+        } = &mut *control;
+        stock_click_releases.retain(|id, release| {
+            entries
+                .get(id)
+                .is_some_and(|entry| entry.token == release.token)
+        });
+        control.rackmcp_metadata = patch
+            .nodes
+            .iter()
+            .filter_map(|node| {
+                if node.kind != "rackmcp_sequencer" {
+                    return None;
+                }
+                let default = openpatch_core::rackmcp_sequence::SequenceState::default();
+                let sequence = node.rackmcp_sequence.as_deref().unwrap_or(&default);
+                let fingerprint =
+                    openpatch_core::rackmcp_sequence::content_fingerprint(&sequence.data).ok()?;
+                Some((
+                    node.id.clone(),
+                    (
+                        fingerprint,
+                        sequence
+                            .data
+                            .patterns
+                            .iter()
+                            .map(|pattern| pattern.name.clone())
+                            .collect(),
+                    ),
+                ))
+            })
+            .collect();
+        self.listen.invalidate_unless(|target| {
+            control.entries.values().any(|entry| {
+                entry.slot == target.slot
+                    && entry.token == target.token
+                    && entry.kind == ModuleKind::RackMcpListen
+            })
+        });
+        self.sync_midi_learns(&mut control, patch, revision);
+        control.revision = revision;
     }
     pub(super) fn scope_frame(&self, id: &str) -> Option<ScopeFrame> {
         let control = self.control.lock().ok()?;
@@ -1425,6 +2178,7 @@ impl Performance {
         for mailbox in self.shared.midi_learns.iter() {
             let _ = mailbox.cancel_armed();
         }
+        self.listen.close();
         self.diagnostics.close();
     }
     fn load_saved_states(&self, states: &BTreeMap<String, SavedModuleState>) {
@@ -1499,6 +2253,72 @@ impl Performance {
     }
 }
 impl LiveModuleEvents for Performance {
+    fn start_listen_capture(
+        &self,
+        id: &str,
+        seconds: f64,
+        write_wav: bool,
+        workspace: &std::path::Path,
+    ) -> Result<Value, String> {
+        let control = self
+            .control
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if !self.execution_available() {
+            return Err("live audio is closed, suspended or pending".into());
+        }
+        let entry = *control
+            .entries
+            .get(id)
+            .filter(|entry| entry.kind == ModuleKind::RackMcpListen)
+            .ok_or("module is not a current Listen instance")?;
+        let before = self.shared.publish_serial.load(Ordering::SeqCst);
+        let actual = self.shared.meters[entry.slot]
+            .read(entry, control.revision)
+            .filter(|snapshot| snapshot.listen.is_some())
+            .ok_or("Listen has no current live publication")?;
+        let rate = self.shared.published_sample_rate.load(Ordering::SeqCst);
+        let frame = self.shared.frame.load(Ordering::SeqCst);
+        if before & 1 != 0
+            || self.shared.publish_serial.load(Ordering::SeqCst) != before
+            || actual.frame != frame
+        {
+            return Err("Listen live publication changed; retry capture".into());
+        }
+        self.listen.start(StartRequest {
+            target: Target {
+                slot: entry.slot,
+                token: entry.token,
+            },
+            module: id,
+            revision: actual.revision,
+            rate,
+            seconds,
+            write_wav,
+            workspace,
+        })
+    }
+    fn latest_listen_capture(&self, id: &str) -> Option<Value> {
+        self.listen.latest_for(id)
+    }
+    fn inspect_listen_capture(&self, job: &str) -> Result<Value, String> {
+        self.listen.poll(job)
+    }
+    fn cancel_listen_capture(&self, job: &str) -> Result<Value, String> {
+        self.listen.cancel(job)
+    }
+
+    fn rackmcp_transport(
+        &self,
+        id: &str,
+        requests: &[RackMcpTransport],
+        data: &openpatch_core::rackmcp_sequence::SequenceData,
+    ) -> Result<Value, String> {
+        self.enqueue_rackmcp(id, requests, data)
+    }
+    fn supports_live_parameters(&self) -> bool {
+        true
+    }
     fn supports_document_execution(&self) -> bool {
         true
     }
@@ -1750,6 +2570,13 @@ impl LiveModuleEvents for Performance {
                 self.shared.desired[entry.slot].store(0, Ordering::Release);
             }
         }
+        self.listen.invalidate_unless(|target| {
+            control.entries.values().any(|entry| {
+                entry.slot == target.slot
+                    && entry.token == target.token
+                    && entry.kind == ModuleKind::RackMcpListen
+            })
+        });
     }
     fn retire_cables(&self, ids: &[String]) {
         let mut control = self
@@ -1761,174 +2588,24 @@ impl LiveModuleEvents for Performance {
         }
     }
     fn sync_patch(&self, patch: &Patch, revision: u64) {
-        let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
-        if revision < control.revision || self.shared.closed.load(Ordering::Acquire) {
-            return;
-        }
-        if control.execution.generation != 0 && revision > control.execution.revision {
-            let disposition = control.execution.disposition;
-            self.set_execution(&mut control, revision, disposition);
-        }
-        control.cable_entries.retain(|id, entry| {
-            patch.cables.iter().any(|cable| {
-                cable.id.as_ref() == Some(id) && route_signature(patch, cable) == entry.route
-            })
-        });
-        let mut cable_used = [false; MAX_CABLES];
-        for entry in control.cable_entries.values() {
-            cable_used[entry.slot] = true;
-        }
-        for cable in &patch.cables {
-            let Some(id) = cable.id.as_ref() else {
-                continue;
-            };
-            if control.cable_entries.contains_key(id) {
-                continue;
-            }
-            let Some(slot) = cable_used.iter().position(|used| !used) else {
-                break;
-            };
-            cable_used[slot] = true;
-            let token = control.next_token;
-            control.next_token = control.next_token.wrapping_add(1).max(1);
-            control.cable_entries.insert(
-                id.clone(),
-                CableEntry {
-                    slot,
-                    token,
-                    born_revision: revision,
-                    route: route_signature(patch, cable),
-                },
-            );
-        }
-        control.state_entries.retain(|id, entry| {
-            patch
-                .nodes
-                .iter()
-                .any(|node| node.id == *id && node.kind == entry.kind)
-        });
-        {
-            let Control {
-                scope_readers,
-                state_entries,
-                ..
-            } = &mut *control;
-            scope_readers.retain(|id, _| {
-                state_entries.get(id).is_some_and(|entry| {
-                    rack_scope_kind(&entry.kind)
-                        && patch
-                            .nodes
-                            .iter()
-                            .any(|node| node.id == *id && node.kind == entry.kind)
-                })
-            });
-        }
-        let mut state_used = [false; MAX_NODES];
-        for entry in control.state_entries.values() {
-            state_used[entry.slot] = true;
-        }
-        for node in &patch.nodes {
-            if control.state_entries.contains_key(&node.id) {
-                continue;
-            }
-            let Some(slot) = state_used.iter().position(|used| !used) else {
-                break;
-            };
-            state_used[slot] = true;
-            let token = control.next_token;
-            control.next_token = control.next_token.wrapping_add(1).max(1);
-            control.state_entries.insert(
-                node.id.clone(),
-                StateEntry {
-                    slot,
-                    token,
-                    born_revision: revision,
-                    kind: node.kind.clone(),
-                    initialize_generation: 0,
-                    initialize_revision: revision,
-                    saved_generation: 0,
-                    saved_revision: revision,
-                    desired_state: SavedModuleState::from_node(node),
-                    stock_field_generations: [0; 10],
-                },
-            );
-        }
-        control.entries.retain(|id, entry| {
-            let retained = patch.version == 2
-                && patch.nodes.iter().any(|node| {
-                    node.id == *id && ModuleKind::from_name(&node.kind) == Some(entry.kind)
-                });
-            if !retained {
-                self.shared.desired[entry.slot].store(0, Ordering::Release);
-            }
-            retained
-        });
-        let mut used = [false; MAX_NODES];
-        for entry in control.entries.values() {
-            used[entry.slot] = true;
-        }
-        let cancel_through_serial = control.next_learn_serial.saturating_sub(1);
-        if patch.version == 2 {
-            for (node, kind) in patch
-                .nodes
-                .iter()
-                .filter_map(|node| ModuleKind::from_name(&node.kind).map(|kind| (node, kind)))
-            {
-                if let Some(entry) = control.entries.get_mut(&node.id) {
-                    if node.bypassed && !entry.bypassed {
-                        // Cancel pending actions without replacing DSP identity.
-                        // This survives a bypass/resume coalesced before audio.
-                        entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
-                        self.shared.action_epochs[entry.slot]
-                            .store(entry.action_epoch, Ordering::Release);
-                        if entry.kind.has_safety_release() {
-                            self.shared.emergency_learn_cutoffs[entry.slot]
-                                .store(cancel_through_serial, Ordering::Release);
-                            self.shared.emergency_release_epochs[entry.slot]
-                                .fetch_add(1, Ordering::Release);
-                            self.shared
-                                .emergency_release_requests
-                                .fetch_add(1, Ordering::Relaxed);
-                        }
-                    }
-                    entry.bypassed = node.bypassed;
-                    continue;
-                }
-                let Some(slot) = used.iter().position(|used| !used) else {
-                    break;
-                };
-                used[slot] = true;
-                let token = control.next_token;
-                control.next_token = control.next_token.wrapping_add(1).max(1);
-                control.entries.insert(
-                    node.id.clone(),
-                    Entry {
-                        slot,
-                        token,
-                        born_revision: revision,
-                        kind,
-                        bypassed: node.bypassed,
-                        action_epoch: 1,
-                    },
-                );
-                self.shared.emergency_release_epochs[slot].store(0, Ordering::Release);
-                self.shared.emergency_learn_cutoffs[slot].store(0, Ordering::Release);
-                self.shared.action_epochs[slot].store(1, Ordering::Release);
-                self.shared.desired[slot].store(token, Ordering::Release);
-            }
-        }
-        let Control {
-            entries,
-            stock_click_releases,
-            ..
-        } = &mut *control;
-        stock_click_releases.retain(|id, release| {
-            entries
-                .get(id)
-                .is_some_and(|entry| entry.token == release.token)
-        });
-        self.sync_midi_learns(&mut control, patch, revision);
-        control.revision = revision;
+        self.sync_patch_intents(patch, revision, &BTreeMap::new(), &[]);
+    }
+    fn sync_patch_with_parameters(
+        &self,
+        patch: &Patch,
+        revision: u64,
+        assignments: &BTreeMap<String, BTreeMap<String, f32>>,
+    ) {
+        self.sync_patch_intents(patch, revision, assignments, &[]);
+    }
+    fn sync_patch_with_intents(
+        &self,
+        patch: &Patch,
+        revision: u64,
+        assignments: &BTreeMap<String, BTreeMap<String, f32>>,
+        sequence_loads: &[String],
+    ) {
+        self.sync_patch_intents(patch, revision, assignments, sequence_loads);
     }
     fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String> {
         self.enqueue_guarded(id, action, None)
@@ -1966,8 +2643,14 @@ impl LiveModuleEvents for Performance {
         }
         let modules: serde_json::Map<String, Value> = control.entries.iter().zip(snapshots).map(|((id, entry), actual)| {
             (id.clone(), json!({"kind":entry.kind.name(),"bypassed":entry.bypassed,"available":actual.is_some(),
-                "revision":actual.map(|snapshot| snapshot.revision),"frame":actual.map(|snapshot|snapshot.frame),"state":actual.and_then(|snapshot| {
-                    if let Some(SavedModuleState::StockQuantizerNotes(mask)) = snapshot.saved_state {
+                "instance":entry.token,"revision":actual.map(|snapshot| snapshot.revision),"frame":actual.map(|snapshot|snapshot.frame),
+                "parameters":entry.kind.parameter_names().iter().enumerate().filter_map(|(index, name)| {
+                    actual.and_then(|snapshot| snapshot.parameters[index])
+                        .map(|value| ((*name).to_owned(), json!(value)))
+                }).collect::<serde_json::Map<String, Value>>(),"state":actual.and_then(|snapshot| {
+                    if let Some(SavedModuleState::RackMcpSelection(name)) = snapshot.saved_state {
+                        Some(json!({"selected_pattern":name.as_str()}))
+                    } else if let Some(SavedModuleState::StockQuantizerNotes(mask)) = snapshot.saved_state {
                         Some(json!({"scale_mask":mask,"enabled_notes":std::array::from_fn::<_,12,_>(|i|mask & (1<<i)!=0)}))
                     } else if let Some(SavedModuleState::StockSeq3 { running, gates, passthrough }) = snapshot.saved_state {
                         Some(json!({"running":running,"gates":std::array::from_fn::<_,8,_>(|i| gates & (1 << i) != 0),
@@ -1987,6 +2670,17 @@ impl LiveModuleEvents for Performance {
                         snapshot.state.map(|state|json!({"step":state.step,"length":state.length,"running":state.running}))
                     }
                 }),
+                "listen":actual.and_then(|snapshot| snapshot.listen),
+                "rackmcp_sequence":actual.and_then(|snapshot| snapshot.rackmcp_sequence).map(|(status, fingerprint)| {
+                    let names = control.rackmcp_metadata.get(id).filter(|(expected, _)| *expected == fingerprint).map(|(_, names)| names);
+                    let name = |index: usize| names.and_then(|names| names.get(index)).cloned();
+                    let mut value = serde_json::to_value(status).expect("fixed status serializes");
+                    value["bar"] = json!(f64::from(status.beat) / 4.0);
+                    value["selected_pattern_name"] = json!(name(usize::from(status.selected_pattern)));
+                    value["active_pattern_name"] = json!(usize::try_from(status.active_pattern).ok().and_then(name));
+                    value["pending_pattern_name"] = json!(status.pending_pattern.and_then(|index| name(usize::from(index))));
+                    value
+                }),
                 "controls":actual.and_then(|snapshot|snapshot.controls),"lights":actual.and_then(|snapshot|snapshot.lights).and_then(module_lights_value)}))
         }).collect();
         json!({"audio_timing":self.diagnostics.snapshot(),"available":available,"unavailable_reason":(!available).then_some(if shared.closed.load(Ordering::Acquire) { "audio_device_closed" } else { "document_execution_suspended_or_pending" }),"execution":{
@@ -2000,6 +2694,46 @@ impl LiveModuleEvents for Performance {
     }
 }
 impl EventReader {
+    pub(super) fn process_audio(
+        &mut self,
+        engine: &mut Engine,
+        plan: &ModulePlan,
+        output: &mut [[f32; 2]],
+        taps: Option<ScopeCaptureBuffers<'_>>,
+    ) {
+        let shared = &self.shared;
+        let handle = self.listen.prepare(|target| {
+            let binding = plan.bindings.get(target.slot).copied().flatten()?;
+            (binding.token == target.token
+                && binding.kind == ModuleKind::RackMcpListen
+                && shared.desired[target.slot].load(Ordering::Acquire) == target.token)
+                .then_some(binding.handle)
+        });
+        if let Some(handle) = handle {
+            if let Some(status) = engine.listen_status(handle) {
+                self.listen.observe_status(status);
+            }
+            if let Some((taps, samples)) = taps {
+                engine.process_audio_block_with_taps_and_listen_capture(
+                    output,
+                    taps,
+                    samples,
+                    handle,
+                    &mut self.listen,
+                );
+            } else {
+                engine.process_audio_block_with_listen_capture(output, handle, &mut self.listen);
+            }
+        } else if let Some((taps, samples)) = taps {
+            engine.process_audio_block_with_taps(output, taps, samples);
+        } else {
+            engine.process_audio_block(output);
+        }
+    }
+    pub(super) fn invalidate_listen(&self) {
+        self.listen.invalidate();
+    }
+
     pub(super) fn execution_cancellation(&self) -> u64 {
         self.shared.execution_cancel.load(Ordering::SeqCst)
     }
@@ -2032,7 +2766,7 @@ impl EventReader {
         for _ in 0..EVENT_CAPACITY + 1 {
             let event = self.head.take().or_else(|| self.queue.pop().ok());
             let Some(event) = event else { break };
-            if is_release(event.action) {
+            if event.action.is_release() {
                 if let Some(binding) =
                     plan.bindings[event.slot].filter(|binding| binding.token == event.token)
                 {
@@ -2127,16 +2861,20 @@ impl EventReader {
             per_node[event.slot] += 1;
             self.head = None;
             *budget -= 1;
-            if event.action == ModuleAction::MidiPanic && binding.kind == ModuleKind::MidiGate {
+            if matches!(
+                event.action,
+                PerformanceAction::Module(ModuleAction::MidiPanic)
+            ) && binding.kind == ModuleKind::MidiGate
+            {
                 let _ = self.shared.midi_learns[event.slot]
                     .cancel_armed_through(event.cancel_through_serial);
             }
-            if active.handle_module_event(binding.handle, event.action) {
+            if event.action.apply(active, binding.handle) {
                 if let Some((engine, plan)) = previous.as_mut() {
                     if let Some(old) =
                         plan.bindings[event.slot].filter(|old| old.token == event.token)
                     {
-                        if !engine.handle_module_event(old.handle, event.action) {
+                        if !event.action.apply(engine, old.handle) {
                             self.shared
                                 .crossfade_rejected
                                 .fetch_add(1, Ordering::Relaxed);
@@ -2189,6 +2927,9 @@ impl EventReader {
     }
     pub(super) fn publish(&self, engine: &Engine, plan: &ModulePlan, revision: u64, frame: u64) {
         self.shared.publish_frame(frame, || {
+            self.shared
+                .published_sample_rate
+                .store(engine.sample_rate(), Ordering::SeqCst);
             for (slot, binding) in plan.states.iter().enumerate() {
                 if let Some(binding) = binding {
                     self.shared.saved_acknowledgments[slot]
@@ -2201,11 +2942,25 @@ impl EventReader {
             );
             for (slot, binding) in plan.bindings.iter().enumerate() {
                 if let Some(binding) = binding {
+                    let parameters = plan.parameters[slot]
+                        .map(|handle| handle.and_then(|handle| engine.parameter_value(handle)));
+                    let valid =
+                        plan.parameters[slot]
+                            .iter()
+                            .zip(parameters)
+                            .all(|(handle, value)| {
+                                handle.is_none() || value.is_some_and(|value| value.is_finite())
+                            });
                     self.shared.meters[slot].write(
-                        binding.token,
+                        if valid { binding.token } else { 0 },
                         ModuleSnapshot {
                             revision,
                             frame,
+                            parameters,
+                            listen: engine.listen_status(binding.handle),
+                            rackmcp_sequence: engine
+                                .rackmcp_sequence_status(binding.handle)
+                                .zip(engine.rackmcp_sequence_content_fingerprint(binding.handle)),
                             state: if binding.kind.sequential() {
                                 engine.module_telemetry(binding.handle)
                             } else {
@@ -2258,11 +3013,314 @@ mod tests {
     use super::*;
 
     include!("split_performance_tests.rs");
+    include!("listen_performance_tests.rs");
     include!("stock_lfo_performance_tests.rs");
     include!("stock_vco_performance_tests.rs");
     include!("stock_seq3_performance_tests.rs");
     include!("stock_quantizer_performance_tests.rs");
     include!("stock_octave_performance_tests.rs");
+
+    fn effective_parameter_patch() -> Patch {
+        serde_json::from_value(json!({
+            "version":2,"sample_rate":48000,
+            "nodes":[
+                {"id":"signal","kind":"poly_constant","params":{"v1":5}},
+                {"id":"vca1","kind":"stock_vca"},
+                {"id":"vca2","kind":"stock_vca"},
+                {"id":"vcf1","kind":"rack264_vcf"},
+                {"id":"vcf2","kind":"rack264_vcf"}
+            ],
+            "cables":[{"from":"signal","to":"vca1","input":"signal"}],
+            "output":"vca1","output_port":"out"
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn sequence_load_epochs_are_persistent_frozen_and_incarnation_bound() {
+        // Transport/status now has a performance binding, but data-load intent
+        // still follows its independent persistent state incarnation.
+        let patch: Patch = serde_json::from_value(json!({"version":2,
+            "nodes":[{"id":"seq","kind":"rackmcp_sequencer"}]}))
+        .unwrap();
+        let engine = patch.compile().unwrap();
+        let (performance, _, _) = Performance::new(48_000);
+        performance.sync_patch(&patch, 1);
+        let original = performance.plan(&patch, &engine, 1).unwrap();
+        let binding = original.bindings.iter().flatten().next().unwrap();
+        assert!(binding.kind == ModuleKind::RackMcpSequencer);
+        assert!(!binding.kind.accepts(ModuleAction::Clock));
+        let loads = ["seq".into()];
+        performance.sync_patch_with_intents(&patch, 2, &BTreeMap::new(), &loads);
+        let assigned = performance.plan(&patch, &engine, 2).unwrap();
+        performance.sync_patch(&patch, 2);
+        performance.sync_patch_with_intents(&patch, 2, &BTreeMap::new(), &loads);
+        let repeated = performance.plan(&patch, &engine, 2).unwrap();
+        performance.sync_patch(&patch, 3);
+        let unrelated = performance.plan(&patch, &engine, 3).unwrap();
+        assert_eq!(
+            original.states[0].unwrap().sequence_load_epoch,
+            Some(SequenceLoadEpoch::default())
+        );
+        for plan in [&assigned, &repeated, &unrelated] {
+            assert_eq!(
+                plan.states[0].unwrap().sequence_load_epoch,
+                Some(SequenceLoadEpoch {
+                    revision: 3,
+                    order: 1
+                })
+            );
+            assert_eq!(
+                plan.states[0].unwrap().token,
+                original.states[0].unwrap().token
+            );
+        }
+        assert_eq!(
+            performance.plan(&patch, &engine, 2).err().as_deref(),
+            Some("Stale sequence load plan revision")
+        );
+        performance.sync_patch(&Patch::new_v2(), 4);
+        performance.sync_patch(&patch, 5);
+        let fresh = performance.plan(&patch, &engine, 5).unwrap();
+        assert_eq!(
+            fresh.states[0].unwrap().sequence_load_epoch,
+            Some(SequenceLoadEpoch::default())
+        );
+        assert_ne!(
+            fresh.states[0].unwrap().token,
+            original.states[0].unwrap().token
+        );
+    }
+
+    #[test]
+    fn invalid_sequence_load_intent_rejects_both_intent_sets_before_mutation() {
+        let mut patch = effective_parameter_patch();
+        patch.nodes[1].params.insert("level".into(), 1.0);
+        let engine = patch.compile().unwrap();
+        let (performance, _, _) = Performance::new(48_000);
+        performance.sync_patch(&patch, 1);
+        let original = performance.plan(&patch, &engine, 1).unwrap();
+        let assignments =
+            BTreeMap::from([("vca1".into(), BTreeMap::from([("level".into(), 1.0)]))]);
+        for id in ["missing", "vca1"] {
+            assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                performance.sync_patch_with_intents(&patch, 2, &assignments, &[id.into()]);
+            }))
+            .is_err());
+            let control = performance
+                .control
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            assert_eq!(control.revision, 1);
+            for entry in control.entries.values() {
+                assert_eq!(
+                    entry.parameter_epochs,
+                    original.parameter_epochs[entry.slot]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parameter_intent_epochs_survive_same_revision_sync_and_stale_plans_are_rejected() {
+        let mut patch = effective_parameter_patch();
+        patch
+            .nodes
+            .iter_mut()
+            .find(|node| node.id == "vca1")
+            .unwrap()
+            .params
+            .insert("level".into(), 1.0);
+        let engine = patch.compile().unwrap();
+        let (performance, _, _) = Performance::new(48_000);
+        performance.sync_patch(&patch, 1);
+        let original = performance.plan(&patch, &engine, 1).unwrap();
+        let assignments = BTreeMap::from([(
+            "vca1".into(),
+            BTreeMap::from([(
+                "level".into(),
+                patch
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == "vca1")
+                    .unwrap()
+                    .params["level"],
+            )]),
+        )]);
+        performance.sync_patch_with_parameters(&patch, 2, &assignments);
+        let assigned = performance.plan(&patch, &engine, 2).unwrap();
+        performance.sync_patch(&patch, 2);
+        performance.sync_patch_with_parameters(&patch, 2, &assignments);
+        let repeated = performance.plan(&patch, &engine, 2).unwrap();
+        assert_eq!(assigned.parameter_epochs, repeated.parameter_epochs);
+        assert_ne!(original.parameter_epochs, assigned.parameter_epochs);
+        assert_eq!(
+            performance.plan(&patch, &engine, 1).err().as_deref(),
+            Some("Stale live parameter plan revision")
+        );
+        performance.sync_patch(&patch, 3);
+        let unrelated = performance.plan(&patch, &engine, 3).unwrap();
+        assert_eq!(assigned.parameter_epochs, unrelated.parameter_epochs);
+        // Rejection applies only to capability-bearing snapshots; existing
+        // stale identity/state rules for other models remain unchanged.
+        let plain: Patch = serde_json::from_value(json!({"version":2,
+            "nodes":[{"id":"zero","kind":"poly_constant","params":{"v1":0}}]}))
+        .unwrap();
+        let engine = plain.compile().unwrap();
+        performance.sync_patch(&plain, 4);
+        assert!(performance.plan(&plain, &engine, 1).is_ok());
+    }
+
+    #[test]
+    fn invalid_parameter_assignment_contract_fails_before_registry_mutation() {
+        for (id, key, value) in [
+            ("missing", "level", 1.0),
+            ("vca1", "unknown", 1.0),
+            ("vca1", "level", 0.125),
+            ("vca1", "level", f32::NAN),
+        ] {
+            let patch = effective_parameter_patch();
+            let (performance, _, _) = Performance::new(48_000);
+            performance.sync_patch(&patch, 1);
+            let before = performance.snapshot();
+            let assignments = BTreeMap::from([(id.into(), BTreeMap::from([(key.into(), value)]))]);
+            assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                performance.sync_patch_with_parameters(&patch, 2, &assignments);
+            }))
+            .is_err());
+            assert_eq!(performance.snapshot(), before);
+        }
+    }
+
+    #[test]
+    fn untargeted_effective_parameters_publish_actual_values_with_the_module_frame() {
+        let patch = effective_parameter_patch();
+        let mut engine = patch.compile().unwrap();
+        let (performance, reader, _) = Performance::new(48_000);
+        assert!(performance.supports_live_parameters());
+        performance.sync_patch(&patch, 1);
+        let plan = performance.plan(&patch, &engine, 1).unwrap();
+        for (id, key, value) in [
+            ("vca1", "level", 0.25),
+            ("vca2", "level", 0.75),
+            ("vcf1", "frequency", 0.2),
+            ("vcf2", "frequency", 0.7),
+        ] {
+            assert!(engine.set_parameter_value(engine.resolve_parameter(id, key).unwrap(), value));
+        }
+        let mut output = [openpatch_core::PortFrame::default(); 64];
+        engine.process_poly_block(&mut output);
+        assert_eq!(output[63].values[0], 1.25);
+        reader.publish(&engine, &plan, 1, 64);
+        let capture = performance.snapshot();
+        assert_eq!(capture["coherent"], true);
+        assert_eq!(capture["frame"], 64);
+        for (id, key) in [
+            ("vca1", "level"),
+            ("vca2", "level"),
+            ("vcf1", "frequency"),
+            ("vcf2", "frequency"),
+        ] {
+            let module = &capture["modules"][id];
+            assert_eq!(module["available"], true);
+            assert_eq!(module["frame"], 64);
+            assert_eq!(module["revision"], 1);
+            assert!(module["instance"].as_u64().unwrap() > 0);
+            let actual = engine
+                .parameter_value(engine.resolve_parameter(id, key).unwrap())
+                .unwrap();
+            assert_eq!(module["parameters"][key].as_f64(), Some(f64::from(actual)));
+        }
+        assert!(capture["modules"]["vcf1"]["lights"].is_null());
+        assert!(capture["modules"]["vcf1"]["state"].is_null());
+        assert!(capture["modules"]["vca1"]["lights"].is_object());
+        assert!(engine.set_parameter_value(engine.resolve_parameter("vca1", "level").unwrap(), 0.5));
+        // Readers see one completed observation, even when the actual engine
+        // has advanced. Parameter reads do not bypass the module publication.
+        assert_eq!(
+            performance.snapshot()["modules"]["vca1"]["parameters"]["level"],
+            0.25
+        );
+        reader.publish(&engine, &plan, 1, 128);
+        let next = performance.snapshot();
+        assert_eq!(next["modules"]["vca1"]["parameters"]["level"], 0.5);
+        assert_eq!(next["modules"]["vca1"]["frame"], 128);
+        assert_eq!(patch.nodes[1].params.get("level"), None);
+    }
+
+    #[test]
+    fn effective_parameter_publication_rejects_old_revisions_and_foreign_engine_handles() {
+        let patch = effective_parameter_patch();
+        let engine = patch.compile().unwrap();
+        let foreign = patch.compile().unwrap();
+        let (performance, reader, _) = Performance::new(48_000);
+        performance.sync_patch(&patch, 1);
+        let plan = performance.plan(&patch, &engine, 1).unwrap();
+        reader.publish(&engine, &plan, 1, 64);
+        assert_eq!(performance.snapshot()["modules"]["vca1"]["available"], true);
+        // Even reuse of the same frame must invalidate this packet: an engine
+        // cannot publish values using another engine's compiled handles.
+        reader.publish(&foreign, &plan, 1, 64);
+        let invalid = performance.snapshot();
+        for id in ["vca1", "vca2", "vcf1", "vcf2"] {
+            assert_eq!(invalid["modules"][id]["available"], false);
+            assert_eq!(invalid["modules"][id]["parameters"], json!({}));
+        }
+        performance.sync_patch(&patch, 2);
+        reader.publish(&engine, &plan, 1, 128);
+        assert_eq!(
+            performance.snapshot()["modules"]["vca1"]["available"],
+            false
+        );
+        let current = performance.plan(&patch, &engine, 2).unwrap();
+        reader.publish(&engine, &current, 2, 192);
+        let valid = performance.snapshot();
+        assert_eq!(valid["modules"]["vca1"]["available"], true);
+        assert_eq!(valid["modules"]["vca1"]["revision"], 2);
+        assert_eq!(valid["modules"]["vca1"]["frame"], 192);
+    }
+
+    #[test]
+    fn effective_parameter_publication_cannot_revive_retired_or_recreated_targets() {
+        let patch = effective_parameter_patch();
+        let engine = patch.compile().unwrap();
+        let (performance, reader, _) = Performance::new(48_000);
+        performance.sync_patch(&patch, 1);
+        let old = performance.plan(&patch, &engine, 1).unwrap();
+        reader.publish(&engine, &old, 1, 64);
+        let old_instance = performance.snapshot()["modules"]["vca1"]["instance"].clone();
+        performance.retire_modules(&["vca1".into(), "vcf1".into()]);
+        performance.sync_patch(&patch, 2);
+        reader.publish(&engine, &old, 2, 128);
+        let stale = performance.snapshot();
+        for id in ["vca1", "vcf1"] {
+            assert_eq!(stale["modules"][id]["available"], false);
+            assert_eq!(stale["modules"][id]["parameters"], json!({}));
+        }
+        assert_ne!(stale["modules"]["vca1"]["instance"], old_instance);
+        // A late compiler cannot reconstruct the old parameter epoch. Reject
+        // it; already-prepared old graphs above still exercise token fencing.
+        assert!(performance.plan(&patch, &engine, 1).is_err());
+        assert_eq!(
+            performance.snapshot()["modules"]["vca1"]["available"],
+            false
+        );
+        let replacement = patch.compile().unwrap();
+        let current = performance.plan(&patch, &replacement, 2).unwrap();
+        reader.publish(&replacement, &current, 2, 192);
+        assert_eq!(performance.snapshot()["modules"]["vcf1"]["available"], true);
+        let mut deleted = patch.clone();
+        deleted
+            .nodes
+            .retain(|node| node.id != "vca1" && node.id != "vcf1");
+        deleted.cables.clear();
+        deleted.output = Some("signal".into());
+        performance.sync_patch(&deleted, 3);
+        reader.publish(&engine, &old, 3, 256);
+        let after_delete = performance.snapshot();
+        assert!(after_delete["modules"].get("vca1").is_none());
+        assert!(after_delete["modules"].get("vcf1").is_none());
+    }
 
     #[test]
     fn merge_count_packets_clear_absent_invalid_and_foreign_fields_independently() {
@@ -2279,6 +3337,7 @@ mod tests {
             kind: ModuleKind::Merge,
             bypassed: false,
             action_epoch: 1,
+            parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
         };
         let options = [Some(0), Some(16), None, Some(1), Some(17), Some(u8::MAX)];
         for output in options {
@@ -2287,6 +3346,9 @@ mod tests {
                     meter.write(
                         entry.token,
                         ModuleSnapshot {
+                            rackmcp_sequence: None,
+                            listen: None,
+                            parameters: [None; MAX_PUBLISHED_PARAMETERS],
                             revision: 7,
                             frame: 101,
                             state: None,
@@ -2360,6 +3422,7 @@ mod tests {
             kind: ModuleKind::Merge,
             bypassed: false,
             action_epoch: 1,
+            parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
         };
         let counts = |frame: u64| match frame % 6 {
             0 => (Some(0), Some(16)),
@@ -2376,6 +3439,9 @@ mod tests {
                 writer_meter.write(
                     11 + frame % 2,
                     ModuleSnapshot {
+                        rackmcp_sequence: None,
+                        listen: None,
+                        parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: frame + 1,
                         frame,
                         state: None,
@@ -2437,6 +3503,7 @@ mod tests {
                         kind: ModuleKind::Merge,
                         bypassed: false,
                         action_epoch: 1,
+                        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
                     },
                 );
             }
@@ -2449,6 +3516,9 @@ mod tests {
                         shared.meters[slot].write(
                             slot as u64 + 11,
                             ModuleSnapshot {
+                                rackmcp_sequence: None,
+                                listen: None,
+                                parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 revision: frame + 1,
                                 frame,
                                 state: None,
@@ -2513,6 +3583,7 @@ mod tests {
             kind: ModuleKind::WavetableVco,
             bypassed: false,
             action_epoch: 1,
+            parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
         };
         let writer_meter = meter.clone();
         let writer = std::thread::spawn(move || {
@@ -2523,6 +3594,9 @@ mod tests {
                 writer_meter.write(
                     entry.token,
                     ModuleSnapshot {
+                        rackmcp_sequence: None,
+                        listen: None,
+                        parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: 1,
                         frame,
                         state: None,
@@ -2588,6 +3662,9 @@ mod tests {
                 meter.write(
                     entry.token,
                     ModuleSnapshot {
+                        rackmcp_sequence: None,
+                        listen: None,
+                        parameters: [None; MAX_PUBLISHED_PARAMETERS],
                         revision: 1,
                         frame: 2_001,
                         state: None,
@@ -2633,6 +3710,7 @@ mod tests {
                         },
                         bypassed: false,
                         action_epoch: 1,
+                        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
                     },
                 );
             }
@@ -2655,6 +3733,9 @@ mod tests {
                         shared.meters[slot].write(
                             slot as u64 + 11,
                             ModuleSnapshot {
+                                rackmcp_sequence: None,
+                                listen: None,
+                                parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 midi_learning: None,
                                 revision: 1,
                                 frame,
@@ -2732,6 +3813,7 @@ mod tests {
                         kind: ModuleKind::RandomValues,
                         bypassed: false,
                         action_epoch: 1,
+                        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
                     },
                 );
             }
@@ -2745,6 +3827,9 @@ mod tests {
                         shared.meters[slot].write(
                             slot as u64 + 11,
                             ModuleSnapshot {
+                                rackmcp_sequence: None,
+                                listen: None,
+                                parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 midi_learning: None,
                                 revision: 1,
                                 frame,
@@ -2805,6 +3890,7 @@ mod tests {
                         kind: ModuleKind::ShiftRegister,
                         bypassed: false,
                         action_epoch: 1,
+                        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
                     },
                 );
             }
@@ -2818,6 +3904,9 @@ mod tests {
                         shared.meters[slot].write(
                             slot as u64 + 11,
                             ModuleSnapshot {
+                                rackmcp_sequence: None,
+                                listen: None,
+                                parameters: [None; MAX_PUBLISHED_PARAMETERS],
                                 midi_learning: None,
                                 revision: 1,
                                 frame,

@@ -390,6 +390,8 @@ struct PreparedGraph {
     scope: ScopeSetup,
     modules: ModulePlan,
     revision: u64,
+    // Compiled on the control thread; callback rollback checks stay constant time.
+    contains_rackmcp_sequence: bool,
     port_lights: Option<PortLightProducer>,
     port_light_reader: Option<PortLightReader>,
     port_light_control: u64,
@@ -402,6 +404,7 @@ impl From<Engine> for PreparedGraph {
             scope: ScopeSetup::default(),
             modules: ModulePlan::default(),
             revision: 0,
+            contains_rackmcp_sequence: false,
             port_lights: None,
             port_light_reader: None,
             port_light_control: 1,
@@ -485,6 +488,10 @@ fn prepare_graph_for_control(
         engine,
         modules: ModulePlan::default(),
         revision: 0,
+        contains_rackmcp_sequence: patch
+            .nodes
+            .iter()
+            .any(|node| matches!(node.kind.as_str(), "rackmcp_sequencer" | "rackmcp_listen")),
         scope: ScopeSetup {
             generation,
             enabled: binding.is_some(),
@@ -1049,12 +1056,24 @@ struct Exchange<T> {
 }
 
 impl<T> Exchange<T> {
+    #[cfg(test)]
     fn poll(&mut self) -> bool {
+        self.poll_if(|_, _| true)
+    }
+
+    /// Inspect at most one incoming graph per callback. Rejected graphs share
+    /// the retirement path with completed donors and stay owned if it is full.
+    fn poll_if(&mut self, accept: impl FnOnce(&T, &T) -> bool) -> bool {
         self.recycle();
         if self.waiting_retirement.is_some() || self.previous.is_some() {
             return false;
         }
         if let Ok(next) = self.incoming.pop() {
+            if !accept(&self.active, &next) {
+                self.waiting_retirement = Some(next);
+                self.recycle();
+                return false;
+            }
             self.previous = Some(std::mem::replace(&mut self.active, next));
             true
         } else {
@@ -1125,6 +1144,8 @@ struct Callback {
     port_light_control: u64,
     execution_cancel: u64,
     execution_frozen: bool,
+    // Retained even when an allowed non-sequence graph rolls active backward.
+    graph_revision_high_water: u64,
 }
 
 impl Callback {
@@ -1169,6 +1190,7 @@ impl Callback {
             port_light_control,
             execution_cancel: 0,
             execution_frozen: false,
+            graph_revision_high_water: 0,
         }
     }
 
@@ -1187,6 +1209,11 @@ impl Callback {
             self.performance
                 .plan(patch, &self.graphs.active.engine, revision)?;
         self.graphs.active.revision = revision;
+        self.graph_revision_high_water = self.graph_revision_high_water.max(revision);
+        self.graphs.active.contains_rackmcp_sequence = patch
+            .nodes
+            .iter()
+            .any(|node| matches!(node.kind.as_str(), "rackmcp_sequencer" | "rackmcp_listen"));
         Ok(())
     }
 
@@ -1213,6 +1240,7 @@ impl Callback {
         // Waiting for a runnable replacement is a state/publication freeze,
         // not an input cancellation. New actions already target that revision.
         if self.module_events.document_suspended() {
+            self.module_events.invalidate_listen();
             let active = &mut self.graphs.active;
             self.module_events
                 .suspend(&mut active.engine, &mut active.modules);
@@ -1235,7 +1263,17 @@ impl Callback {
     fn render_inner<T: OutputSample>(&mut self, output: &mut [T], channels: usize) -> (bool, bool) {
         let control = self.shared.port_light_control.load(Ordering::SeqCst);
         let control_changed = self.port_light_control != control;
-        let adopted = self.graphs.poll();
+        self.graph_revision_high_water = self
+            .graph_revision_high_water
+            .max(self.graphs.active.revision);
+        let revision_floor = self.graph_revision_high_water;
+        let adopted = self.graphs.poll_if(|active, next| {
+            next.revision >= revision_floor
+                || !(active.contains_rackmcp_sequence || next.contains_rackmcp_sequence)
+        });
+        self.graph_revision_high_water = self
+            .graph_revision_high_water
+            .max(self.graphs.active.revision);
         // Align a queued graph before adoption; steady enabled adoption may
         // inherit decay, while a newly acknowledged epoch is reset below.
         self.graphs
@@ -1249,6 +1287,18 @@ impl Callback {
                     &mut active.engine,
                     &previous.modules,
                     &mut previous.engine,
+                    &active.host_lifecycle.resets,
+                );
+                active.modules.inherit_parameters_with_host_exclusions(
+                    &mut active.engine,
+                    &previous.modules,
+                    &previous.engine,
+                    &active.host_lifecycle.resets,
+                );
+                active.modules.reload_sequences_with_host_exclusions(
+                    &mut active.engine,
+                    &previous.modules,
+                    &previous.engine,
                     &active.host_lifecycle.resets,
                 );
                 for (slot, binding) in active.modules.bindings.iter_mut().enumerate() {
@@ -1430,15 +1480,15 @@ impl Callback {
                 });
                 let count = if one_frame { 1 } else { count };
                 let active = &mut self.graphs.active;
-                if active.scope.enabled {
-                    active.engine.process_audio_block_with_taps(
-                        &mut current[..count],
-                        &active.scope.taps,
-                        &mut taps[..count],
-                    );
-                } else {
-                    active.engine.process_audio_block(&mut current[..count]);
-                }
+                self.module_events.process_audio(
+                    &mut active.engine,
+                    &active.modules,
+                    &mut current[..count],
+                    active
+                        .scope
+                        .enabled
+                        .then_some((&active.scope.taps, &mut taps[..count])),
+                );
                 let active_stereo = self.graphs.active.output_channels() == 2;
                 let previous_stereo = self.frozen_previous.map_or_else(
                     || {
@@ -1866,6 +1916,7 @@ mod tests {
         let mut patch = Patch::default();
         patch.nodes.push(openpatch_core::Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             bypassed: false,
             id: "dc".into(),
@@ -1972,6 +2023,10 @@ mod tests {
         let mut callback =
             Callback::new(patch.compile().unwrap(), incoming, retired, shared, 48000);
         callback.graphs.active.prepare_port_lights(patch).unwrap();
+        callback.graphs.active.contains_rackmcp_sequence = patch
+            .nodes
+            .iter()
+            .any(|node| matches!(node.kind.as_str(), "rackmcp_sequencer" | "rackmcp_listen"));
         callback.gain.value = 1.0;
         (callback, updates, disposal)
     }
@@ -6037,6 +6092,13 @@ mod tests {
     include!("midi_gate_host_tests.rs");
     include!("stock_vcf_audio_tests.rs");
     include!("stock_vca_audio_tests.rs");
+    include!("live_parameter_audio_tests.rs");
+    include!("sequence_load_audio_tests.rs");
+    include!("rackmcp_transport_audio_tests.rs");
+    include!("listen_audio_tests.rs");
+    include!("listen_session_tests.rs");
+    include!("rackmcp_transport_session_tests.rs");
+    include!("imported_sequence_audio_tests.rs");
     include!("stock_delay_audio_tests.rs");
     include!("stock_lfo_audio_tests.rs");
     include!("stock_vco_audio_tests.rs");

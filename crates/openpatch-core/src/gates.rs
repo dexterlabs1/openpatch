@@ -359,6 +359,7 @@ mod tests {
         Gates::build(
             &Node {
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 id: "g".into(),
                 kind: "gates".into(),

@@ -274,6 +274,7 @@ mod tests {
                     .collect::<BTreeMap<_, _>>(),
                 bypassed: false,
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
             },
             rate,

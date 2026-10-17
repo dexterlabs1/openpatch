@@ -1,0 +1,85 @@
+{
+  "status": "Implemented, locally validated and installed 0.2.7 build9; one family PR CI pending; broader VCV parity remains incomplete",
+  "date": "2026-10-17",
+  "source_contract": "../RACKMCP_CONTROL_CONTRACT.md",
+  "upstream_rackmcp_pin": "285e84c5ff2d3ecef25890da07f578af6a0c5ca6",
+  "native_contract": {
+    "bridge": "Distinct host-only panel; one actual app-owned listener. Real admitted same-user sockets, restart generations, listener failure discovery withdrawal, native lifecycle actions; no start on import/removal; no Rack HMAC/TCP/lease alias.",
+    "save": "One shared authored document/layout/source-reference plus durable-state baseline; coherent effective-value persistence, generation-fenced captured completion and active metadata; concurrent edits remain dirty. Snapshot exports do not clean the active project.",
+    "sequencer": "Real active/pending pattern, clock/playhead and anchored pattern/now-wrap/seek controls;100ms observation,500ms/revision fences, no invented time or history edits."
+  },
+  "validation": {
+    "rust": {
+      "passed": 2616,
+      "ignored": 17,
+      "logs": [
+        "control-family-cli-lib-002.log",
+        "control-family-workspace-rest-001.log",
+        "control-family-cli-integration-001.log",
+        "control-family-cli-doc-001.log"
+      ],
+      "scope": "Complete local workspace lib/bin/integration/doc suites executed in serial Cargo groups after correcting the two-window test fixtures."
+    },
+    "python_mcp": {
+      "passed": 123,
+      "log": "control-family-python-001.log"
+    },
+    "strict_clippy": "bridge-clippy-002.log",
+    "formatting": "bridge-fmt-check-003.log",
+    "actual_user_fixture": {
+      "sha256": "4c83b2d697cc056b4118f321cddfa3be56257ed789ecba90c47421ee28e0cbf4",
+      "modules": 55,
+      "cables": 83,
+      "mapped": 33,
+      "unresolved": 22,
+      "original_file_unchanged": true,
+      "logs": [
+        "bridge-real-import-001.log",
+        "bridge-native-real-import-001.log"
+      ]
+    },
+    "native_save_races": "bridge-native-save-001.log:3pass; real staged disk publication with concurrent edits/replacement and coherent effective/durable state",
+    "rendering": "Real shared rack/browser inventory guard86kinds at3scales passed in complete desktop suite; actual Bridge and live Sequencer captures reviewed",
+    "retained_failures": [
+      "bridge-check-001: missing detached Session fields; corrected",
+      "bridge-check-002: missing shared saved helpers exports; corrected",
+      "bridge-save-control-001: missing tempfile dev dependency; corrected",
+      "bridge-desktop-002: details target below physical panel; corrected",
+      "control-family-workspace-001: old two-window fixtures reused one Session, violating new one-listener-per-session authority; fixtures use separate window Sessions, and new listener tests share the existing registry serial guard"
+    ]
+  },
+  "artifact": {
+    "version": "0.2.7",
+    "build": "9",
+    "architecture": "arm64",
+    "catalog_kinds": 86,
+    "studio_mixer_tags": [
+      "Custom",
+      "Mixing"
+    ],
+    "ferrofluid_shader_embedded_sha256": "badec12a611bfc4c855e84d3178f30a2fb33e8f877986a665407fd0c18f3c9ba",
+    "binaries": {
+      "openpatch-desktop": "0d8b56d70fdbb62e715deea3fc1b46fa08096225fc89a2af2c982a4bddfb4471",
+      "openpatch": "6c1bbc0db7e317870a47e37bf6dadaf6b89025f6f9ce553e39dd63118fe2fc4a"
+    },
+    "deep_strict_signature": true,
+    "icon_and_licenses": true,
+    "release_stdio_smoke": "release-027-smoke-001.log:4pass",
+    "scope": "Artifact integrity, actual bundled CLI operations and CPU/shared-host tests; no native-window, physical-device, GPU-driver or hardware qualification",
+    "corrected_check_assumption": "Ferrofluid is visualizer mode3, not a catalog module kind. Verify actual full embedded shader and mode label; Stock Process is a source port, not an original Custom category module."
+  },
+  "installed": {
+    "path": "~/Applications/OpenPatch.app",
+    "version": "0.2.7",
+    "build": "9",
+    "hashes_and_signature_verified": true,
+    "old_installed_and_extracted_bundles_removed": true,
+    "settings_and_user_patches": "not modified"
+  },
+  "limitations": [
+    "No whole-Rack scheduler/transport protocol, arbitrary existing binary, full user-patch audio or physical hardware equivalence.",
+    "Original source numerical proofs remain scoped to their frozen checkpoints; this host-only milestone does not regenerate or claim byte equality of the whole current Core manifest.",
+    "Native-window, physical audio device and GPU-driver tests were not run.",
+    "Core Notes/audio host and third-party modules remain unresolved; next strict Core Notes slice is audited but intentionally held out of this installation."
+  ]
+}

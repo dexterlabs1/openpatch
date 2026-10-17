@@ -280,6 +280,7 @@ mod tests {
     fn node(params: &[(&str, f32)]) -> Node {
         Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             id: "v".into(),
             kind: "stock_vcf".into(),

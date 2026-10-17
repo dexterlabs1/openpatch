@@ -1,7 +1,9 @@
 // Import review stays in the workspace; it never opens an assistant or starts playback implicitly.
 impl OpenPatch {
     fn import_dependencies_ui(&mut self, ctx: &egui::Context) {
-        use openpatch::project_document::{MappingFidelity, PlaybackMode, PortDirection};
+        use openpatch::project_document::{
+            AutomationOmissionReason, MappingFidelity, PlaybackMode, PortDirection,
+        };
         if self.project.sources.is_empty() {
             return;
         }
@@ -32,18 +34,35 @@ impl OpenPatch {
             .try_lock()
             .ok()
             .map(|session| session.playback_mode());
-        let suspended = mode == Some(PlaybackMode::Exact) && !dependencies.is_empty();
+        let automation = match self.project.automation_omissions() {
+            Ok(automation) => automation,
+            Err(error) => {
+                self.status = format!("Invalid imported automation: {error}");
+                return;
+            }
+        };
+        let suspended = mode == Some(PlaybackMode::Exact)
+            && (!dependencies.is_empty() || !automation.is_empty());
+        let automation_count = format!(
+            "{} omitted automation {}",
+            automation.len(),
+            if automation.len() == 1 {
+                "lane"
+            } else {
+                "lanes"
+            }
+        );
         let mut command: Option<(&str, Value)> = None;
         egui::TopBottomPanel::bottom("import-status").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label(if suspended {
                     format!(
-                        "Playback suspended · {} unresolved modules",
+                        "Playback suspended · {} unresolved modules · {automation_count}",
                         dependencies.len()
                     )
                 } else {
                     format!(
-                        "Imported project · {} unresolved modules",
+                        "Imported project · {} unresolved modules · {automation_count}",
                         dependencies.len()
                     )
                 });
@@ -63,8 +82,8 @@ impl OpenPatch {
             egui::SidePanel::right("import-dependencies").default_width(290.).min_width(240.).resizable(true).show(ctx,|ui| {
                 ui.heading("Import review");
                 ui.label(format!("{} native · {} unresolved",self.patch.nodes.len(),dependencies.len()));
-                if suspended {ui.label("Exact playback waits for every dependency to be resolved.");}
-                if !dependencies.is_empty() {ui.label("Partial playback omits these modules and their routes. Downstream normaling and sound can change.");}
+                if suspended {ui.label("Exact playback waits for every module and automation target to be resolved.");}
+                if !dependencies.is_empty() || !automation.is_empty() {ui.label("Partial playback omits unresolved modules, their routes and unbound automation. Sound can change.");}
                 ui.horizontal(|ui| {
                     if ui.selectable_label(mode==Some(PlaybackMode::Exact),"Exact").clicked() {command=Some(("set_document_playback",json!({"mode":"exact"})));}
                     if ui.selectable_label(mode==Some(PlaybackMode::Partial),"Enable partial").clicked() {command=Some(("set_document_playback",json!({"mode":"partial"})));}
@@ -82,6 +101,20 @@ impl OpenPatch {
                 });
                 let substitutions=self.project.graph.nodes.iter().filter(|node|matches!(node,DocumentNode::Native{source:Some(source),..} if source.mapping.as_ref().is_some_and(|mapping|matches!(mapping.fidelity,MappingFidelity::UserSubstitution|MappingFidelity::MusicalRole)))).count();
                 if substitutions>0 {ui.colored_label(Color32::from_rgb(201,159,92),format!("{substitutions} musical substitutions — source equivalence is not claimed."));}
+                if !automation.is_empty() {
+                    ui.separator();
+                    ui.label(&automation_count);
+                    egui::ScrollArea::vertical().id_salt("omitted-import-automation").max_height(140.).show(ui, |ui| {
+                        for lane in &automation {
+                            let reason = match lane.reason {
+                                AutomationOmissionReason::UnboundLane => "no qualified control binding",
+                                AutomationOmissionReason::MissingTarget => "target removed",
+                                AutomationOmissionReason::UnresolvedTarget => "target unresolved",
+                            };
+                            ui.label(format!("{} → source {} / control {}: {reason}", lane.sequencer_id, lane.source_module_id, lane.source_param_id));
+                        }
+                    });
+                }
                 ui.separator();
                 egui::ScrollArea::vertical().id_salt("dependency-list").max_height(150.).show(ui,|ui| {
                     for (id,label,_,_) in &dependencies {

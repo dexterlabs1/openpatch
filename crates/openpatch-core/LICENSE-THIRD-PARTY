@@ -1,3 +1,25 @@
+RackMCP 2.0.0 sequencing and Listen source adaptations
+=====================================================
+
+Covered OpenPatch files: src/rackmcp_sequence/{mod.rs,engine.rs,adapter.rs},
+src/rackmcp_listen.rs, src/rackmcp_listen_analysis.rs and
+../openpatch-desktop/src/listen_capture.rs
+Adapted from src/core/sequencer.{hpp,cpp}, src/core/plan.cpp and
+src/rackside/SequencerModule.{hpp,cpp}, src/rackside/ListenModule.{hpp,cpp},
+src/rackside/ListenService.cpp and src/core/listen_analysis.{hpp,cpp},
+by Zachary Scheffler.
+Source revision: 285e84c5ff2d3ecef25890da07f578af6a0c5ca6
+https://github.com/dexterlabs1/vcv-rack-mcp/tree/285e84c5ff2d3ecef25890da07f578af6a0c5ca6/plugins/RackMCP
+
+License: GPL-3.0-or-later, as declared in the pinned plugin.json and LICENSE.
+These are modified Rust adaptations with native bounded-state compilation and
+documented finite-input safety restrictions, not the original C++ files.
+Listen uses native host-owned capture storage, acknowledged reuse and lifecycle
+fences; its finite-analysis restrictions and host corrections are documented.
+No
+RackMCP panel artwork or logo is included. See LICENSE-GPL-3.0.txt for the full
+license and the combined-binary licensing terms below.
+
 Fundamental 2.6.4 VCO and VCF source adaptations
 ==============================================
 

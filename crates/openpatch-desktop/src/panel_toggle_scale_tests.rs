@@ -35,6 +35,7 @@ fn saved_mode_labels_stay_single_line_inside_their_scaled_controls() {
                 id: kind.into(),
                 kind: kind.into(),
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 bypassed: false,
                 params: Default::default(),

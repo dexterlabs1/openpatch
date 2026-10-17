@@ -1,0 +1,52 @@
+{
+  "status": "Native assignment/history and callback handoff implemented for current VCA/filter capabilities; source sequencer adapter/dispatch remains open",
+  "platform": "macOS ARM headless; no native device/window qualification",
+  "capabilities": [
+    "stock_vca.level",
+    "rack264_vcf.frequency"
+  ],
+  "behavior": [
+    "Explicit equal assignments and grouped/batched gestures retain meaning",
+    "Undo restores affected effective fields without restoring unrelated old values",
+    "Presets, initialization, full loads, deletion/recreation use explicit lifecycle intent",
+    "Shared Session actual callback edit\u2192undo\u2192redo\u2192unrelated edit\u2192save\u2192fresh reopen preserves effective values and rendered audio",
+    "Atomic backend patch/intent synchronization and frozen prepared epochs survive skipped plans",
+    "Cross-rate, host reset, silent suspension/resume and retirement pressure preserve authority without callback heap activity",
+    "Late stale parameter plans fail explicitly; already-prepared plans remain valid"
+  ],
+  "validation": {
+    "control_tests_passed": 280,
+    "performance_tests_passed": 26,
+    "actual_callback_parameter_cases_passed": 10,
+    "strict_core_cli_desktop_all_target_clippy": "passed",
+    "formatting": "passed"
+  },
+  "evidence": [
+    "parameter-intent-control-002.log",
+    "parameter-intent-desktop-004.log (37passed; one obsolete late-stale fixture corrected and verified below)",
+    "parameter-intent-performance-005.log (26passed including corrected stale-compilation contract)",
+    "parameter-intent-suspension-006.log",
+    "parameter-intent-clippy-002.log",
+    "parameter-intent-fmt-003.log"
+  ],
+  "preserved_failures": [
+    "parameter-intent-audio-002.log: scratch borrow conflict corrected before execution",
+    "parameter-intent-audio-003.log: removal undo gain readback passed; audio fixture clipped 5V\u00d7.25 at device output; smaller input fixed fixture",
+    "parameter-intent-desktop-004.log: outdated late-stale-plan fixture expected compilation; current policy explicitly rejects; updated property still covers already-prepared stale-token publication"
+  ],
+  "source_sha256": {
+    "crates/openpatch/src/control/parameters.rs": "ac393f2e9058bd3cc65240280dffbb8d1eebfc8beefb20efce71b6445b12997a",
+    "crates/openpatch/src/control/running.rs": "6d50982b52e7e04c1234d9d4d56cee25437ec8c956edbb1a6db359cba9f48474",
+    "crates/openpatch/src/control.rs": "fbf4b2f771a8dc36633376c83fbe7b1b77e470efccf3684485bfc94fb8458a9c",
+    "crates/openpatch/src/control/document.rs": "3db8823320d96fe034e987585b981c76d8cec0c9a1a3902c75fddb9f5af60425",
+    "crates/openpatch-desktop/src/performance.rs": "67f201905efa1762c90898f50ef8f36e9f7c671265ae8611de33c3fe9382c630",
+    "crates/openpatch-desktop/src/audio.rs": "2a0eb5226ad490efe353e2589bac607be2c479501ed24b3aaf85d334b18d88bc"
+  },
+  "remaining": [
+    "Dedicated RackMCP typed state and adapter",
+    "Source-provenance target binding, 32-sample writes/cache/ownership masks",
+    "Real Bridge status and armed Listen capture",
+    "Shared panels/import and actual musical excerpt; one milestone macOS CI",
+    "No new catalog/import support, installation or whole-patch equivalence claimed"
+  ]
+}

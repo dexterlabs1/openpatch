@@ -44,6 +44,114 @@ unsafe impl GlobalAlloc for TrackingAllocator {
 static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 
 #[test]
+fn live_parameters_write_render_and_cross_rate_handoff_use_no_heap() {
+    let mut patch: openpatch_core::Patch = serde_json::from_value(serde_json::json!({
+        "version":2,"sample_rate":48000,
+        "nodes":[{"id":"source","kind":"poly_constant","params":{"v1":5}},
+                 {"id":"vca","kind":"stock_vca","params":{}},
+                 {"id":"filter","kind":"rack264_vcf","params":{}}],
+        "cables":[{"from":"source","to":"vca","input":"signal"},
+                  {"from":"vca","to":"filter","input":"signal"}],
+        "output":"filter","output_port":"lowpass"
+    }))
+    .unwrap();
+    let mut a = patch.compile().unwrap();
+    let gain = a.resolve_parameter("vca", "level").unwrap();
+    let cutoff = a.resolve_parameter("filter", "frequency").unwrap();
+    patch.sample_rate = 96000;
+    let mut b = patch.compile().unwrap();
+    let receiving_gain = b.resolve_parameter("vca", "level").unwrap();
+    let receiving_cutoff = b.resolve_parameter("filter", "frequency").unwrap();
+    let mut out = [openpatch_core::PortFrame::default(); 1];
+    ALLOCATIONS.with(|n| n.set(0));
+    DEALLOCATIONS.with(|n| n.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    for frame in 0..4096 {
+        if frame % 32 == 0 {
+            a.set_parameter_value(gain, (frame % 128) as f32 / 128.0);
+            a.set_parameter_value(cutoff, 0.1 + (frame % 127) as f32 / 200.0);
+        }
+        a.process_poly_block(&mut out);
+        b.adopt_state_from(&a);
+        b.inherit_parameter_values(&a, &[], &[]);
+        b.parameter_value(receiving_gain);
+        b.parameter_descriptor(receiving_cutoff);
+        b.process_poly_block(&mut out);
+    }
+    // Explicit assignment/fresh incarnation filtering is stack-only as well.
+    b.inherit_parameter_values(&a, &[receiving_gain.module()], &[receiving_cutoff]);
+    TRACKING.with(|enabled| enabled.set(false));
+    assert!(out[0].values.iter().all(|v| v.is_finite()));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+}
+
+#[test]
+fn rackmcp_sequence_transport_data_adoption_and_lanes_use_no_heap() {
+    use openpatch_core::rackmcp_sequence::{Player, SequenceData};
+    let first: SequenceData = serde_json::from_value(serde_json::json!({
+        "patterns":[{"name":"A","length":2,"tracks":[{"voices":4,"steps":[
+            {"step":0,"notes":[0,4,7,12],"ratchet":8,"slide":true,"accent":true},
+            {"step":1,"notes":[12,7,4,0],"ratchet":4}]}]},
+            {"name":"B","length":1,"tracks":[{"steps":[{"step":0}]}]}],
+        "lanes":[{"moduleId":"123","paramId":0,"mode":"raw","points":[
+            {"bar":0,"value":-5},{"bar":1,"value":5,"curve":"easeInOut"}]}]
+    }))
+    .unwrap();
+    let mut second = first.clone();
+    second.selected_pattern = Some("B".into());
+    let a = first.compile().unwrap();
+    let b = second.compile().unwrap();
+    let mut player = Player::default();
+    let mut sum = 0.0;
+    ALLOCATIONS.with(|count| count.set(0));
+    DEALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    player.adopt_data(&a);
+    for frame in 0..4096 {
+        if frame == 128 {
+            player.adopt_data(&b);
+        }
+        if frame == 512 {
+            player.reset();
+        }
+        if frame == 1024 {
+            player.seek(2.25);
+        }
+        if frame == 2048 {
+            player.request_pattern(&a, 0, true);
+        }
+        let data = if frame < 128 { &a } else { &b };
+        let out = player.process(
+            data,
+            48000.0,
+            120.0,
+            62.5,
+            frame % 127 != 0,
+            true,
+            frame % 97 == 0,
+        );
+        sum += out.pitch[0][0]
+            + data.lanes()[0]
+                .as_ref()
+                .unwrap()
+                .value_at(player.position().4 / 4.0);
+    }
+    TRACKING.with(|enabled| enabled.set(false));
+    assert!(sum.is_finite());
+    assert_eq!(
+        ALLOCATIONS.with(Cell::get),
+        0,
+        "sequencer primitives allocated"
+    );
+    assert_eq!(
+        DEALLOCATIONS.with(Cell::get),
+        0,
+        "sequencer primitives deallocated"
+    );
+}
+
+#[test]
 fn process_block_allocates_nothing_even_on_first_callback() {
     let mut engine = openpatch_core::demo_patch().compile().unwrap();
     let mut samples = [0.0; 1025];
@@ -613,4 +721,135 @@ fn stock_vca_first_processing_taps_lights_adoption_and_reset_allocate_nothing() 
     assert!(samples[0][0].active && samples[0][1].active);
     assert_eq!(samples[0][0].value, 0.125);
     assert_eq!(samples[0][1].value, 2.0);
+}
+
+#[test]
+fn rackmcp_native_automation_render_and_graph_handoff_use_no_heap() {
+    use openpatch_core::{Patch, PortFrame};
+    use serde_json::json;
+    let mut patch: Patch = serde_json::from_value(json!({
+        "version":2,"sample_rate":48000,
+        "nodes":[
+            {"id":"seq","kind":"rackmcp_sequencer","params":{"running":1},
+             "rackmcp_sequence":{"data":{"patterns":[{"name":"A","length":2,
+                "tracks":[{"voices":4,"steps":[{"step":0,"notes":[0,4,7,12],"ratchet":8,"accent":true}]}]}],
+                "lanes":[{"moduleId":"42","paramId":0,"points":[{"bar":0,"value":0.25},{"bar":1,"value":1}]}]},
+                "targets":[{"source_module_id":"42","source_param_id":0,"module":"vca","parameter":"level"}]}},
+            {"id":"source","kind":"poly_constant","params":{"v1":0.5}},
+            {"id":"vca","kind":"stock_vca","params":{}}],
+        "cables":[{"from":"source","to":"vca","input":"signal"}],
+        "output":"vca"
+    })).unwrap();
+    let mut first = patch.compile().unwrap();
+    let first_sequence = first.resolve_module_state("seq").unwrap();
+    let mut second = patch.compile().unwrap();
+    let second_sequence = second.resolve_module_state("seq").unwrap();
+    patch.sample_rate = 96000;
+    patch.nodes.swap(0, 2);
+    let mut third = patch.compile().unwrap();
+    let fresh = third.resolve_parameter("vca", "level").unwrap().module();
+    patch.nodes[2]
+        .rackmcp_sequence
+        .as_mut()
+        .unwrap()
+        .data
+        .selected_pattern = Some("A".into());
+    let mut loaded = patch.compile().unwrap();
+    let mut output = [PortFrame::default(); 37];
+    ALLOCATIONS.with(|count| count.set(0));
+    DEALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    for _ in 0..32 {
+        first.process_poly_block(&mut output);
+    }
+    second.handoff_state_from_excluding_routes(&mut first, &[], &[]);
+    second.inherit_parameter_values(&first, &[], &[]);
+    assert!(second.rackmcp_sequence_data_matches(second_sequence, &first, first_sequence));
+    assert!(second.reload_rackmcp_sequence_data(second_sequence));
+    for _ in 0..32 {
+        second.process_poly_block(&mut output);
+    }
+    third.handoff_state_from_excluding_routes(&mut second, &[fresh], &[]);
+    third.inherit_parameter_values(&second, &[fresh], &[]);
+    for _ in 0..32 {
+        third.process_poly_block(&mut output);
+    }
+    loaded.adopt_state_from(&third);
+    loaded.inherit_parameter_values(&third, &[], &[]);
+    for _ in 0..32 {
+        loaded.process_poly_block(&mut output);
+    }
+    TRACKING.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+    assert!(output
+        .iter()
+        .all(|frame| frame.values[0].is_finite() && frame.values[0] > 0.0));
+}
+
+#[test]
+fn rackmcp_exclusive_claims_vacancies_and_missing_target_handoff_use_no_heap() {
+    use openpatch_core::{Patch, PortFrame};
+    use serde_json::json;
+    let sequence = |id: &str, value: f32| {
+        json!({
+        "id":id,"kind":"rackmcp_sequencer","params":{"running":1},
+        "rackmcp_sequence":{"data":{"patterns":[{"name":"A","length":16}],
+            "lanes":[{"moduleId":"42","paramId":0,"points":[{"bar":0,"value":value}]}]},
+            "targets":[{"source_module_id":"42","source_param_id":0,
+                "module":"vca","parameter":"level"}]}})
+    };
+    let mut patch: Patch = serde_json::from_value(json!({
+        "version":2,"sample_rate":48000,
+        "nodes":[sequence("A",0.25),sequence("B",0.75),
+            {"id":"vca","kind":"stock_vca","params":{"level":0.9}}],
+        "output":"A","output_port":"pitch1"}))
+    .unwrap();
+    let mut original = patch.compile().unwrap();
+    let a = original.resolve_module_state("A").unwrap();
+    let b = original.resolve_module_state("B").unwrap();
+    let gain = original.resolve_parameter("vca", "level").unwrap();
+    patch.nodes.swap(0, 1);
+    patch.sample_rate = 96000;
+    let mut reordered = patch.compile().unwrap();
+    let reordered_b = reordered.resolve_module_state("B").unwrap();
+    patch.nodes.retain(|node| node.id != "B");
+    let mut deleted_winner = patch.compile().unwrap();
+    let missing_target = patch.nodes.pop().unwrap();
+    let mut missing = patch.compile().unwrap();
+    patch.nodes.push(missing_target);
+    let mut recreated = patch.compile().unwrap();
+    let recreated_a = recreated.resolve_module_state("A").unwrap();
+    let recreated_gain = recreated.resolve_parameter("vca", "level").unwrap();
+    let mut output = [PortFrame::default(); 32];
+    ALLOCATIONS.with(|count| count.set(0));
+    DEALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    original.process_poly_block(&mut output);
+    original.set_parameter_value(gain, 0.6);
+    original.claim_rackmcp_sequence_targets(a);
+    original.process_poly_block(&mut output);
+    original.reload_rackmcp_sequence_data(b);
+    original.process_poly_block(&mut output);
+    reordered.handoff_state_from_excluding_routes(&mut original, &[], &[]);
+    reordered.inherit_parameter_values(&original, &[], &[]);
+    reordered.reload_rackmcp_sequence_data(reordered_b);
+    reordered.process_poly_block(&mut output);
+    deleted_winner.adopt_state_from(&reordered);
+    deleted_winner.inherit_parameter_values(&reordered, &[], &[]);
+    deleted_winner.process_poly_block(&mut output);
+    missing.adopt_state_from(&deleted_winner);
+    missing.process_poly_block(&mut output);
+    recreated.adopt_state_from(&missing);
+    recreated.process_poly_block(&mut output);
+    let vacant_value = recreated.parameter_value(recreated_gain);
+    recreated.claim_rackmcp_sequence_targets(recreated_a);
+    recreated.reload_rackmcp_sequence_data(recreated_a);
+    recreated.process_poly_block(&mut output);
+    let claimed_value = recreated.parameter_value(recreated_gain);
+    TRACKING.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(vacant_value, Some(0.9));
+    assert_eq!(claimed_value, Some(0.25));
 }

@@ -11,6 +11,7 @@ fn source(id: &str, values: &[f32]) -> Node {
     }
     Node {
         content: None,
+        rackmcp_sequence: None,
         score: None,
         id: id.into(),
         kind: "poly_constant".into(),
@@ -35,6 +36,7 @@ fn target(kind: &str, bypassed: bool, edited: bool) -> Node {
     };
     Node {
         content: None,
+        rackmcp_sequence: None,
         score: None,
         id: "circuit".into(),
         kind: kind.into(),

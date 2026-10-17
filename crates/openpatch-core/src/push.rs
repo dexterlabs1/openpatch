@@ -230,6 +230,7 @@ mod tests {
         Push::build(
             &Node {
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 id: "p".into(),
                 kind: "push".into(),

@@ -8,13 +8,17 @@ The base workflow is merged through [PR #30](https://github.com/dexterlabs1/open
 
 1. Open a `.vcv` file from the workspace. OpenPatch reads JSON, Zstandard JSON or a Zstandard tar archive without extracting files to disk. The original file is read-only.
 2. Review the native/unresolved counts and click a placeholder to inspect its dependency. Source-only routes are dashed and carry no invented signal indication.
-3. Exact playback stays suspended while unresolved modules remain. Explicit partial playback runs the supported subgraph and omits unresolved modules and their incident routes. This can change downstream normaling and sound. Select a native monitor output if the source's audio interface is unresolved.
+3. Exact playback stays suspended while unresolved modules or unbound imported automation remain. Explicit partial playback runs the supported subgraph and reports omitted modules, routes and automation lanes. This can change downstream normaling and sound. Select a native monitor output if the source's audio interface is unresolved.
 4. Repair a dependency by explicitly selecting a native substitute and mapping its observed source ports, or remove its placeholder and routes. Each action is undoable. A musical substitution is labeled as such and retains the original source; it is not a claim of source or hardware equivalence.
 5. Save as a new `.openpatch` project. Original source JSON bytes, unknown fields, source module/cable identities and assets remain in the portable document. Reopening defaults to Exact rather than silently retaining partial permission.
 
 Imports preserve the source row/order and fit the actual native panel widths with spacing. The original source coordinates remain immutable. Saved `.openpatch` projects preserve their authored layout. Camera changes are saved without adding undo steps; module moves share ordinary graph history. A pending host placement blocks a full MCP save until the visible arrangement is finalized.
 
 Portable project JSON from MCP can also be opened in the desktop. Legacy native patch JSON and its layout sidecar remain supported. A legacy patch-only export/replacement refuses to discard an imported project's source data.
+
+Exact/Partial describe dependency omissions, not whole-patch sonic or hardware
+equivalence. The inspector also shows musical substitutions and declared host
+corrections.
 
 ## Supported source identities
 
@@ -37,7 +41,26 @@ The version-specific VCO preserves the source semitone knob, curved waveforms an
 
 VCF starts previous-input history at zero because the upstream constructor leaves it uninitialized; undefined C++ cold-start equivalence is unclaimed. Its deterministic module-local noise stream intentionally differs from Rack's shared process-global stream. The import report discloses these limits. [Pinned comparison method and evidence](../scripts/rack264_voice_reference/README.md) cover 45 VCO cases, 78 VCF cases and ten genuine loading/reset cases; they do not establish physical hardware accuracy or whole-patch equivalence. The source-adapted processors carry GPL-3.0-or-later notices; original OpenPatch code remains MIT.
 
-Third-party plugins, RackMCP sequencers and Core audio interfaces still require additional mappings or an explicit substitute. Existing VCV binaries are not hosted by this importer.
+The milestone branch additionally maps **RackMCP Sequencer 2.0.0** to
+`rackmcp_sequencer`, using the pinned source
+`285e84c5ff2d3ecef25890da07f578af6a0c5ca6`. It preserves source patterns, voices,
+steps and all automation lanes. Native bindings cover the two qualified VCA/filter
+controls above; unsupported targets remain explicitly unbound. Its mapping is
+labeled a musical role because native scheduling and healthy repeated rebinding
+are deliberate host corrections. [Contract and limits](RACKMCP_SEQUENCE_CONTRACT.md#source-import-and-automation-authority).
+
+`rackmcp_transport` controls imported sequencers through the live callback queue;
+`inspect_rackmcp_sequence` reports actual transport/status or explicit unavailable.
+Saved native state captures desired selection and effective running without
+rewriting the retained original VCV package. [Transport and persistence](RACKMCP_SEQUENCE_CONTRACT.md#live-transport-and-saved-selection).
+
+Imported automation checks the exact source package, original numeric target ID,
+registered mapping and native control. Reusing a referenced native ID for an
+unrelated module rejects the edit atomically; missing targets keep dormant
+bindings. Clear the binding before replacing that target, or use a fresh ID for
+the new module. Original source data remains intact through edits and saves.
+
+Third-party plugins and Core audio interfaces still require additional mappings or an explicit substitute. Existing VCV binaries are not hosted by this importer.
 
 ## MCP boundary
 
@@ -52,6 +75,31 @@ Desktop and MCP use the same Session-owned document. DSP receives a derived nati
 
 ## Acceptance evidence
 
-The user-supplied “So There I Was” fixture imports as **55 modules and 83 cables: 29 native mappings and 26 unresolved dependencies**. The version-specific extension maps its one VCO and four VCFs. Its embedded asset and original JSON bytes survive conversion and native save/reopen; the source file remains unchanged. This proves preservation and the supported subset, not sonic equivalence of the whole patch.
+The user-supplied “So There I Was” fixture now imports on the milestone branch as **55 modules and 83 cables: 33 native mappings and 22 unresolved dependencies**. This includes its one version-specific VCO, four VCFs, both RackMCP sequencers, Listen and Bridge. All 13 automation lanes survive; ten bind to qualified VCA/filter controls and three Surge targets remain unbound. Its embedded asset and original JSON bytes survive conversion and native save/reopen; the source file remains unchanged. This proves preservation and the supported subset, not sonic equivalence of the whole patch.
 
 Focused checks cover source/archive limits, repair and undo, native migration/save/recovery/templates, stale UI/MCP edits, layout publication and startup suspension. Headless normal/dim captures use the real shared renderer without opening an audio device. Working logs and captures are recorded in the ignored `native-test-output/rack-import` state; [Full macOS CI](https://github.com/dexterlabs1/openpatch/actions/runs/39016180431) passed 2,378 Rust tests and 117 Python/MCP tests plus packaging and visualizer integration. Installation remains a separate delivery step.
+
+
+## Listen capture on the milestone branch
+
+`RackMCP / Listen / 2.0.0` maps to the separate native `rackmcp_listen`.
+Raw polyphonic L/R passthrough and source-derived analysis have exact bounded
+reference checks. Live capture uses a native host-owned SPSC ring, acknowledged
+reuse and explicit failure on instance removal/suspension, so its mapping declares
+host corrections rather than whole-host equivalence. Unknown parameter slots or
+custom source data remain unresolved. Import never starts recording or a device.
+Use the module's Capture/Inspect controls or `start_listen_capture`,
+`inspect_listen_capture`, `cancel_listen_capture` and `inspect_listen` over MCP.
+[Behavior, checks and limits](benchmarks/rackmcp-listen.json).
+
+
+## Bridge and live Sequencer controls on the milestone branch
+
+`RackMCP / Bridge / 2.0.0` maps to the actual native MCP session panel, with
+explicit Start/Stop/Restart, project Save and session details. Duplicate panels
+observe the same app-owned service; removal or import has no service side effect.
+`inspect_bridge` exposes truthful native transport, same-user authority and
+shared authored/durable saved-state status. Rack pairing/HMAC, TCP transport and
+writer leases are explicitly unsupported. Held source reset-pairing or custom
+state stays unresolved. Sequencer active/pending pattern and playhead controls
+use real shared transport observations. [Host contract and limits](RACKMCP_CONTROL_CONTRACT.md#native-bridge-and-live-sequencer-checkpoint-2026-10-17).

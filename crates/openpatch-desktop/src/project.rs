@@ -599,6 +599,7 @@ mod tests {
         let mut patch = Patch::new_v2();
         patch.nodes.push(openpatch_core::Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             bypassed: false,
             id: "source".into(),

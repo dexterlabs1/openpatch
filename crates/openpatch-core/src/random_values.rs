@@ -316,6 +316,7 @@ mod tests {
     fn node() -> Node {
         Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             id: "r".into(),
             kind: "random_values".into(),

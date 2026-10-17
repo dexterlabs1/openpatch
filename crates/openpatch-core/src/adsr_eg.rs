@@ -275,6 +275,7 @@ mod tests {
         AdsrEg::build(
             &Node {
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 id: "e".into(),
                 kind: "adsr_eg".into(),

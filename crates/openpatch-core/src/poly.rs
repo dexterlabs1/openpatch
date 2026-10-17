@@ -20,6 +20,8 @@ use crate::pulses::{self, Pulses};
 use crate::push::{self, Push};
 use crate::rack264_vcf::{self, Rack264Vcf};
 use crate::rack264_vco::{self, Rack264Vco};
+use crate::rackmcp_listen::{self, ListenSink, ListenStatus, RackMcpListen};
+use crate::rackmcp_sequence::{self, RackMcpSequencer, ResolvedTarget};
 use crate::random_modulation::{self, Random};
 use crate::random_values::{self, RandomValues};
 use crate::routing::{self, Routing};
@@ -96,6 +98,9 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
     crate::content::is_annotation(kind)
         || kind == "colored_noise"
         || kind == "score_sequencer"
+        || kind == "rackmcp_sequencer"
+        || kind == "rackmcp_listen"
+        || kind == "rackmcp_bridge"
         || kind == "modal_resonator"
         || kind == "macro_voice"
         || kind == "studio_mixer"
@@ -167,6 +172,12 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
     }
     if kind == "modal_resonator" {
         return modal_resonator::INPUTS.iter().position(|p| *p == name);
+    }
+    if kind == "rackmcp_sequencer" {
+        return rackmcp_sequence::INPUTS.iter().position(|p| *p == name);
+    }
+    if kind == "rackmcp_listen" {
+        return rackmcp_listen::INPUTS.iter().position(|p| *p == name);
     }
     if kind == "score_sequencer" {
         return score::INPUTS.iter().position(|p| *p == name);
@@ -245,11 +256,17 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
     if kind == "stock_noise" {
         return stock_noise::OUTPUTS.iter().position(|p| *p == name);
     }
-    if kind == "poly_viz" || crate::content::is_annotation(kind) {
+    if kind == "poly_viz" || kind == "rackmcp_bridge" || crate::content::is_annotation(kind) {
         return None;
     }
     if kind == "modal_resonator" {
         return modal_resonator::OUTPUTS.iter().position(|p| *p == name);
+    }
+    if kind == "rackmcp_sequencer" {
+        return rackmcp_sequence::OUTPUTS.iter().position(|p| *p == name);
+    }
+    if kind == "rackmcp_listen" {
+        return rackmcp_listen::OUTPUTS.iter().position(|p| *p == name);
     }
     if kind == "score_sequencer" {
         return score::OUTPUTS.iter().position(|p| *p == name);
@@ -418,6 +435,16 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
+    } else if kind == "rackmcp_listen" {
+        rackmcp_listen::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "rackmcp_sequencer" {
+        rackmcp_sequence::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
     } else if kind == "score_sequencer" {
         score::OUTPUTS
             .iter()
@@ -557,7 +584,8 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
-    } else if kind == "poly_viz" || crate::content::is_annotation(&kind) {
+    } else if kind == "poly_viz" || kind == "rackmcp_bridge" || crate::content::is_annotation(&kind)
+    {
         Vec::new()
     } else if kind == "midi_gate" {
         midi_gate::OUTPUTS
@@ -699,6 +727,17 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             output["maximum_channels"] = json!(1);
         }
     }
+    if kind == "rackmcp_sequencer" {
+        module["polyphony"]["version_2"] = json!("four tracks with 1–4 voices; pitch, gate, velocity and accent retain track width; clock/reset mono");
+        for (index, output) in module["output_metadata"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .enumerate()
+        {
+            output["maximum_channels"] = json!(if index < 16 { 4 } else { 1 });
+        }
+    }
     if kind == "score_sequencer" {
         module["polyphony"]["version_2"] = json!(
             "four polyphonic note tracks; automation lanes packed into one polyphonic output"
@@ -796,6 +835,12 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "stock_scope" {
         stock_scope::annotate(module);
     }
+    if kind == "rackmcp_listen" {
+        rackmcp_listen::annotate(module);
+    }
+    if kind == "rackmcp_bridge" {
+        crate::rackmcp_bridge::annotate(module);
+    }
     if kind == "stock_vca_mix" {
         stock_vca_mix::annotate(module);
     }
@@ -822,8 +867,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
 #[derive(Debug)]
 enum Model {
     Annotation,
+    HostBridge,
     ColoredNoise(Box<ColoredNoise>),
     Score(Box<ScoreSequencer>),
+    RackMcpSequencer(Box<RackMcpSequencer>),
+    RackMcpListen(RackMcpListen),
     StudioFx(Box<StudioFx>),
     ModalResonator(Box<ModalResonator>),
     MacroVoice(Box<MacroVoice>),
@@ -907,6 +955,17 @@ impl Model {
         }
         if node.kind == "studio_mixer" {
             return StudioMixer::build(node, rate).map(|s| Self::StudioMixer(Box::new(s)));
+        }
+        if node.kind == "rackmcp_bridge" {
+            crate::rackmcp_bridge::validate(node)?;
+            return Ok(Self::HostBridge);
+        }
+        if node.kind == "rackmcp_listen" {
+            return RackMcpListen::build(node).map(Self::RackMcpListen);
+        }
+        if node.kind == "rackmcp_sequencer" {
+            return RackMcpSequencer::build(node, rate)
+                .map(|s| Self::RackMcpSequencer(Box::new(s)));
         }
         if node.kind == "score_sequencer" {
             return ScoreSequencer::build(node, rate).map(|s| Self::Score(Box::new(s)));
@@ -1084,7 +1143,8 @@ impl Model {
     fn native_host(&self) -> bool {
         matches!(
             self,
-            Self::StockMidSide(_)
+            Self::RackMcpListen(_)
+                | Self::StockMidSide(_)
                 | Self::StockMix(_)
                 | Self::StockOctave(_)
                 | Self::StockProcess(_)
@@ -1151,6 +1211,7 @@ struct HostInputObservation {
 pub(crate) struct PolyEngine {
     rate: u32,
     nodes: Vec<PolyNode>,
+    sequence_ownership: crate::sequence_ownership::SequenceOwnership,
     node_lookup: BTreeMap<String, usize>,
     edges: Vec<Edge>,
     // Hot publication reads only source indices, not route strings/identities.
@@ -1177,6 +1238,105 @@ pub(crate) struct PolyEngine {
     pub(crate) port_lights: crate::port_lights::Observer,
 }
 impl PolyEngine {
+    pub(crate) fn resolve_parameter(
+        &self,
+        id: &str,
+        name: &str,
+    ) -> Result<(usize, crate::live_parameters::ParameterId), String> {
+        use crate::live_parameters::ParameterId;
+        let node = *self
+            .node_lookup
+            .get(id)
+            .ok_or_else(|| format!("unknown module '{id}'"))?;
+        let parameter = match (self.nodes[node].kind.as_str(), name) {
+            ("stock_vca", "level") => ParameterId::StockVcaLevel,
+            ("rack264_vcf", "frequency") => ParameterId::Rack264VcfFrequency,
+            ("rackmcp_sequencer", "running") => ParameterId::RackMcpSequencerRunning,
+            _ => {
+                return Err(format!(
+                    "module '{id}' has no live parameter capability for '{name}'"
+                ))
+            }
+        };
+        Ok((node, parameter))
+    }
+    pub(crate) fn parameter_value(
+        &self,
+        node: usize,
+        parameter: crate::live_parameters::ParameterId,
+    ) -> Option<f32> {
+        use crate::live_parameters::ParameterId;
+        match (&self.nodes.get(node)?.model, parameter) {
+            (Model::StockVca(model), ParameterId::StockVcaLevel) => Some(model.level()),
+            (Model::RackMcpSequencer(model), ParameterId::RackMcpSequencerRunning) => {
+                Some(model.running())
+            }
+            (Model::Rack264Vcf(model), ParameterId::Rack264VcfFrequency) => Some(model.frequency()),
+            _ => None,
+        }
+    }
+    pub(crate) fn set_parameter_value(
+        &mut self,
+        node: usize,
+        parameter: crate::live_parameters::ParameterId,
+        value: f32,
+    ) -> bool {
+        use crate::live_parameters::ParameterId;
+        match (self.nodes.get_mut(node).map(|n| &mut n.model), parameter) {
+            (Some(Model::StockVca(model)), ParameterId::StockVcaLevel) => model.set_level(value),
+            (Some(Model::RackMcpSequencer(model)), ParameterId::RackMcpSequencerRunning) => {
+                return model.set_running(value)
+            }
+            (Some(Model::Rack264Vcf(model)), ParameterId::Rack264VcfFrequency) => {
+                model.set_frequency(value)
+            }
+            _ => return false,
+        }
+        true
+    }
+    pub(crate) fn inherit_parameter_values(
+        &mut self,
+        old: &Self,
+        excluded: &[bool; MAX_NODES],
+        assigned: &[u8; MAX_NODES],
+    ) -> usize {
+        use crate::live_parameters::ParameterId;
+        let mut copied = 0;
+        // Node IDs/indices and bounded models were compiled off the callback.
+        // No temporary map/strings/refcounts are created by this walk.
+        for (id, &index) in &self.node_lookup {
+            if excluded[index] {
+                continue;
+            }
+            let Some(&old_index) = old.node_lookup.get(id) else {
+                continue;
+            };
+            if self.nodes[index].kind != old.nodes[old_index].kind {
+                continue;
+            }
+            for &parameter in ParameterId::for_kind(&self.nodes[index].kind) {
+                if assigned[index] & parameter.mask() != 0 {
+                    continue;
+                }
+                if let Some(value) = old.parameter_value(old_index, parameter) {
+                    match (&mut self.nodes[index].model, parameter) {
+                        (Model::RackMcpSequencer(model), ParameterId::RackMcpSequencerRunning) => {
+                            model.set_running(value);
+                        }
+                        (Model::StockVca(model), ParameterId::StockVcaLevel) => {
+                            model.set_level(value)
+                        }
+                        (Model::Rack264Vcf(model), ParameterId::Rack264VcfFrequency) => {
+                            model.set_frequency(value)
+                        }
+                        _ => continue,
+                    }
+                    copied += 1;
+                }
+            }
+        }
+        copied
+    }
     pub(crate) fn host_cable_registry(&self) -> Vec<HostCableSnapshot> {
         let mut names = vec![""; self.nodes.len()];
         for (name, &index) in &self.node_lookup {
@@ -1816,6 +1976,7 @@ impl PolyEngine {
     }
     pub(crate) fn module_lights(&self, index: usize) -> Option<ModuleLightState> {
         match self.nodes.get(index).map(|n| &n.model) {
+            Some(Model::RackMcpListen(s)) => Some(s.lights()),
             Some(Model::Signal(s)) => Some(s.lights()),
             Some(Model::Pulses(p)) => Some(p.lights()),
             Some(Model::Push(p)) => Some(p.lights()),
@@ -2129,6 +2290,10 @@ impl PolyEngine {
                 s.reset_state();
                 node.output_count
             }
+            Model::RackMcpSequencer(s) => {
+                s.initialize_state();
+                node.output_count
+            }
             Model::Score(s) => {
                 s.reset_state();
                 node.output_count
@@ -2231,6 +2396,90 @@ impl PolyEngine {
         }
         true
     }
+    pub(crate) fn rackmcp_sequence_transport(
+        &mut self,
+        index: usize,
+        request: crate::RackMcpTransport,
+    ) -> bool {
+        match self.nodes.get_mut(index).map(|node| &mut node.model) {
+            Some(Model::RackMcpSequencer(sequence)) => sequence.transport(request),
+            _ => false,
+        }
+    }
+
+    pub(crate) fn rackmcp_sequence_status(
+        &self,
+        index: usize,
+    ) -> Option<crate::RackMcpSequenceStatus> {
+        match self.nodes.get(index).map(|node| &node.model) {
+            Some(Model::RackMcpSequencer(sequence)) => Some(sequence.status()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn rackmcp_sequence_content_fingerprint(&self, index: usize) -> Option<[u8; 32]> {
+        match self.nodes.get(index).map(|node| &node.model) {
+            Some(Model::RackMcpSequencer(sequence)) => Some(sequence.content_fingerprint()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn rackmcp_sequence_content_matches(
+        &self,
+        index: usize,
+        previous: &Self,
+        previous_index: usize,
+    ) -> bool {
+        match (
+            self.nodes.get(index).map(|node| &node.model),
+            previous.nodes.get(previous_index).map(|node| &node.model),
+        ) {
+            (Some(Model::RackMcpSequencer(current)), Some(Model::RackMcpSequencer(previous))) => {
+                current.content_matches(previous)
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn rackmcp_sequence_data_matches(
+        &self,
+        index: usize,
+        previous: &Self,
+        previous_index: usize,
+    ) -> bool {
+        match (
+            self.nodes.get(index).map(|node| &node.model),
+            previous.nodes.get(previous_index).map(|node| &node.model),
+        ) {
+            (Some(Model::RackMcpSequencer(current)), Some(Model::RackMcpSequencer(previous))) => {
+                current.data_matches(previous)
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn reload_rackmcp_sequence_data(&mut self, index: usize) -> bool {
+        let Some(Model::RackMcpSequencer(sequence)) =
+            self.nodes.get_mut(index).map(|n| &mut n.model)
+        else {
+            return false;
+        };
+        sequence.reload_data();
+        self.sequence_ownership.claim(index);
+        true
+    }
+
+    pub(crate) fn claim_rackmcp_sequence_targets(&mut self, index: usize) -> bool {
+        if !matches!(
+            self.nodes.get(index).map(|node| &node.model),
+            Some(Model::RackMcpSequencer(_))
+        ) {
+            return false;
+        }
+        self.sequence_ownership.claim(index);
+        true
+    }
+
     pub(crate) fn initialize_module_state(&mut self, index: usize) -> bool {
         let Some(node) = self.nodes.get_mut(index) else {
             return false;
@@ -2295,6 +2544,7 @@ impl PolyEngine {
     }
     pub(crate) fn module_saved_state(&self, index: usize) -> Option<SavedModuleState> {
         match self.nodes.get(index).map(|node| &node.model) {
+            Some(Model::RackMcpSequencer(seq)) => Some(seq.saved_state()),
             Some(Model::Seq3(seq)) => Some(SavedModuleState::Seq3Run(seq.telemetry().running)),
             Some(Model::StockSeq3(seq)) => Some(seq.saved_state()),
             Some(Model::StockQuantizer(q)) => Some(q.saved_state()),
@@ -2308,6 +2558,9 @@ impl PolyEngine {
     }
     pub(crate) fn set_module_saved_state(&mut self, index: usize, state: SavedModuleState) -> bool {
         match (self.nodes.get_mut(index).map(|node| &mut node.model), state) {
+            (Some(Model::RackMcpSequencer(seq)), SavedModuleState::RackMcpSelection(name)) => {
+                seq.set_saved_selection(name)
+            }
             (Some(Model::Seq3(seq)), SavedModuleState::Seq3Run(running)) => {
                 seq.set_running(running);
                 true
@@ -2421,6 +2674,10 @@ impl PolyEngine {
                 colored_noise::OUTPUTS.len()
             } else if node.kind == "stock_noise" {
                 stock_noise::OUTPUTS.len()
+            } else if node.kind == "rackmcp_listen" {
+                rackmcp_listen::OUTPUTS.len()
+            } else if node.kind == "rackmcp_sequencer" {
+                rackmcp_sequence::OUTPUTS.len()
             } else if node.kind == "score_sequencer" {
                 score::OUTPUTS.len()
             } else if let Some(ports) = studio_fx::output_names(&node.kind)
@@ -2439,7 +2696,7 @@ impl PolyEngine {
                 ports.len()
             } else {
                 match node.kind.as_str() {
-                    "poly_viz" | "notes" | "blank" => 0,
+                    "poly_viz" | "notes" | "blank" | "rackmcp_bridge" => 0,
                     "poly_split" | "midi_cc" | "midi_gate" => 16,
                     "midi_cv" => MIDI_OUTPUTS.len(),
                     "multi_lfo" => multi_lfo::OUTPUTS.len(),
@@ -2490,6 +2747,44 @@ impl PolyEngine {
         let mut route_counts = BTreeMap::<EdgeKey, usize>::new();
         let mut unique_legacy_routes = BTreeMap::<EdgeKey, Option<usize>>::new();
         let mut cable_lookup = BTreeMap::new();
+        let mut sequence_ownership =
+            crate::sequence_ownership::SequenceOwnership::new(&patch.nodes);
+        for (node_index, node) in nodes.iter_mut().enumerate() {
+            if let Model::RackMcpSequencer(sequence) = &mut node.model {
+                let mut targets = [None; 8];
+                for (lane, source) in sequence.source_targets().into_iter().enumerate() {
+                    let Some(source) = source else { continue };
+                    sequence_ownership.slots[node_index][lane] =
+                        sequence_ownership.slot(&source.module, &source.parameter);
+                    let Some(&destination) = node_lookup.get(&source.module) else {
+                        continue;
+                    };
+                    let kind = &patch.nodes[destination].kind;
+                    let Some(descriptor) =
+                        crate::runtime_parameter_descriptor(kind, &source.parameter)
+                    else {
+                        return Err(format!(
+                            "sequence target '{}.{}' has no live native parameter capability",
+                            source.module, source.parameter
+                        ));
+                    };
+                    let parameter = crate::live_parameters::ParameterId::for_kind(kind)
+                        .iter()
+                        .copied()
+                        .find(|id| id.descriptor().name == source.parameter)
+                        .expect("descriptor and parameter capability agree");
+                    targets[lane] = Some(ResolvedTarget {
+                        node: destination,
+                        parameter,
+                        min: descriptor.min,
+                        max: descriptor.max,
+                        snap: descriptor.snap,
+                    });
+                }
+                sequence.bind_targets(targets);
+                sequence_ownership.claim(node_index);
+            }
+        }
         let mut group_lookup = BTreeMap::<(usize, usize), usize>::new();
         let mut group_edges = Vec::<Vec<usize>>::new();
         let mut group_destinations = Vec::new();
@@ -2636,6 +2931,7 @@ impl PolyEngine {
             port_lights,
             rate: patch.sample_rate,
             nodes,
+            sequence_ownership,
             node_lookup,
             edges,
             edge_source_ports,
@@ -2661,6 +2957,9 @@ impl PolyEngine {
         }
         Ok(engine)
     }
+    pub(crate) fn sample_rate(&self) -> u32 {
+        self.rate
+    }
     pub(crate) fn output_channels(&self) -> u16 {
         if self.stereo {
             2
@@ -2679,6 +2978,19 @@ impl PolyEngine {
         }
     }
     pub(crate) fn process_sample(&mut self) -> PortFrame {
+        self.process_sample_with_listen_capture(None, None)
+    }
+    pub(crate) fn listen_status(&self, index: usize) -> Option<ListenStatus> {
+        match &self.nodes.get(index)?.model {
+            Model::RackMcpListen(model) => Some(model.status()),
+            _ => None,
+        }
+    }
+    pub(crate) fn process_sample_with_listen_capture(
+        &mut self,
+        listen_index: Option<usize>,
+        mut sink: Option<&mut dyn ListenSink>,
+    ) -> PortFrame {
         if self.host_context_dirty {
             for index in 0..self.nodes.len() {
                 self.reconcile_host_context(index);
@@ -2731,7 +3043,15 @@ impl PolyEngine {
             }
             self.input_frames[index] = sum;
         }
-        for (node_index, node) in self.nodes.iter_mut().enumerate() {
+        for node_index in 0..self.nodes.len() {
+            let node = &mut self.nodes[node_index];
+            // Host status/actions live outside the audio graph. No per-sample work.
+            if matches!(node.model, Model::HostBridge) {
+                continue;
+            }
+            // Only a sequencer produces the bounded write batch; ordinary
+            // nodes do not initialize or walk eight unused target slots.
+            let mut parameter_writes = None;
             if node.model.native_host() {
                 if let Model::StockNoise(model) = &mut node.model {
                     model.begin_frame();
@@ -2744,6 +3064,13 @@ impl PolyEngine {
                     &mut host.outputs[node.output_start..node.output_start + node.output_count];
                 if !node.bypassed {
                     match &mut node.model {
+                        Model::RackMcpListen(model) => {
+                            if listen_index == Some(node_index) {
+                                model.process(&host.inputs[node_index], outputs, sink.take());
+                            } else {
+                                model.process(&host.inputs[node_index], outputs, None);
+                            }
+                        }
                         Model::StockMidSide(model) => {
                             model.process(&host.inputs[node_index], outputs)
                         }
@@ -2767,6 +3094,8 @@ impl PolyEngine {
                         Model::StockNoise(model) => model.process(outputs),
                         _ => unreachable!("native predicate validated model"),
                     }
+                } else if let Model::RackMcpListen(model) = &node.model {
+                    model.process_bypass(&host.inputs[node_index], outputs);
                 } else if let Model::StockOctave(model) = &node.model {
                     model.process_bypass(&host.inputs[node_index], outputs);
                 }
@@ -2822,8 +3151,9 @@ impl PolyEngine {
                 .map(|edge| self.input_frames[edge])
                 .unwrap_or_default();
             match &mut node.model {
-                Model::Annotation => {}
-                Model::StockMidSide(_)
+                Model::Annotation | Model::HostBridge => {}
+                Model::RackMcpListen(_)
+                | Model::StockMidSide(_)
                 | Model::StockMix(_)
                 | Model::StockOctave(_)
                 | Model::StockProcess(_)
@@ -2831,6 +3161,13 @@ impl PolyEngine {
                 | Model::StockVcaMix(_)
                 | Model::StockNoise(_) => {
                     unreachable!("native model processed above")
+                }
+                Model::RackMcpSequencer(sequence) => {
+                    let (outputs, writes) =
+                        sequence.process(&[a, b], node.physical_input_mask & 1 != 0);
+                    self.outputs[node.output_start..node.output_start + 18]
+                        .copy_from_slice(&outputs);
+                    parameter_writes = Some(writes);
                 }
                 Model::Score(_)
                 | Model::StudioFx(_)
@@ -3308,6 +3645,26 @@ impl PolyEngine {
                     self.outputs[node.output_start] = s.process(a);
                 }
             }
+            // Only the exclusive owner may assign or acknowledge a lane.
+            // Process-time visibility follows native node order. Later nodes see
+            // the new parameter this sample, earlier nodes the next sample.
+            // Port routing retains the native synchronous delayed contract.
+            if let Some(parameter_writes) = parameter_writes {
+                for write in parameter_writes.into_iter().flatten() {
+                    if self.sequence_ownership.owns(node_index, write.lane)
+                        && self.set_parameter_value(
+                            write.target.node,
+                            write.target.parameter,
+                            write.value,
+                        )
+                    {
+                        if let Model::RackMcpSequencer(sequence) = &mut self.nodes[node_index].model
+                        {
+                            sequence.acknowledge_write(write.lane, write.value);
+                        }
+                    }
+                }
+            }
         }
         if let Some(host) = &mut self.host {
             for span in &self.logical_output_spans {
@@ -3524,15 +3881,27 @@ impl PolyEngine {
     }
     #[cfg(test)]
     pub(crate) fn adopt_state_from(&mut self, old: &Self) {
-        self.adopt_state_from_excluding(old, &[false; MAX_NODES], &[false; MAX_CABLES]);
+        self.adopt_state_from_excluding(
+            old,
+            &[false; MAX_NODES],
+            &[false; MAX_CABLES],
+            &[false; MAX_NODES],
+        );
     }
     pub(crate) fn adopt_state_from_excluding(
         &mut self,
         old: &Self,
         excluded: &[bool; MAX_NODES],
         excluded_cables: &[bool; MAX_CABLES],
+        preserve_sequence_runtime: &[bool; MAX_NODES],
     ) {
-        self.adopt_state_impl(old, excluded, excluded_cables, true);
+        self.adopt_state_impl(
+            old,
+            excluded,
+            excluded_cables,
+            preserve_sequence_runtime,
+            true,
+        );
     }
     /// Transfer large Delay allocations instead of copying them. Once this
     /// returns true, the retiring engine must not process any more samples.
@@ -3541,8 +3910,15 @@ impl PolyEngine {
         old: &mut Self,
         excluded: &[bool; MAX_NODES],
         excluded_cables: &[bool; MAX_CABLES],
+        preserve_sequence_runtime: &[bool; MAX_NODES],
     ) -> bool {
-        self.adopt_state_impl(old, excluded, excluded_cables, false);
+        self.adopt_state_impl(
+            old,
+            excluded,
+            excluded_cables,
+            preserve_sequence_runtime,
+            false,
+        );
         if self.rate != old.rate {
             return false;
         }
@@ -3572,9 +3948,58 @@ impl PolyEngine {
         old: &Self,
         excluded: &[bool; MAX_NODES],
         excluded_cables: &[bool; MAX_CABLES],
+        preserve_sequence_runtime: &[bool; MAX_NODES],
         copy_delay: bool,
     ) {
         self.host_context_dirty = true;
+        // Ownership survives topology/rate changes by native target and writer
+        // identity. Fresh or changed writers acquire only after donor claims
+        // (including vacant tombstones) have been restored.
+        self.sequence_ownership.acquire.fill(false);
+        for (id, &index) in &self.node_lookup {
+            let Model::RackMcpSequencer(sequence) = &mut self.nodes[index].model else {
+                continue;
+            };
+            self.sequence_ownership.acquire[index] = true;
+            if excluded[index] {
+                continue;
+            }
+            let Some(&previous) = old.node_lookup.get(id) else {
+                continue;
+            };
+            if let Model::RackMcpSequencer(previous) = &old.nodes[previous].model {
+                if preserve_sequence_runtime[index] {
+                    self.sequence_ownership.acquire[index] =
+                        !sequence.claims_match_preserving_selection(previous, true);
+                    sequence.adopt_preserving_selection(previous, true);
+                } else {
+                    self.sequence_ownership.acquire[index] = !sequence.claims_match(previous);
+                    sequence.adopt(previous);
+                }
+            }
+        }
+        self.sequence_ownership
+            .restore(&old.sequence_ownership, &self.node_lookup, excluded);
+        for index in 0..self.nodes.len() {
+            if self.sequence_ownership.acquire[index] {
+                self.sequence_ownership.claim(index);
+            }
+        }
+        // Listen has no rate-dependent runtime; capture transport is borrowed
+        // only by the active graph, never copied from the donor.
+        for (id, &index) in &self.node_lookup {
+            if excluded[index] {
+                continue;
+            }
+            let Some(&previous) = old.node_lookup.get(id) else {
+                continue;
+            };
+            if let (Model::RackMcpListen(current), Model::RackMcpListen(previous)) =
+                (&mut self.nodes[index].model, &old.nodes[previous].model)
+            {
+                current.adopt(previous);
+            }
+        }
         if self.rate != old.rate {
             self.port_lights.reset_epoch();
             return;
@@ -3994,6 +4419,7 @@ mod tests {
             nodes: vec![
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: "a".into(),
                     kind: "constant".into(),
@@ -4002,6 +4428,7 @@ mod tests {
                 },
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: "b".into(),
                     kind: "constant".into(),
@@ -4010,6 +4437,7 @@ mod tests {
                 },
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: "target".into(),
                     kind: "gain".into(),
@@ -4056,6 +4484,7 @@ mod tests {
             nodes: vec![
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: "source".into(),
                     kind: "constant".into(),
@@ -4064,6 +4493,7 @@ mod tests {
                 },
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: "target".into(),
                     kind: "gain".into(),
@@ -4134,6 +4564,7 @@ mod tests {
             nodes: vec![
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     bypassed: false,
                     id: "source".into(),
@@ -4148,6 +4579,7 @@ mod tests {
                 },
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     bypassed: false,
                     id: "voice".into(),

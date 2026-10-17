@@ -1,0 +1,119 @@
+{
+  "status": "Implemented and focused macOS ARM validated; not installed; Bridge/control-family milestone remains open",
+  "source": {
+    "plugin": "RackMCP",
+    "model": "Listen",
+    "version": "2.0.0",
+    "commit": "285e84c5ff2d3ecef25890da07f578af6a0c5ca6",
+    "author": "Zachary Scheffler",
+    "license": "GPL-3.0-or-later",
+    "sdk": "2.6.6"
+  },
+  "implemented": {
+    "model": "Distinct rackmcp_listen raw L/R polyphonic passthrough; no controls or saved capture state in DSP. Capture sums active input lanes independently; absent R stays zero. Bypass freezes capture and counters.",
+    "capture": "One host-owned preallocated 2^18 SPSC ring, unique endpoints outside graphs; active graph only; STOP acknowledgment before reuse; 8192-frame worker drains; rejects newest overflow frames without waiting or allocating in callback.",
+    "jobs": "0.1..30 seconds, ceil duration at initial actual sample rate; one active global job and eight retained receipts; explicit cancel, two-second missing-callback/frame timeout; removal/recreation/suspension/close fail the generation.",
+    "tools": [
+      "inspect_listen",
+      "start_listen_capture",
+      "inspect_listen_capture",
+      "cancel_listen_capture"
+    ],
+    "authority": "Session revision/document execution checks; capture/poll/cancel do not edit patch, history or layout and never start speakers. Native inspector discovers external MCP jobs.",
+    "export": "Optional create_new float32 stereo WAV in workspace; 10V=1.0. Right-absent export alone duplicates L; analysis/raw output never does.",
+    "panel": "Shared rack/browser Signal Atlas body, four large ports, one real red capture lamp, readable routes and anchored duration menu, explicit WAV toggle, capture/cancel and inspector.",
+    "import": "Exact RackMCP/Listen/2.0.0 identity only. Unknown parameter slots/custom data stay unresolved; malformed archive structure rejects. MusicalRole fidelity declares native host lifecycle corrections. Import starts no recording/device."
+  },
+  "raw_module_reference": {
+    "passed": true,
+    "cases": 821,
+    "processed_frames": 683461,
+    "snapshots": 9873,
+    "exact_differences": 0,
+    "cpp_trace_sha256": "145cdf41823574373ca58ceb7969bec3c72f9ba6d003c25511688472733fed2e",
+    "rust_trace_sha256": "145cdf41823574373ca58ceb7969bec3c72f9ba6d003c25511688472733fed2e",
+    "inputs_sha256": "2dd05f0882133c8c448780677f5f01966fb240ce905e54b84c00516a9a10a5a4",
+    "report_sha256": "01763b905d5e38b5339c77de1afa8181f43ba534e7d4a1d72ec6f58984dbc56a",
+    "scope": "Verbatim pinned constructor/process + original header/SPSC in genuine SDK Engine; actual production Core with canonical raw ports and explicit synchronous ordered bypass lifecycle API. Every raw slot, count, status, lamp and captured-frame word; zero tolerance/discards."
+  },
+  "analysis_reference": {
+    "passed": true,
+    "fixtures": 17,
+    "exact_differences": 0,
+    "inputs_sha256": "c5c943502977320555f706f2f355a2237e6e682004153866200d0030ab61710d",
+    "report_sha256": "b10d54f11c23ef76371837ca540063fa6c4398a2c6d7d5179f5ca567c4b98946",
+    "scope": "Untouched standalone source analysis and WAV codec vs production Rust; every result/validity/band/note/float-double bit pattern plus stereo and absent-right WAV bytes; no tolerance."
+  },
+  "numerical_continuity": {
+    "audit_sha256": "945a72b69e403aecf9ddf1f0e9387b8191432649347d18341ac50770b475c333",
+    "change": "One non-executable Clippy allow attribute added after proofs; all remaining Core/dependency inputs exactly match frozen inputs. Numerical implementation is byte-identical after removing that attribute. No claim that the complete current raw manifest is unchanged."
+  },
+  "validation": {
+    "core_library": {
+      "passed": 425,
+      "ignored": 2,
+      "log": "listen-core-lib-001.log"
+    },
+    "core_listen_integration": {
+      "passed": 8,
+      "log": "listen-core-003.log"
+    },
+    "analysis_guards": {
+      "passed": 2,
+      "log": "listen-analysis-guards-001.log"
+    },
+    "cli_library": {
+      "passed": 358,
+      "ignored": 2,
+      "logs": [
+        "listen-cli-lib-001.log",
+        "listen-import-002.log"
+      ],
+      "note": "Initial full run 357 passed and one malformed-params fixture failed; corrected fixture respects archive-level structural rejection and passes the affected case."
+    },
+    "callback_regression": {
+      "passed": 235,
+      "ignored": 1,
+      "log": "listen-callbacks-001.log"
+    },
+    "focused_desktop_final": {
+      "passed": 17,
+      "ignored": 1,
+      "log": "listen-desktop-005.log"
+    },
+    "cli_final": {
+      "passed": 2,
+      "log": "listen-cli-003.log"
+    },
+    "stdio": {
+      "passed": 2,
+      "log": "listen-stdio-001.log"
+    },
+    "shared_renderer": "All 85 default rack/browser drawings match at three scales; listen-shared-preview-002.log",
+    "paint": "Four actual shared-panel CPU views, normal/dark, unavailable/armed; listen-paint-002.log",
+    "lint": "Strict Core/CLI/Desktop all-target Clippy, cargo fmt and git diff --check pass"
+  },
+  "actual_fixture": {
+    "modules": 55,
+    "cables": 83,
+    "mapped": 32,
+    "unresolved": 23,
+    "sequencers": 2,
+    "listen": 1,
+    "automation_lanes": 13,
+    "unbound_surge_lanes": 3,
+    "original_sha256": "4c83b2d697cc056b4118f321cddfa3be56257ed789ecba90c47421ee28e0cbf4",
+    "preservation": "CLI and native host save/reopen retain full source JSON bytes/assets/routes; original file unchanged. Exact remains suspended for missing dependencies/unbound automation."
+  },
+  "musical_workflow": "Real shared Session import of Sequencer -> qualified VCA automation and VCO -> VCA -> Listen, explicit Partial for one unsupported fixture module, live MCP start/poll/WAV, audible octave edit/undo/redo during same capture and source-preserving save/reopen plus second capture. No hardware device.",
+  "retained_failures": [
+    "Analysis 001: macOS C++ include setup; 002: Rust dependency search path; 003: Apple LLVM/Rust LLVM bitcode link setup. Corrected probe commands, untouched source.",
+    "Module 001: same linker setup; 002: four no-sample bypass observations before the adapter supplied the existing production synchronous host lifecycle API. Source C++ trace is identical in passing 003. No Listen DSP production change for these differences."
+  ],
+  "limits": [
+    "No native-window, audio-device, whole-Rack scheduler, hardware or whole-patch equivalence claim.",
+    "Native capture ring ownership/handshake and prompt invalidation intentionally differ from the source per-module tap lifetime.",
+    "Finite-input/rate/30-second analysis guards are stricter than standalone source.",
+    "Bridge, live Sequencer panel controls and further parity work remain active; no package/version/install this checkpoint."
+  ]
+}

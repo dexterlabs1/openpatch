@@ -1,29 +1,36 @@
 //! Content-based saved state, independent of revision/history identities.
-//! Refreshed when graph, persisted rack layout, or effective persistent module state changes.
+//! Refreshed from authored graph/layout and durable persistent module state.
 use crate::{project::Document, rack::Rack};
-use openpatch::project_document::{DocumentNode, ProjectDocument};
+use openpatch::control::{
+    configured_document_states, saved_content, ProjectSaveCheckpoint, SharedProjectSave,
+};
+use openpatch::project_document::ProjectDocument;
 use openpatch_core::{Patch, SavedModuleState};
-use serde_json::{json, Value};
+#[cfg(test)]
+use serde_json::json;
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 pub struct DocumentState {
     current: Value,
-    baseline: Option<Value>,
+    baseline: SharedProjectSave,
     observed: Option<(u64, u64)>,
     dirty: bool,
-    saved_states: BTreeMap<String, SavedModuleState>,
     known: bool,
 }
 impl DocumentState {
     pub fn new(project: &ProjectDocument, revision: u64, rack: &Rack) -> Self {
         let saved_states = configured_document_states(project);
         let current = saved_content(project, rack.layout(), &saved_states);
+        let baseline = SharedProjectSave::default();
+        baseline
+            .mark_initial(current.clone())
+            .expect("fresh save baseline");
         Self {
-            baseline: Some(current.clone()),
+            baseline,
             current,
             observed: Some((revision, rack.layout_revision())),
             dirty: false,
-            saved_states,
             known: true,
         }
     }
@@ -77,6 +84,7 @@ impl DocumentState {
             Document::new(patch.clone(), rack.layout()).expect("valid native test document");
         self.observe_saved_runtime(document.project(), revision, rack, states)
     }
+    #[cfg(test)]
     pub fn observe_saved_runtime(
         &mut self,
         project: &ProjectDocument,
@@ -85,41 +93,59 @@ impl DocumentState {
         states: Option<BTreeMap<String, SavedModuleState>>,
     ) -> bool {
         let Some(saved_states) = states else {
+            return self.observe_canonical(None);
+        };
+        let next = saved_content(project, rack.layout(), &saved_states);
+        self.observed = Some((revision, rack.layout_revision()));
+        self.observe_canonical(Some(next))
+    }
+
+    /// Attach the Session authority without implicitly marking its document saved.
+    /// Startup/new-template callers explicitly establish their initial baseline.
+    pub fn attach_baseline(&mut self, baseline: SharedProjectSave) {
+        self.baseline = baseline;
+        self.dirty = !self.baseline.matches_content(&self.current);
+    }
+
+    pub fn observe_canonical(&mut self, content: Option<Value>) -> bool {
+        let Some(next) = content else {
             let changed = self.known;
             self.known = false;
             self.observed = None;
             return changed;
         };
-        let key = (revision, rack.layout_revision());
-        let next = saved_content(project, rack.layout(), &saved_states);
-        if self.known
-            && self.observed == Some(key)
-            && self.saved_states == saved_states
-            && self.current == next
-        {
-            return false;
-        }
-        let was_unknown = !self.known;
-        self.known = true;
-        self.observed = Some(key);
-        self.saved_states = saved_states;
-        let changed = was_unknown || self.current != next;
+        let dirty = !self.baseline.matches_content(&next);
+        let changed = !self.known || self.current != next || self.dirty != dirty;
         self.current = next;
-        self.dirty = self.baseline.as_ref() != Some(&self.current);
+        self.known = true;
+        self.dirty = dirty;
         changed
     }
+
     pub fn dirty(&self) -> bool {
-        !self.known || self.dirty
+        !self.known || !self.baseline.matches_content(&self.current)
     }
+    #[cfg(test)]
     pub fn matches_saved(&self, document: &Document) -> bool {
-        self.baseline.as_ref() == Some(&document_content(document))
+        self.baseline.matches_content(&document_content(document))
     }
     pub fn mark_saved(&mut self, document: &Document) {
-        self.baseline = Some(document_content(document));
-        self.dirty = self.baseline.as_ref() != Some(&self.current);
+        let generation = self.baseline.status_from_content(None)["generation"]
+            .as_u64()
+            .unwrap_or(0);
+        let _ = self.baseline.register(
+            &ProjectSaveCheckpoint {
+                generation,
+                revision: self.observed.map_or(0, |(revision, _)| revision),
+                frame: None,
+                edit_content: document_content(document),
+            },
+            None,
+        );
+        self.dirty = !self.baseline.matches_content(&self.current);
     }
     pub fn mark_unsaved(&mut self) {
-        self.baseline = None;
+        let _ = self.baseline.mark_unsaved();
         self.observed = None;
         self.dirty = true;
     }
@@ -166,66 +192,12 @@ fn configured_saved_states(patch: &Patch) -> BTreeMap<String, SavedModuleState> 
         .collect()
 }
 
-fn configured_document_states(project: &ProjectDocument) -> BTreeMap<String, SavedModuleState> {
-    project
-        .graph
-        .nodes
-        .iter()
-        .filter_map(|node| match node {
-            DocumentNode::Native { node, .. } => {
-                SavedModuleState::from_node(node).map(|state| (node.id.clone(), state))
-            }
-            DocumentNode::Unresolved { .. } => None,
-        })
-        .collect()
-}
-
 fn document_content(document: &Document) -> Value {
     saved_content(
         document.project(),
         document.layout().clone(),
         &configured_saved_states(document.patch()),
     )
-}
-
-// Source package/blob keys and native asset IDs are validated content digests.
-// Their reference view therefore tracks every persisted byte without expanding
-// immutable payloads during each UI observation. Normalize only native state.
-fn saved_content(
-    project: &ProjectDocument,
-    layout: Value,
-    states: &BTreeMap<String, SavedModuleState>,
-) -> Value {
-    let bits = states
-        .iter()
-        .filter_map(|(id, state)| match state {
-            SavedModuleState::RandomValues { values, rng } => {
-                Some((id, json!({"values":values,"rng":rng})))
-            }
-            SavedModuleState::ShiftRegister { values, rng } => {
-                Some((id, json!({"values":values,"rng":rng})))
-            }
-            _ => None,
-        })
-        .collect::<BTreeMap<_, _>>();
-    let mut document = project.reference_view();
-    document["layout"] = layout;
-    for entry in document["graph"]["nodes"]
-        .as_array_mut()
-        .expect("serialized document nodes")
-    {
-        if entry["type"] != "native" {
-            continue;
-        }
-        let node = &mut entry["node"];
-        if let Some(state) = node["id"].as_str().and_then(|id| states.get(id)) {
-            let mut params: BTreeMap<String, f32> =
-                serde_json::from_value(node["params"].clone()).expect("serialized params");
-            state.write_params(&mut params);
-            node["params"] = json!(params);
-        }
-    }
-    json!({"document":document,"persistent_bits":bits})
 }
 
 pub struct AppliedDocument {
@@ -235,6 +207,7 @@ pub struct AppliedDocument {
     pub revision: u64,
     pub state_id: u64,
     pub layout_generation: u64,
+    pub document_generation: u64,
 }
 
 /// Prepare every fallible part before committing the session. The caller only
@@ -295,11 +268,13 @@ fn install_document_guarded(
         revision,
         state_id: live.state_id(),
         layout_generation: live.layout_generation(),
+        document_generation: live.project_save_baseline().generation(),
     })
 }
 
 #[cfg(test)]
 mod tests {
+    include!("document_state_tests.rs");
     use super::*;
     use openpatch::control::Session;
 

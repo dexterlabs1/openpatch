@@ -602,6 +602,7 @@ mod tests {
         Signal::build(
             &Node {
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 id: "s".into(),
                 kind: kind.into(),

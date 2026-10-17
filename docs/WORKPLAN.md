@@ -4,7 +4,18 @@ Updated 2026-10-17. This is the compact execution plan; [ROADMAP.md](ROADMAP.md)
 
 ## Stable release
 
-**OpenPatch 0.2.6 build 8 is installed at `~/Applications/OpenPatch.app`.** The user explicitly requested this upgrade. It includes the 34-panel detailed Signal Atlas pass, stronger lights-off glow, value bubbles, undo/toolbar fixes, Ferrofluid and Studio Mixer. The optimized ARM64 desktop/CLI bundle is locally ad-hoc signed, with installed hashes/signature verified; 0.2.5 build 7 was removed. Keep this build stable during continued development. User priority is macOS ARM; Linux/Windows validation can wait. MIDI/live performance remain last. No native-window/audio-device qualification is claimed.
+**OpenPatch 0.2.7 build 9 is installed at `~/Applications/OpenPatch.app`.**
+The user explicitly requested this upgrade on 2026-10-17. It includes the 77-panel
+Signal Atlas design, softer local glow, Stock Scope, pinned 2.6.4 voice models,
+source-preserving Rack import and native RackMCP Sequencer/Listen/Bridge controls.
+Ferrofluid, Studio Mixer and Stock Process are present. The optimized ARM64
+bundle's installed binary hashes and deep/strict ad-hoc signature match the
+verified build. The previous 0.2.6 app and an older extracted candidate were
+removed; patches/settings were untouched. Local family validation passed 2,616
+Rust tests and 123 Python/MCP tests, plus four bundled-release CLI smoke tests.
+One family PR CI is still pending; this is not a notarized public release or a
+native-window/audio-device qualification. Keep the installed app stable; macOS
+ARM remains first, Windows/Linux and MIDI/live performance remain deferred.
 
 ## Execution changes
 
@@ -27,6 +38,13 @@ The existing CI app artifact was reused rather than rebuilt. Its GitHub SHA-256 
 The frozen actual Core/genuine Rack result covers **4,242 complete snapshots across 1,056 cases**, including full 50-second sweeps. Binary/source/toolchain audits establish unchanged executable model/host/probe logic, so the proof was reused. All **46 local safety records** passed: 12 accepted finite updates and 34 atomic rejections; no SDK-equivalence claim applies to that set.
 
 [Full macOS CI](https://github.com/dexterlabs1/openpatch/actions/runs/39009839579) passed **2,312 Rust tests**, including **1,188 desktop cases** (seven intentionally ignored), **115 Python/MCP tests**, strict workspace Clippy/formatting, optimized binaries, application packaging and visualizer integration. The first CI attempt stopped on an obsolete global catalog-count assertion; all five unrelated count fixtures were corrected and their affected checks passed before the successful run. The shared renderer retains its exhaustive 81-kind coverage guard. Installed 0.2.6 build 8 is unchanged; no native-window/audio-device qualification is claimed.
+
+**Further lighting refinement (2026-10-17, installed in 0.2.7):** following
+feedback about unnatural glow, local halos, diffusion, display spill and knob-ring
+haze are substantially reduced while lens brightness and weak-signal response
+remain visible. Sixteen focused shared-control/lighting checks and normal/dim/off
+CPU calibration pass. This also passes the complete local desktop suite; it does
+not establish physical-light or GPU-driver accuracy.
 
 ## Delivered: Rack patch import and repair
 
@@ -85,13 +103,150 @@ Reuse this integration checkout. The import evidence is
 `native-test-output/rack-264-voice/STATE.json`. Keep their frozen evidence rather
 than copying or regenerating it for a later module family.
 
+## Current candidate: native sequencing/control workflow
+
+Bridge now has real app-owned connection lifecycle, shared native save status and
+explicit panel controls. The Sequencer panel displays actual active/pending
+patterns and playhead and sends pattern/seek requests through shared transport.
+The actual source fixture preserves 55 modules/83 cables with 33 mapped and 22
+unresolved. Remaining third-party/Core host/text boundaries stay explicit; this
+is not whole-patch or Rack-host equivalence. Native save concurrency, listener
+failure/discovery, import boundaries and shared panel checks pass. The complete
+local Mac workspace/MCP regression passes; one family PR CI remains pending. [Behavior and boundaries](RACKMCP_CONTROL_CONTRACT.md#native-bridge-and-live-sequencer-checkpoint-2026-10-17).
+Installed 0.2.7 build 9 includes this checkpoint. Earlier checkpoints below record the
+incremental evidence and do not override this current status.
+
 ## Active next: imported sequencing and control
+
+**Primitives checkpoint:** the separate RackMCP engine and bounded typed pattern/
+target-lane compilation are implemented, preserving existing Score. The genuine
+pinned C++ comparison passes 18 cases / 620,730 frames at 44.1/48/96 kHz with
+all compared output/position/curve bits equal. Both actual saved sequencers and
+their 13 lanes compile; ten targets are supported VCAs/filters and three are
+unresolved Surge modules. Nine focused unit tests, a zero-allocation/deallocation
+playback/adoption check and strict Core Clippy pass. Source contracts cover [sequencing](RACKMCP_SEQUENCE_CONTRACT.md)
+and [Bridge/Listen](RACKMCP_CONTROL_CONTRACT.md). This is not yet a catalog model,
+import mapping or usable imported musical workflow. Next implement native target
+parameter authority/scheduling, typed document adoption and actual live capture;
+then shared panels/import and the end-to-end excerpt. Installed app is unchanged.
+The concrete [parameter authority decision](RACKMCP_PARAMETER_AUTHORITY.md) covers
+typed target handles, native scheduling, explicit assignment intent and coherent
+effective-value capture; it is the next implementation boundary.
+
+**Effective-value checkpoint:** generation-bound native parameter handles now
+write the real VCA/filter controls, with an explicit bounded inheritance API
+covering assignment/fresh-instance/rate rules. Desktop publication and project
+save share one coherent observation; saved copies retain the actual values and
+fresh reopen reproduces rendered gain. The assignment/history checkpoint below
+now activates this API in prepared callback plans. Source sequencer target
+writes remain next. No new catalog kind, import mapping or installation is
+included in these checkpoints.
+
+**Assignment/history checkpoint:** shared transactions and undo/redo now carry
+explicit per-field parameter intent, including equal values and lifecycle loads.
+Prepared callback plans freeze assignment epochs; unrelated graph edits inherit
+effective values, including across rate changes. Real shared-session edit/history/
+save/reopen, removal undo and suspended execution/resume pass without callback
+heap activity. All 280 control tests and the 26 performance tests pass. Late stale
+parameter plans are refused; already-prepared plans keep their original meaning.
+Next add the dedicated typed RackMCP state/adapter and source-provenance target
+bindings, then source-style lane dispatch/ownership and the musical excerpt.
+The installed app and catalog remained unchanged at that checkpoint.
+
+**Native adapter checkpoint (in progress):** the separate `rackmcp_sequencer`
+now has typed persisted state, all 18 source outputs and prepared eight-lane
+native target dispatch. VCA/filter values feed the actual callback publication,
+MCP save, manual edit/undo/redo and saved reopen. Unrelated graph edits, node
+reorder and rate changes preserve transport/cache; target recreation preserves
+the source lane cache. The shared Signal Atlas rack/browser panel shows authored patterns,
+voices, drum hits and accents without inventing live telemetry. Native catalog
+now has 84 kinds on this milestone branch; source import remains unchanged.
+See the [adapter boundary and remaining work](RACKMCP_SEQUENCE_CONTRACT.md#native-adapter-checkpoint)
+and [actual panel captures](../design/reviews/rackmcp-sequencer-v1/README.md).
+**Data-load checkpoint:** equal/changed sequence edits, presets and undo/redo now
+carry explicit load intent through frozen graph plans. Late older plans cannot
+replay already consumed loads; unrelated edits preserve playhead and lane cache.
+Actual callback and stdio MCP workflows pass. The genuine SDK wrapper comparison
+found a self-unbinding defect on repeated source loads: native rebinding remains
+idempotent, and the raw comparison remains honestly failed for those target
+writes. All 18 output fields match throughout 25,104 frames; a strict separate
+audit verifies the exact native correction. [Evidence and remaining ownership boundary](RACKMCP_SEQUENCE_CONTRACT.md#genuine-wrapper-finding-and-deliberate-host-correction).
+
+**Ownership checkpoint:** competing sequencers now acquire exclusively in the
+order of their final document actions, including creation, duplication, presets
+and undo/redo. Reorder/rate changes retain the winner; deleting it leaves the
+target unclaimed. A displaced writer only returns through explicit acquisition.
+Late sequencing graphs below the callback revision high-water mark are rejected
+before adoption, even after sequence removal, and retained
+safely if retirement is full. Focused native/callback checks cover the policy;
+the genuine single-module comparison was rerun after the Core change and retains
+the same declared SDK self-unbinding differences. No whole-module equivalence
+or new installation is claimed.
+
+[Ownership checks and reference result](benchmarks/rackmcp-sequence-ownership.json):
+8 ownership, 9 adapter and 3 Core heap checks; 287 control, 28 performance and
+220 audio regressions (one intentionally ignored), including shared-session
+creation/duplication/history and persistent rollback fencing; one real MCP stdio roundtrip.
+Strict Core/CLI/desktop all-target Clippy and workspace formatting pass. The
+initial audio run exposed an obsolete VCA fixture that omitted explicit knob
+assignment intent; its gain/no-heap assertions pass after correcting that input.
+
+**Imported automation checkpoint:** RackMCP Sequencer 2.0.0 now imports with all
+typed source lanes retained. Bindings require the exact source package, original
+numeric destination ID, registered mapping and supported native control.
+Unrelated same-ID replacements reject atomically; missing targets remain dormant.
+Exact waits on unbound automation even with no unresolved modules; explicit
+Partial playback discloses omissions in the native inspector and MCP.
+
+The user's complete patch retains all 55 modules/83 cables and source bytes,
+now with **31 mapped / 24 unresolved** modules. Both sequencers and all 13 lanes
+are retained; ten VCA/filter bindings qualify and three Surge targets remain
+unbound. The strict mapping is labeled MusicalRole because native scheduling and
+healthy rebinding corrections are disclosed, not whole-module equivalence.
+Shared UI/MCP edit/history/save/reopen and an actual allocation-free callback
+workflow cover live levels, explicit reload, suspension, Partial resume and
+captured effective values. Import starts neither a listener nor an audio device;
+the installed app is unchanged.
+
+[Import evidence](benchmarks/rackmcp-sequence-import.json): 351 CLI-library
+checks (two ignored), 221 audio-callback checks (one ignored), seven native import
+UI checks, actual user-fixture import and desktop save/reopen, plus five real
+MCP stdio workflows pass. Strict CLI/desktop all-target Clippy and formatting
+pass. [Reviewed UI](../design/reviews/rackmcp-import-v1/README.md) shows Exact
+suspension and explicit Partial without invented telemetry. The frozen 96-file
+Core manifest is unchanged, so the existing numerical proof is reused.
+
+Transport/status now has direct MCP commands, coherent source-cadence status and
+selected-name/running save/history capture. Source transport comparison passes
+3 cases / 17,584 frames exactly. The actual shared-session import workflow reaches
+audio and source-preserving save/reopen; focused callback checks cover queue
+fences and selection-only adoption without reclaiming automation.
+[Transport contract and checks](benchmarks/rackmcp-sequence-transport.json): all 71
+Core unit/integration targets (927 passed, three ignored), 355 CLI-library
+checks (two ignored), 229 audio-callback checks (one ignored), 37 publication
+checks, nine document-state checks and five real MCP stdio workflows pass.
+Strict Core/CLI/Desktop all-target Clippy and formatting pass.
+
+**Listen checkpoint (not installed):** raw L/R passthrough, host-owned armed
+capture, source analysis/WAV and shared rack/browser controls now work through
+the same Session MCP authority. The pinned source comparison passes 821 cases /
+9,873 complete observations exactly; all 17 analysis fixtures and both WAV export
+policies match exactly. [Evidence and declared host corrections](benchmarks/rackmcp-listen.json).
+The real shared-session musical fixture passes live capture, octave edit/undo/redo
+and source-preserving save/reopen. The full user collection now preserves all
+55 modules/83 cables with 32 mapped and 23 unresolved dependencies. Focused Core,
+CLI, callback, UI, real stdio and actual-fixture checks plus strict all-target
+Clippy/formatting pass. The installed app remains 0.2.6 build 8.
+
+Next close Bridge and live Sequencer panel transport presentation, then one
+complete macOS family milestone validation/PR. No release, installation or
+whole-module/whole-patch equivalence is claimed.
 
 Close one imported musical workflow using the actual RackMCP 2.0.0 sequencers
 and supported voice chain. The reference checkout is pinned at
 `285e84c5ff2d3ecef25890da07f578af6a0c5ca6`; its plugin source is clean.
-The read-only remaining-dependency audit still finds 26 unresolved modules in
-the full user patch: third-party instruments/effects, RackMCP controls and Core
+The current read-only import finds 22 unresolved modules in
+the full user patch: third-party instruments/effects and Core
 Notes/audio I/O. Preserve that complete fixture; a supported excerpt or explicit
 Partial playback is not whole-patch equivalence.
 

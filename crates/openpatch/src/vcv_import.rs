@@ -14,6 +14,7 @@ use crate::project_document::{
     ProjectDocument, ProjectLayout, SourceBlob, SourceCable, SourceMapping, SourceModule,
     SourcePackage, DOCUMENT_VERSION,
 };
+use openpatch_core::rackmcp_sequence::{NativeTarget, SequenceState};
 use openpatch_core::{Cable, ModuleContent, Node, WaveAsset, WaveAssets, MAX_CABLES, MAX_NODES};
 use serde::Serialize;
 use serde_json::Value;
@@ -219,6 +220,59 @@ pub fn import(bytes: &[u8]) -> Result<ImportResult, String> {
         });
         nodes.push((id, index, source_id, node));
     }
+    // Resolve only after conversion: a registered source identity alone does
+    // not establish that this patch actually has a supported native target.
+    let automation_targets: BTreeMap<u64, (&Value, &Node)> = nodes
+        .iter()
+        .filter_map(|(_, index, source_id, node)| {
+            node.as_ref()
+                .map(|node| (*source_id, (&modules[*index], node)))
+        })
+        .collect();
+    let mut bindings = BTreeMap::new();
+    let mut unsupported_lanes = Vec::new();
+    for (id, _, _, node) in &nodes {
+        let Some(state) = node
+            .as_ref()
+            .and_then(|node| node.rackmcp_sequence.as_ref())
+        else {
+            continue;
+        };
+        let mut targets = Vec::new();
+        for lane in &state.data.lanes {
+            let target = lane
+                .module_id
+                .parse::<u64>()
+                .ok()
+                .and_then(|id| automation_targets.get(&id))
+                .and_then(|(module, node)| {
+                    let mapping = registered_source_mapping(module)?;
+                    let parameter =
+                        source_automation_parameter(module, &mapping, &node.kind, lane.param_id)?;
+                    Some(NativeTarget {
+                        source_module_id: lane.module_id.clone(),
+                        source_param_id: lane.param_id,
+                        module: node.id.clone(),
+                        parameter: parameter.into(),
+                    })
+                });
+            match target {
+                Some(target) => targets.push(target),
+                None => {
+                    unsupported_lanes.push(format!("{id}:{}:{}", lane.module_id, lane.param_id))
+                }
+            }
+        }
+        bindings.insert(id.clone(), targets);
+    }
+    for (id, _, _, node) in &mut nodes {
+        if let Some(state) = node
+            .as_mut()
+            .and_then(|node| node.rackmcp_sequence.as_mut())
+        {
+            state.targets = bindings.remove(id).unwrap_or_default();
+        }
+    }
     let package = SourcePackage {
         patch: Arc::new(patch.clone()),
         assets: asset_names,
@@ -231,11 +285,9 @@ pub fn import(bytes: &[u8]) -> Result<ImportResult, String> {
             let source = SourceModule {
                 package: package_id.clone(),
                 index,
-                mapping: node.as_ref().map(|_| SourceMapping {
-                    id: format!("vcv/Fundamental/{}/2.6.4", module_model(&modules[index])),
-                    version: 1,
-                    fidelity: MappingFidelity::SourceBehavior,
-                }),
+                mapping: node
+                    .as_ref()
+                    .and_then(|_| registered_source_mapping(&modules[index])),
             };
             match node {
                 Some(node) => DocumentNode::Native {
@@ -284,6 +336,27 @@ pub fn import(bytes: &[u8]) -> Result<ImportResult, String> {
         })
         .collect();
     let mut warnings = vec!["Source-behavior mappings use OpenPatch scheduling, lifecycle and random streams; no official binary or hardware equivalence is claimed.".into()];
+    if summaries
+        .iter()
+        .any(|module| module.native_kind.as_deref() == Some("rackmcp_sequencer"))
+    {
+        warnings.push("RackMCP 2.0.0 Sequencer uses a MusicalRole mapping: native healthy-target rebinding deliberately corrects SDK self-unbinding; native scheduling and exclusive automation ownership apply. Whole-module and whole-patch equivalence are unclaimed.".into());
+    }
+    if summaries
+        .iter()
+        .any(|module| module.native_kind.as_deref() == Some("rackmcp_listen"))
+    {
+        warnings.push("RackMCP 2.0.0 Listen preserves raw passthrough and source analysis. Capture is a native host job with acknowledged ring reuse and explicit cancellation on removed/replaced/suspended execution; import never starts a capture or audio device. Whole-host equivalence is unclaimed.".into());
+    }
+    if summaries
+        .iter()
+        .any(|module| module.native_kind.as_deref() == Some("rackmcp_bridge"))
+    {
+        warnings.push("RackMCP 2.0.0 Bridge uses a MusicalRole host adaptation: real native session/control/save status is observed by the UI every 100 ms instead of source 512-sample DSP lamps. Native service lifecycle is global and controlled explicitly by app actions; import, duplicate, initialize, undo, removal and reopen do not start a listener or audio device. Rack pairing, writer lease, SDK, DSP and hardware equality are unclaimed.".into());
+    }
+    if !unsupported_lanes.is_empty() {
+        warnings.push(format!("{} RackMCP automation lane(s) have no qualified native target and remain preserved without a binding: {}.", unsupported_lanes.len(), unsupported_lanes.join(", ")));
+    }
     if summaries
         .iter()
         .any(|module| module.native_kind.as_deref() == Some("rack264_vcf"))
@@ -422,6 +495,54 @@ struct Manifest {
     outputs: &'static [&'static str],
 }
 fn manifest(module: &Value) -> Option<Manifest> {
+    if module["plugin"] == "RackMCP" && module["model"] == "Bridge" && module["version"] == "2.0.0"
+    {
+        return Some(Manifest {
+            kind: "rackmcp_bridge",
+            params: &[],
+            inputs: &[],
+            outputs: &[],
+        });
+    }
+    if module["plugin"] == "RackMCP" && module["model"] == "Listen" && module["version"] == "2.0.0"
+    {
+        return Some(Manifest {
+            kind: "rackmcp_listen",
+            params: &[],
+            inputs: &["left", "right"],
+            outputs: &["left", "right"],
+        });
+    }
+    if module["plugin"] == "RackMCP"
+        && module["model"] == "Sequencer"
+        && module["version"] == "2.0.0"
+    {
+        return Some(Manifest {
+            kind: "rackmcp_sequencer",
+            params: &["bpm", "swing", "running", "reset"],
+            inputs: &["clock", "reset"],
+            outputs: &[
+                "pitch1",
+                "pitch2",
+                "pitch3",
+                "pitch4",
+                "gate1",
+                "gate2",
+                "gate3",
+                "gate4",
+                "velocity1",
+                "velocity2",
+                "velocity3",
+                "velocity4",
+                "accent1",
+                "accent2",
+                "accent3",
+                "accent4",
+                "clock",
+                "reset",
+            ],
+        });
+    }
     if module["plugin"] != "Fundamental" || module["version"] != "2.6.4" {
         return None;
     }
@@ -530,6 +651,61 @@ fn manifest(module: &Value) -> Option<Manifest> {
         _ => return None,
     })
 }
+
+/// Registered identity metadata, independent of whether a particular saved
+/// module's content can be converted. Callers must also verify the native node.
+pub(crate) fn registered_source_mapping(module: &Value) -> Option<SourceMapping> {
+    let mapping = manifest(module)?;
+    Some(SourceMapping {
+        id: format!(
+            "vcv/{}/{}/{}",
+            module["plugin"].as_str()?,
+            module_model(module),
+            module["version"].as_str()?
+        ),
+        version: 1,
+        fidelity: if matches!(
+            mapping.kind,
+            "rackmcp_sequencer" | "rackmcp_listen" | "rackmcp_bridge"
+        ) {
+            MappingFidelity::MusicalRole
+        } else {
+            MappingFidelity::SourceBehavior
+        },
+    })
+}
+
+/// Source numeric automation slots require the exact registered mapping and a
+/// proven live native capability. A familiar native kind by itself is not proof.
+pub(crate) fn source_automation_parameter(
+    module: &Value,
+    mapping: &SourceMapping,
+    native_kind: &str,
+    source_param_id: u16,
+) -> Option<&'static str> {
+    let expected = registered_source_mapping(module)?;
+    if mapping.id != expected.id
+        || mapping.version != expected.version
+        || mapping.fidelity != expected.fidelity
+    {
+        return None;
+    }
+    let manifest = manifest(module)?;
+    if native_kind != manifest.kind || source_param_id != 0 {
+        return None;
+    }
+    let parameter = match (
+        module["plugin"].as_str()?,
+        module_model(module),
+        module["version"].as_str()?,
+        native_kind,
+    ) {
+        ("Fundamental", "VCA-1", "2.6.4", "stock_vca") => "level",
+        ("Fundamental", "VCF", "2.6.4", "rack264_vcf") => "frequency",
+        _ => return None,
+    };
+    openpatch_core::runtime_parameter_descriptor(native_kind, parameter).map(|_| parameter)
+}
 fn unsupported_reason(_module: &Value) -> String {
     "no mapping for this exact plugin/model/version identity".into()
 }
@@ -555,14 +731,22 @@ fn convert(
     source_assets: &BTreeMap<String, Vec<u8>>,
 ) -> Result<(Node, Option<WaveAsset>), String> {
     let mut params = BTreeMap::new();
-    if matches!(mapping.kind, "rack264_vco" | "rack264_vcf")
-        && module.get("data").is_some_and(|data| {
-            !data.is_null() && !data.as_object().is_some_and(|data| data.is_empty())
-        })
-    {
+    if matches!(
+        mapping.kind,
+        "rack264_vco" | "rack264_vcf" | "rackmcp_listen" | "rackmcp_bridge"
+    ) && module.get("data").is_some_and(|data| {
+        !data.is_null() && !data.as_object().is_some_and(|data| data.is_empty())
+    }) {
         return Err(
-            "unrecognized source module data is outside the pinned voice mapping contract".into(),
+            "unrecognized source module data is outside the pinned mapping contract".into(),
         );
+    }
+    if mapping.kind == "rackmcp_listen"
+        && module
+            .get("params")
+            .is_some_and(|params| !params.is_array())
+    {
+        return Err("Listen source params must be an empty array or absent".into());
     }
     if let Some(values) = module["params"].as_array() {
         if mapping.kind == "rack264_vcf" {
@@ -574,6 +758,19 @@ fn convert(
         }
         for value in values {
             let index = port_index(&value["id"])? as usize;
+            if mapping.kind == "rackmcp_bridge" {
+                // Source slot 0 is a transient reset-pairing button, never a
+                // durable native parameter or an action caused by import.
+                if index != 0 {
+                    return Err("unrecognized source parameter index".into());
+                }
+                if value["value"].as_f64() != Some(0.0) {
+                    return Err(
+                        "saved Bridge reset-pairing hold cannot be represented durably".into(),
+                    );
+                }
+                continue;
+            }
             let name = *mapping
                 .params
                 .get(index)
@@ -587,6 +784,9 @@ fn convert(
                 continue;
             }
             let valid = match (mapping.kind, name) {
+                ("rackmcp_sequencer", "bpm") => (20.0..=300.0).contains(&value),
+                ("rackmcp_sequencer", "swing") => (50.0..=75.0).contains(&value),
+                ("rackmcp_sequencer", "running" | "reset") => value == 0.0 || value == 1.0,
                 ("rack264_vco", "frequency") => (-54.0..=54.0).contains(&value),
                 ("rack264_vco", "linear_fm" | "soft_sync") => value == 0.0 || value == 1.0,
                 ("rack264_vcf", "frequency") => {
@@ -636,10 +836,33 @@ fn convert(
         kind: mapping.kind.into(),
         params,
         content: None,
+        rackmcp_sequence: None,
         score: None,
         bypassed: module["bypass"].as_bool().unwrap_or(false),
     };
     let mut asset = None;
+    if mapping.kind == "rackmcp_sequencer" {
+        let state = match module.get("data") {
+            Some(data) => SequenceState {
+                data: serde_json::from_value(data.clone())
+                    .map_err(|error| format!("unsupported RackMCP sequence data: {error}"))?,
+                targets: Vec::new(),
+            },
+            None => SequenceState::default(),
+        };
+        state
+            .validate()
+            .map_err(|error| format!("unsupported RackMCP sequence data: {error}"))?;
+        node.rackmcp_sequence = Some(Box::new(state));
+        for (name, default) in [
+            ("bpm", 120.0),
+            ("swing", 50.0),
+            ("running", 0.0),
+            ("reset", 0.0),
+        ] {
+            node.params.entry(name.into()).or_insert(default);
+        }
+    }
     if mapping.kind == "wavetable_lfo" {
         // Source paramsFromJson explicitly gives this missing v2 attenuverter 1.
         node.params

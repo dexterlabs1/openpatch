@@ -9,6 +9,7 @@ fn voice_patch(voices: usize) -> Patch {
     let mut patch = Patch::default();
     let node = |id: String, kind: &str, params: BTreeMap<String, f32>| Node {
         content: None,
+        rackmcp_sequence: None,
         score: None,
         bypassed: false,
         id,

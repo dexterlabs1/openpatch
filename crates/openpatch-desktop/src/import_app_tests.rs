@@ -203,7 +203,7 @@ fn actual_vcv_native_open_save_reopen_and_capture() {
     let mut app = host(directory.path());
     app.load_document("source.vcv", false);
     assert_eq!(app.project.graph.nodes.len(), 55, "{}", app.status);
-    assert_eq!(app.patch.nodes.len(), 24);
+    assert_eq!(app.patch.nodes.len(), 33);
     assert_eq!(app.project.graph.cables.len(), 83);
     assert!(!app.shared.lock().unwrap().layout_pending());
     let expected = app.project.clone();
@@ -433,4 +433,112 @@ fn initial_host_publication_fits_an_early_mcp_raw_import_before_clearing_its_ori
     );
     assert_eq!(app.shared.lock().unwrap().layout_origin(), None);
     assert!(!app.shared.lock().unwrap().layout_pending());
+}
+
+#[test]
+fn imported_automation_review_suspends_exact_and_explicitly_enables_partial_with_retained_lane() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = json!({"version":"2.6.6","modules":[
+        {"id":101,"plugin":"RackMCP","model":"Sequencer","version":"2.0.0","pos":[0,0],
+         "data":{"patterns":[{"name":"A","length":4,"tracks":[{"steps":[{"step":0,"notes":[0,7],"accent":true}]}]}],
+           "lanes":[{"moduleId":"42","paramId":0,"points":[{"bar":0,"value":0.25}]},
+                    {"moduleId":"42","paramId":1,"points":[{"bar":0,"value":1}]}]}},
+        {"id":42,"plugin":"Fundamental","model":"VCA-1","version":"2.6.4","pos":[50,0]}
+    ],"cables":[]});
+    let imported = openpatch::vcv_import::import(&serde_json::to_vec(&source).unwrap()).unwrap();
+    let mut app = host(directory.path());
+    app.shared
+        .lock()
+        .unwrap()
+        .replace_project_document(imported.document, None)
+        .unwrap();
+    app.sync();
+    app.observe_document();
+    app.import_review_open = true;
+    assert_eq!(
+        app.shared.lock().unwrap().execution_disposition(),
+        ExecutionDisposition::SuspendedUnresolved
+    );
+    let ctx = egui::Context::default();
+    crate::panel_skin::install_fonts(&ctx);
+    let size = egui::vec2(1560., 900.);
+    let draw = |app: &mut OpenPatch, time, events| {
+        ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                time: Some(time),
+                events,
+                ..Default::default()
+            },
+            |ctx| app.rack_workspace(ctx, None),
+        )
+    };
+    let mut capture = crate::headless_review::CpuCapture::default();
+    let first = draw(&mut app, 0., vec![]);
+    capture.observe(&first);
+    let output = draw(&mut app, 0.1, vec![]);
+    capture.observe(&output);
+    let text: Vec<_> = output
+        .shapes
+        .iter()
+        .filter_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) => Some(text.galley.job.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(text
+        .iter()
+        .any(|text| text.contains("0 unresolved modules · 1 omitted automation lane")));
+    assert!(text
+        .iter()
+        .any(|text| text.contains("source 42 / control 1: no qualified control binding")));
+    let pointer = output
+        .shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.job.text == "Enable partial" => {
+                Some(egui::Rect::from_min_size(text.pos, text.galley.size()).center())
+            }
+            _ => None,
+        })
+        .expect("explicit Partial playback action is visible");
+    let destination = std::env::var_os("OPENPATCH_AUTOMATION_IMPORT_REVIEW").map(PathBuf::from);
+    if let Some(destination) = &destination {
+        std::fs::create_dir_all(destination).unwrap();
+        capture.save(&ctx, output, size, destination.join("exact-suspended.png"));
+    }
+    let output = draw(
+        &mut app,
+        0.2,
+        vec![
+            egui::Event::PointerMoved(pointer),
+            egui::Event::PointerButton {
+                pos: pointer,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+            egui::Event::PointerButton {
+                pos: pointer,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ],
+    );
+    capture.observe(&output);
+    assert_eq!(
+        app.shared.lock().unwrap().playback_mode(),
+        PlaybackMode::Partial,
+        "{}",
+        app.status
+    );
+    let state = app.shared.lock().unwrap().document_execution_status();
+    assert_eq!(state["omitted_automation"].as_array().unwrap().len(), 1);
+    assert_eq!(state["requested_disposition"], "runnable_partial");
+    if let Some(destination) = &destination {
+        let output = draw(&mut app, 0.3, vec![]);
+        capture.observe(&output);
+        capture.save(&ctx, output, size, destination.join("partial-explicit.png"));
+    }
 }

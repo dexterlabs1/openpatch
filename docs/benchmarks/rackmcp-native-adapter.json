@@ -1,0 +1,81 @@
+{
+  "status": "Native RackMCP sequencer adapter checkpoint; source import still disabled",
+  "source_plugin": {
+    "name": "RackMCP",
+    "version": "2.0.0",
+    "revision": "285e84c5ff2d3ecef25890da07f578af6a0c5ca6"
+  },
+  "native_contract": {
+    "kind": "rackmcp_sequencer",
+    "outputs": 18,
+    "automation_lanes": 8,
+    "destination_capabilities": [
+      "stock_vca.level",
+      "rack264_vcf.frequency"
+    ],
+    "publication": "actual callback \u2192 shared fenced parameter observation \u2192 MCP/history/save",
+    "scheduling": "native node order for direct parameter writes; delayed native cable frames",
+    "state_ownership": "boxed typed control-thread compilation; fixed callback transport and acknowledged lane cache"
+  },
+  "validation": {
+    "adapter_and_primitive_units": {
+      "passed": 16,
+      "evidence": "adapter-unit-002.log"
+    },
+    "native_model_workflows": {
+      "passed": 8,
+      "evidence": "adapter-host-final-core.log"
+    },
+    "scheduler_regressions": {
+      "passed": 38,
+      "evidence": "adapter-host-final-core.log"
+    },
+    "live_parameter_and_choice_regressions": {
+      "passed": 8,
+      "evidence": "adapter-core-regression-001.log"
+    },
+    "callback_heap_checks": {
+      "passed": 2,
+      "allocations": 0,
+      "deallocations": 0,
+      "evidence": "adapter-host-final-heap.log"
+    },
+    "shared_control_regressions": {
+      "passed": 283,
+      "evidence": "adapter-control-regression-001.log"
+    },
+    "post_boxing_typed_state_controls": {
+      "passed": 3,
+      "evidence": "adapter-control-003.log"
+    },
+    "desktop_ui_and_actual_callback": {
+      "passed": 5,
+      "evidence": "adapter-host-final-desktop.log"
+    },
+    "shared_default_rack_browser_guard": {
+      "passed": 1,
+      "catalog_kinds": 84,
+      "evidence": "adapter-preview-002.log"
+    },
+    "actual_cpu_captures": {
+      "passed": 1,
+      "images": 8,
+      "review": "design/reviews/rackmcp-sequencer-v1/README.md"
+    },
+    "strict_clippy": "adapter-host-final-clippy.log",
+    "formatting": "adapter-fmt-002.log"
+  },
+  "frozen_primitive_reference": {
+    "summary": "docs/benchmarks/rackmcp-sequence-reference.json",
+    "reused": true,
+    "reason": "The numerical engine/parser/lane arithmetic is unchanged. No wrapper or whole-module equivalence is inferred from that primitive proof."
+  },
+  "remaining": [
+    "Explicit equal-data load/undo/preset activation intent",
+    "Source target provenance and import mapping",
+    "Direct source transport/status and momentary reset UX",
+    "Bridge service/session and Listen live capture",
+    "Actual dependency-closed musical excerpt and milestone macOS CI"
+  ],
+  "release": "Installed 0.2.6 build8 unchanged; no package or native-device test"
+}

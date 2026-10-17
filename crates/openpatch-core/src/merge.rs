@@ -96,6 +96,7 @@ mod tests {
                 .unwrap_or_default(),
             bypassed: false,
             content: None,
+            rackmcp_sequence: None,
             score: None,
         })
         .unwrap()

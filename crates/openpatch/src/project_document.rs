@@ -11,6 +11,9 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+mod automation;
+pub use automation::{AutomationOmissionReason, OmittedAutomation};
+
 pub const DOCUMENT_VERSION: u32 = 2;
 const MAX_SOURCE_BLOB_BYTES: usize = 16 * 1024 * 1024;
 const MAX_SOURCE_BYTES: usize = 32 * 1024 * 1024;
@@ -268,6 +271,7 @@ pub struct NativeStateCarrier {
     pub unresolved_modules: Vec<String>,
     pub omitted_routes: Vec<OmittedRoute>,
     pub omitted_output: Option<String>,
+    pub omitted_automation: Vec<OmittedAutomation>,
 }
 #[derive(Clone, Debug)]
 pub struct RuntimeProjection {
@@ -275,6 +279,7 @@ pub struct RuntimeProjection {
     pub unresolved_modules: Vec<String>,
     pub omitted_routes: Vec<OmittedRoute>,
     pub omitted_output: Option<String>,
+    pub omitted_automation: Vec<OmittedAutomation>,
 }
 
 // Anchor opaque entries before the next surviving native entry. Native order
@@ -547,6 +552,7 @@ impl ProjectDocument {
         {
             return Err("document output references a missing module".into());
         }
+        self.automation_omissions()?;
         Ok(())
     }
 
@@ -791,6 +797,7 @@ impl ProjectDocument {
             unresolved_modules: unresolved.into_iter().collect(),
             omitted_routes,
             omitted_output,
+            omitted_automation: self.automation_omissions()?,
         })
     }
 
@@ -798,10 +805,13 @@ impl ProjectDocument {
     /// can change connected-port normaling; omissions must be shown to the user.
     pub fn project(&self, mode: PlaybackMode) -> Result<RuntimeProjection, String> {
         let carrier = self.state_carrier()?;
-        if mode == PlaybackMode::Exact && !carrier.unresolved_modules.is_empty() {
+        if mode == PlaybackMode::Exact
+            && (!carrier.unresolved_modules.is_empty() || !carrier.omitted_automation.is_empty())
+        {
             return Err(format!(
-                "{} unresolved modules prevent exact playback",
-                carrier.unresolved_modules.len()
+                "{} unresolved modules and {} omitted automation lanes prevent exact playback",
+                carrier.unresolved_modules.len(),
+                carrier.omitted_automation.len()
             ));
         }
         Ok(RuntimeProjection {
@@ -809,6 +819,7 @@ impl ProjectDocument {
             unresolved_modules: carrier.unresolved_modules,
             omitted_routes: carrier.omitted_routes,
             omitted_output: carrier.omitted_output,
+            omitted_automation: carrier.omitted_automation,
         })
     }
 }

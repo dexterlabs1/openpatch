@@ -25,6 +25,9 @@ include!("sequence_panel.rs");
 include!("atlas_sequence_panels.rs");
 include!("atlas_mid_side_panels.rs");
 include!("atlas_score_panel.rs");
+include!("atlas_rackmcp_sequencer_panel.rs");
+include!("atlas_listen_panel.rs");
+include!("atlas_bridge_panel.rs");
 include!("atlas_poly_panels.rs");
 include!("atlas_fade_panel.rs");
 include!("atlas_signal_utility_panels.rs");
@@ -103,9 +106,9 @@ fn port_material_scale(kind: &str) -> f32 {
         "stock_seq3" => 1.07,
         "stock_delay" => 1.20, // y380 sockets must remain inside the 396-point panel.
         "modal_resonator" => REDESIGNED_PORT_SCALE,
-        "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "crossfade"
-        | "quantizer" | "stock_quantizer" | "poly_sum" | "mid_side" | "stock_mid_side" | "mix6"
-        | "stock_mix" => REDESIGNED_PORT_SCALE,
+        "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "rackmcp_sequencer"
+        | "rackmcp_listen" | "crossfade" | "quantizer" | "stock_quantizer" | "poly_sum"
+        | "mid_side" | "stock_mid_side" | "mix6" | "stock_mix" => REDESIGNED_PORT_SCALE,
         "audio_stereo" | "poly_viz" | "scope" | "stock_scope" | "constant" | "octave"
         | "vca_mix" | "mixer" | "output" | "audio_out" => REDESIGNED_PORT_SCALE,
         "attenuverter8" => 1.10,
@@ -169,7 +172,12 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
             true,
         ) => Above(22.0),
         ("seq3", _, _) => Above(23.0),
-        ("score_sequencer" | "poly_split" | "poly_merge", _, _) => Above(25.0),
+        (
+            "score_sequencer" | "rackmcp_sequencer" | "rackmcp_listen" | "poly_split"
+            | "poly_merge",
+            _,
+            _,
+        ) => Above(25.0),
         ("mult", _, _) => Above(25.0),
         ("switch_1to4" | "switch_4to1", "clock" | "reset", false) => Above(25.0),
         ("switch_1to4" | "switch_4to1", _, false) => Left(34.0),
@@ -317,7 +325,10 @@ fn generic_parameter_hardware(
         || atlas_bank_rotary_kind(kind)
         || atlas_legacy_utility_kind(kind)
         || matches!(kind, "vca_mix" | "audio_stereo")
-        || kind == "score_sequencer"
+        || matches!(
+            kind,
+            "score_sequencer" | "rackmcp_sequencer" | "rackmcp_listen"
+        )
         || atlas_oscillator(kind)
         || kind == "svf_filter"
         || atlas_voice(kind)
@@ -641,6 +652,7 @@ impl ModulePreview {
         let kind = module["kind"].as_str().unwrap_or("").to_owned();
         let node = Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             id: String::new(),
             kind,
@@ -722,6 +734,9 @@ impl ModulePreview {
 include!("rack_import_panels.rs");
 
 pub struct Rack {
+    bridge_ui: BridgeUi,
+    rackmcp_ui: RackMcpUi,
+    listen_ui: ListenUi,
     unresolved_panels: Vec<UnresolvedPanel>,
     source_routes: Vec<Cable>,
     dependency_focus: Option<String>,
@@ -793,6 +808,9 @@ pub struct Rack {
 impl Default for Rack {
     fn default() -> Self {
         Self {
+            bridge_ui: BridgeUi::default(),
+            rackmcp_ui: RackMcpUi::default(),
+            listen_ui: ListenUi::default(),
             unresolved_panels: Vec::new(),
             source_routes: Vec::new(),
             dependency_focus: None,
@@ -3500,6 +3518,27 @@ impl Rack {
                     action = Some(edit);
                 }
             }
+            if node.kind == "rackmcp_sequencer" {
+                if let Some(edit) =
+                    self.atlas_rackmcp_panel(ui, node, rect, revision, mode.is_interactive())
+                {
+                    action = Some(edit);
+                }
+            }
+            if node.kind == "rackmcp_bridge" {
+                if let Some(edit) =
+                    self.atlas_bridge_panel(ui, node, rect, revision, mode.is_interactive())
+                {
+                    action = Some(edit);
+                }
+            }
+            if node.kind == "rackmcp_listen" {
+                if let Some(edit) =
+                    self.atlas_listen_panel(ui, node, rect, revision, mode.is_interactive())
+                {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "score_sequencer" {
                 paint_atlas_score_configuration(&painter, node, rect, self.zoom, &self.lighting);
             }
@@ -4244,6 +4283,8 @@ impl Rack {
                     atlas_signal_utility_control(&node.kind, name)
                 } else if atlas_sequence_kind(&node.kind) {
                     atlas_sequence_control(name)
+                } else if node.kind == "rackmcp_sequencer" {
+                    atlas_rackmcp_control(name)
                 } else if node.kind == "score_sequencer" {
                     atlas_score_control(name)
                 } else if node.kind == "svf_filter" {
@@ -4384,7 +4425,16 @@ impl Rack {
                 } else {
                     1.0
                 };
-                let display_value = if atlas_bank_rotary_kind(&node.kind) {
+                let display_value = if node.kind == "rackmcp_sequencer" && *name == "bpm" {
+                    format!("{value:.1} BPM")
+                } else if node.kind == "rackmcp_sequencer" && *name == "reset" {
+                    if value.round() == 0.0 {
+                        "Idle"
+                    } else {
+                        "Reset"
+                    }
+                    .into()
+                } else if atlas_bank_rotary_kind(&node.kind) {
                     atlas_bank_value(value, display_scale)
                 } else if atlas_sequence_kind(&node.kind) && *name == "steps" {
                     format!("{value:.0} steps")
@@ -4554,6 +4604,9 @@ impl Rack {
                     point(local.x, local.y)
                 } else if node.kind == "poly_sum" {
                     point(75.0, 192.0)
+                } else if node.kind == "rackmcp_sequencer" {
+                    let local = atlas_rackmcp_value_center(name);
+                    point(local.x, local.y)
                 } else if node.kind == "score_sequencer" {
                     let local = atlas_score_value_center(name);
                     point(local.x, local.y)
@@ -4671,6 +4724,8 @@ impl Rack {
                     }
                 } else if is_wavetable(&node.kind) {
                     104.0
+                } else if node.kind == "rackmcp_sequencer" {
+                    78.0
                 } else if node.kind == "score_sequencer" {
                     96.0
                 } else if node.kind == "macro_voice" {
@@ -4952,7 +5007,10 @@ impl Rack {
                         || atlas_bank_rotary_kind(&node.kind)
                         || atlas_legacy_utility_kind(&node.kind)
                         || matches!(node.kind.as_str(), "vca_mix" | "audio_stereo")
-                        || node.kind == "score_sequencer"
+                        || matches!(
+                            node.kind.as_str(),
+                            "score_sequencer" | "rackmcp_sequencer" | "rackmcp_listen"
+                        )
                         || atlas_oscillator(&node.kind)
                         || node.kind == "svf_filter"
                         || atlas_voice(&node.kind)
@@ -5000,6 +5058,8 @@ impl Rack {
                     paint_atlas_poly_constant_print(&painter, rect, name, self.zoom);
                 } else if node.kind == "poly_sum" {
                     paint_atlas_poly_sum_print(&painter, rect, self.zoom);
+                } else if node.kind == "rackmcp_sequencer" {
+                    paint_atlas_rackmcp_print(&painter, rect, name, self.zoom);
                 } else if node.kind == "score_sequencer" {
                     paint_atlas_score_print(&painter, rect, name, self.zoom);
                 } else if atlas_mid_side_kind(&node.kind) {
@@ -5100,7 +5160,10 @@ impl Rack {
                     );
                 }
                 let paint_readout = if atlas_sequence_kind(&node.kind)
-                    || node.kind == "score_sequencer"
+                    || matches!(
+                        node.kind.as_str(),
+                        "score_sequencer" | "rackmcp_sequencer" | "rackmcp_listen"
+                    )
                     || atlas_signal_utility_kind(&node.kind)
                     || atlas_legacy_utility_kind(&node.kind)
                     || node.kind == "audio_stereo"
@@ -5115,7 +5178,10 @@ impl Rack {
                     || atlas_signal_utility_kind(&node.kind)
                     || atlas_bank_rotary_kind(&node.kind)
                     || node.kind == "vca_mix"
-                    || node.kind == "score_sequencer"
+                    || matches!(
+                        node.kind.as_str(),
+                        "score_sequencer" | "rackmcp_sequencer" | "rackmcp_listen"
+                    )
                     || atlas_oscillator(&node.kind)
                     || node.kind == "svf_filter"
                     || atlas_voice(&node.kind)
@@ -8824,6 +8890,8 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
                 if input { 342.0 } else { 374.0 },
             );
         }
+        "rackmcp_sequencer" => return atlas_rackmcp_port(input, index),
+        "rackmcp_listen" => return atlas_listen_port(input, index),
         "score_sequencer" if input => return pos2(60.0 + index as f32 * 80.0, 373.0),
         "score_sequencer" if index < 12 => {
             return pos2(
@@ -9729,6 +9797,8 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "macro_voice" => HP * 20.0,
         "scope" | "stock_scope" => HP * 42.0,
         "score_sequencer" => HP * 40.0,
+        "rackmcp_sequencer" => HP * 48.0,
+        "rackmcp_listen" | "rackmcp_bridge" => HP * 24.0,
         "stereo_delay" | "sidechain_compressor" => HP * 28.0,
         "stereo_reverb" | "drum_voice" => HP * 24.0,
         "svf_filter" => HP * 18.0,
@@ -9779,6 +9849,9 @@ pub(crate) fn title(kind: &str) -> &str {
         "scope" => "SCOPE",
         "stock_scope" => "STOCK SCOPE",
         "score_sequencer" => "SCORE",
+        "rackmcp_sequencer" => "RACKMCP SEQUENCER",
+        "rackmcp_listen" => "RACKMCP LISTEN",
+        "rackmcp_bridge" => "MCP BRIDGE",
         "stereo_delay" => "STEREO DELAY",
         "stereo_reverb" => "SPACE",
         "sidechain_compressor" => "DUCK",
@@ -10001,6 +10074,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
             "level",
         ],
         "score_sequencer" => &["tempo", "swing", "running"],
+        "rackmcp_sequencer" => &["bpm", "swing", "running", "reset"],
         "drum_voice" => &["mode", "pitch", "decay", "tone", "drive", "level"],
         "stereo_delay" => &[
             "time_left",
@@ -10577,7 +10651,10 @@ fn paint_panel(
         || atlas_endpoint_kind(&node.kind)
         || atlas_view_kind(&node.kind)
         || node.kind == "vca_mix"
-        || node.kind == "score_sequencer"
+        || matches!(
+            node.kind.as_str(),
+            "score_sequencer" | "rackmcp_sequencer" | "rackmcp_listen"
+        )
         || matches!(
             node.kind.as_str(),
             "stock_vco"
@@ -10679,7 +10756,10 @@ fn paint_panel(
         || atlas_endpoint_kind(&node.kind)
         || atlas_view_kind(&node.kind)
         || node.kind == "vca_mix"
-        || node.kind == "score_sequencer"
+        || matches!(
+            node.kind.as_str(),
+            "score_sequencer" | "rackmcp_sequencer" | "rackmcp_listen"
+        )
         || matches!(
             node.kind.as_str(),
             "stock_vco"
@@ -10926,7 +11006,10 @@ fn paint_jack(
         || atlas_endpoint_kind(kind)
         || atlas_view_kind(kind)
         || kind == "vca_mix"
-        || kind == "score_sequencer"
+        || matches!(
+            kind,
+            "score_sequencer" | "rackmcp_sequencer" | "rackmcp_listen"
+        )
         || matches!(
             kind,
             "stock_vco"
@@ -11985,7 +12068,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            83,
+            86,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -13857,6 +13940,7 @@ mod tests {
         let mut updated = patch;
         updated.nodes.push(Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             id: "wide-copy".into(),
             kind: "vca_mix".into(),
@@ -16087,6 +16171,7 @@ mod tests {
         let mut patch = Patch {
             nodes: vec![Node {
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 bypassed: false,
                 id: "q".into(),
@@ -16136,6 +16221,7 @@ mod tests {
                 .into_iter()
                 .map(|(id, kind)| Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     bypassed: false,
                     id: id.into(),
@@ -16200,6 +16286,7 @@ mod tests {
                 .into_iter()
                 .map(|(id, kind)| Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     bypassed: false,
                     id: id.into(),
@@ -16247,6 +16334,7 @@ mod tests {
             .into_iter()
             .map(|(id, kind)| Node {
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 bypassed: false,
                 id: id.into(),
@@ -16408,6 +16496,7 @@ mod tests {
                 version,
                 nodes: vec![Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     bypassed: false,
                     id: "loop".into(),
@@ -16459,6 +16548,7 @@ mod tests {
             version: 2,
             nodes: vec![Node {
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 bypassed: false,
                 id: "voltages".into(),
@@ -16625,6 +16715,7 @@ mod tests {
         for module in catalog["modules"].as_array().unwrap() {
             let node = Node {
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 bypassed: false,
                 id: "test".into(),
@@ -16651,6 +16742,7 @@ mod tests {
             .unwrap();
         let node = Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             bypassed: false,
             id: "env".into(),
@@ -16852,6 +16944,7 @@ mod tests {
                 params: BTreeMap::new(),
                 bypassed: false,
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
             });
         }
@@ -16897,6 +16990,7 @@ mod tests {
                 params: BTreeMap::new(),
                 bypassed: false,
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
             });
         }
@@ -18847,6 +18941,15 @@ mod tests {
     }
     mod poly_constant_atlas_ui_tests {
         include!("poly_constant_atlas_ui_tests.rs");
+    }
+    mod atlas_bridge_ui_tests {
+        include!("atlas_bridge_ui_tests.rs");
+    }
+    mod atlas_listen_ui_tests {
+        include!("atlas_listen_ui_tests.rs");
+    }
+    mod atlas_rackmcp_ui_tests {
+        include!("atlas_rackmcp_ui_tests.rs");
     }
     mod atlas_score_ui_tests {
         include!("atlas_score_ui_tests.rs");

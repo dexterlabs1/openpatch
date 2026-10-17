@@ -41,11 +41,19 @@ pub fn validate(preset: &Value) -> Result<(), String> {
     if object.keys().any(|key| {
         !matches!(
             key.as_str(),
-            "format" | "version" | "kind" | "params" | "bypassed" | "score" | "content" | "assets"
+            "format"
+                | "version"
+                | "kind"
+                | "params"
+                | "bypassed"
+                | "score"
+                | "rackmcp_sequence"
+                | "content"
+                | "assets"
         )
     }) {
         return Err(
-            "preset accepts only format, version, kind, params, bypassed, score, content, and assets"
+            "preset accepts only format, version, kind, params, bypassed, score, rackmcp_sequence, content, and assets"
                 .into(),
         );
     }
@@ -131,6 +139,17 @@ pub fn validate(preset: &Value) -> Result<(), String> {
         .is_some_and(|value| !value.is_boolean())
     {
         return Err("preset bypassed must be a boolean".into());
+    }
+    if let Some(sequence) = preset.get("rackmcp_sequence") {
+        if kind != "rackmcp_sequencer" {
+            return Err("rackmcp_sequence data requires rackmcp_sequencer".into());
+        }
+        let mut patch = openpatch_core::Patch::new_v2();
+        patch.nodes.push(
+            serde_json::from_value(json!({"id":"preset","kind":kind,"rackmcp_sequence":sequence}))
+                .map_err(|error| error.to_string())?,
+        );
+        patch.validate()?;
     }
     if let Some(score) = preset.get("score") {
         if kind != "score_sequencer" {
@@ -246,6 +265,7 @@ pub fn capture_state_with_assets(
     assets: &WaveAssets,
 ) -> Result<Value, String> {
     let module = descriptor(&node.kind)?;
+    let mut captured_node = node.clone();
     let mut params = BTreeMap::new();
     for (name, spec) in module["params"].as_object().unwrap() {
         if spec["hidden"] == true {
@@ -272,8 +292,14 @@ pub fn capture_state_with_assets(
                 )
             })?;
         actual.write_params(&mut params);
+        actual.write_node(&mut captured_node);
     }
     let mut preset = json!({"format":"openpatch-module-preset","version":1,"kind":node.kind,"params":params,"bypassed":node.bypassed});
+    if node.kind == "rackmcp_sequencer" {
+        preset["rackmcp_sequence"] =
+            serde_json::to_value(captured_node.rackmcp_sequence.clone().unwrap_or_default())
+                .map_err(|error| error.to_string())?;
+    }
     if node.kind == "score_sequencer" {
         preset["score"] = serde_json::to_value(node.score.clone().unwrap_or_default())
             .map_err(|error| error.to_string())?;
@@ -312,6 +338,10 @@ pub fn apply(node: &mut Node, preset: &Value) -> Result<Option<bool>, String> {
         // A wavetable preset without custom content selects the production
         // default bank. Legacy annotation presets retain their partial merge.
         node.content = None;
+    }
+    if let Some(sequence) = preset.get("rackmcp_sequence") {
+        node.rackmcp_sequence =
+            Some(serde_json::from_value(sequence.clone()).map_err(|error| error.to_string())?);
     }
     if let Some(score) = preset.get("score") {
         node.score =
@@ -489,6 +519,7 @@ mod tests {
             let kind = module["kind"].as_str().unwrap();
             let base = Node {
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 id: "test".into(),
                 kind: kind.into(),

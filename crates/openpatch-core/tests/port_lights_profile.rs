@@ -17,6 +17,7 @@ fn dense(cables: usize) -> Patch {
         kind: "poly_constant".into(),
         bypassed: false,
         content: None,
+        rackmcp_sequence: None,
         score: None,
         params: std::iter::once(("channels".into(), 16.0))
             .chain((1..=16).map(|lane| (format!("v{lane}"), lane as f32 - 8.5)))
@@ -28,6 +29,7 @@ fn dense(cables: usize) -> Patch {
             kind: "attenuverter8".into(),
             bypassed: false,
             content: None,
+            rackmcp_sequence: None,
             score: None,
             params: (1..=8).map(|row| (format!("gain{row}"), 1.0)).collect(),
         });

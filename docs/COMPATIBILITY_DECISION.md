@@ -22,6 +22,17 @@ Execution permission travels with revision/generation-fenced audio plans. Explic
 
 Bounded `.vcv` decoding, pinned mappings, visible placeholders, project-store migration and supported import/repair/save/reopen workflows are implemented through PRs #30/#31. The user's complete musical patch still has unsupported dependencies; the full declared playback collection remains unfinished. This boundary is not universal third-party import or a VCV binary host.
 
+The active-project save baseline is shared by desktop dirty/close guards and
+native Bridge status. It compares authored document/layout/source references and
+durable module state, excluding effective automation-only parameter changes.
+Persistence samples effective controls and durable state together, while retaining
+the corresponding authored baseline. A successful save registers that captured
+baseline under the shared Session lock and a document-generation fence, before
+changing active-file metadata or clearing recovery. Later edits remain dirty;
+completions from another generation cannot clean or relabel the current document.
+Snapshot exports do not acquire the active-project saved baseline. Unknown live
+durable state or pending layout is explicitly unavailable, never silently clean.
+
 ## Extensions and existing VCV binaries
 
 A versioned Rust module manifest/API and a host for existing VCV C++ binaries are separate deliverables. New native extensions use the same identity/state/migration rules as imports. Existing binary compatibility remains an explicit open host-matrix gate; choose a separate compatibility host boundary before implementing it. Do not load an arbitrary existing VCV library directly into the Rust audio callback or claim that porting a few modules supplies ecosystem compatibility.

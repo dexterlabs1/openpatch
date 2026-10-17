@@ -36,7 +36,9 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
         | "random_values" | "sh_asr" | "sample_hold" | "pulses" | "push" | "gates" => {
             Color32::from_rgb(108, 99, 168)
         }
-        "seq3" | "stock_seq3" | "score_sequencer" => Color32::from_rgb(143, 104, 28),
+        "seq3" | "stock_seq3" | "score_sequencer" | "rackmcp_sequencer" => {
+            Color32::from_rgb(143, 104, 28)
+        }
         "gain" | "analog_vca" | "stock_vca" | "mixer" | "mix6" | "stock_mix" | "poly_sum"
         | "cv_mix" | "vca_mix" | "stock_vca_mix" | "fade" | "crossfade" | "attenuverter"
         | "attenuverter8" | "mutes10" => Color32::from_rgb(65, 121, 77),
@@ -390,11 +392,11 @@ pub(crate) fn parameter_rotary(
         if t <= value {
             painter.line_segment(
                 points,
-                Stroke::new(9.0 * zoom, lighting.setting_glow(accent, 0.07)),
+                Stroke::new(4.0 * zoom, lighting.setting_glow(accent, 0.03)),
             );
             painter.line_segment(
                 points,
-                Stroke::new(5.0 * zoom, lighting.setting_glow(accent, 0.22)),
+                Stroke::new(2.5 * zoom, lighting.setting_glow(accent, 0.12)),
             );
             painter.line_segment(points, Stroke::new(1.35 * zoom, accent));
         } else {

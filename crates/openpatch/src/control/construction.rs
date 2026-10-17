@@ -458,6 +458,9 @@ impl Session {
     pub(super) fn detached_snapshot(&self) -> Self {
         Self {
             document: self.document.clone(),
+            project_save: self.project_save.detached(),
+            bridge_observation: self.bridge_observation.clone(),
+            last_operation: self.last_operation.clone(),
             playback_mode: self.playback_mode,
             document_execution: self.document_execution,
             patch: self.patch.clone(),

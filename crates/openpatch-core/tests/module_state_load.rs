@@ -7,6 +7,7 @@ fn patch(bypassed: bool) -> Patch {
     patch.nodes = vec![
         Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             id: "seq".into(),
             kind: "seq3".into(),
@@ -15,6 +16,7 @@ fn patch(bypassed: bool) -> Patch {
         },
         Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             id: "other".into(),
             kind: "constant".into(),

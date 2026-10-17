@@ -1,0 +1,101 @@
+{
+  "status": "Qualified RackMCP Sequencer import with strict document automation authority; Bridge/Listen and direct transport/status pending; not installed",
+  "source": {
+    "plugin": "RackMCP",
+    "model": "Sequencer",
+    "version": "2.0.0",
+    "commit": "285e84c5ff2d3ecef25890da07f578af6a0c5ca6",
+    "mapping_id": "vcv/RackMCP/Sequencer/2.0.0",
+    "mapping_version": 1,
+    "fidelity": "musical_role",
+    "limits": "Bounded source-derived engine behavior with native scheduling and healthy-rebinding corrections; no whole-module, whole-patch or physical-hardware equivalence"
+  },
+  "implemented": {
+    "source_data": "All typed lanes, points, curves, tracks, patterns and original package/assets retained",
+    "qualified_bindings": [
+      "Fundamental 2.6.4 VCA-1 param0 -> stock_vca.level",
+      "Fundamental 2.6.4 VCF param0 -> rack264_vcf.frequency"
+    ],
+    "authority": "Existing imported automation destination requires exact source package/original numeric ID/registered mapping/native kind/source parameter/live capability. Pure native bindings unchanged; no ID-suffix inference or automatic duplicate search",
+    "atomic_failure": "Mismatched existing native target rejects full edit/load before history, revision, audio ticket or backend publication changes",
+    "omissions": "Missing destinations stay dormant; every unbound/missing/unresolved lane appears in omitted_automation. Exact waits; Partial explicit with native UI/MCP diagnostics",
+    "default_loading": "Fresh live-control defaults are materialized consistently in native document and candidate; original source remains immutable"
+  },
+  "actual_user_fixture": {
+    "sha256": "4c83b2d697cc056b4118f321cddfa3be56257ed789ecba90c47421ee28e0cbf4",
+    "modules": 55,
+    "cables": 83,
+    "mapped": 31,
+    "unresolved": 24,
+    "sequencers": 2,
+    "lanes": 13,
+    "qualified_bindings": 10,
+    "unbound_surge_lanes": 3,
+    "embedded_assets": 1,
+    "source_preserved": true,
+    "source_file_unchanged": true
+  },
+  "validation": {
+    "importer": {
+      "passed": 4,
+      "log": "provenance-import.log"
+    },
+    "document_and_shared_session_provenance": {
+      "passed": 6,
+      "log": "provenance-guard-002.log"
+    },
+    "all_cli_library": {
+      "passed": 351,
+      "ignored": 2,
+      "log": "provenance-control-regression.log"
+    },
+    "native_import_ui": {
+      "passed": 7,
+      "ignored": 1,
+      "log": "provenance-ui-regression.log"
+    },
+    "actual_fixture_import_save_decode": {
+      "passed": 1,
+      "log": "provenance-actual-import.log"
+    },
+    "actual_fixture_desktop_open_save_reopen": {
+      "passed": 1,
+      "log": "provenance-actual-ui.log"
+    },
+    "shared_session_real_callback": {
+      "passed": 1,
+      "log": "provenance-live-callback.log",
+      "allocations": 0,
+      "deallocations": 0,
+      "checks": "nonzero voice; manual level/.25 equal reload; Exact silence; explicit Partial resume; live .25 capture; source/typed state save/reopen; fresh Exact suspension and Partial resume"
+    },
+    "all_audio_callbacks": {
+      "passed": 221,
+      "ignored": 1,
+      "log": "provenance-audio-regression.log"
+    },
+    "mcp_stdio_new_workflow": {
+      "passed": 1,
+      "log": "provenance-mcp.log"
+    },
+    "mcp_stdio_related_regressions": {
+      "passed": 4,
+      "log": "provenance-mcp-regression.log"
+    },
+    "clippy": "CLI/desktop all-targets with warnings denied; provenance-clippy-002.log",
+    "formatting": "workspace fmt --check; provenance-fmt.log",
+    "visual_review": "Actual shared desktop CPU captures, Exact suspended and explicit Partial; design/reviews/rackmcp-import-v1/",
+    "frozen_dsp_reference": "All 96 production manifest entries unchanged from module-reference-005; reuse its exact-output/declared binding-correction audit, do not rerun unrelated DSP oracles"
+  },
+  "preserved_failures": {
+    "implicit_default_document_mismatch": "Initial new Session/UI fixtures exposed live-default materialization on candidate only. Fixed replacement-document normalization to accept exactly materialized descriptor defaults, preserving all source bytes; affected tests plus full CLI library pass",
+    "lint": "Initial importer assertion contained excess f32 precision. Expected f32 literal corrected without changing original JSON fixture precision; strict lint rerun passes"
+  },
+  "limits": [
+    "No new full milestone CI yet; run once after imported sequence/control family closes",
+    "Bridge/Listen remain real pending dependencies, not inert aliases",
+    "Direct sequencer transport/seek/status publication remains pending",
+    "No native audio device/window/driver qualification",
+    "Installed OpenPatch 0.2.6 build 8 unchanged"
+  ]
+}

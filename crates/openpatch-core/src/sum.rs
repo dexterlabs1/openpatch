@@ -96,6 +96,7 @@ mod tests {
                 params: [("level".into(), level)].into(),
                 bypassed: false,
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
             },
             rate,

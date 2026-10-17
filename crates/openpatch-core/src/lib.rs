@@ -24,13 +24,25 @@ use std::io::{self, BufWriter, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod live_parameters;
+mod sequence_ownership;
+pub use live_parameters::{
+    runtime_parameter_descriptor, runtime_parameter_names, ParameterDescriptor, ParameterHandle,
+};
 mod adsr_eg;
 mod analog;
 mod score;
 pub use score::{ScoreCurve, ScoreData, ScoreLane, ScorePoint, ScoreStep, ScoreTrack};
 mod rack264_vcf;
+mod rackmcp_bridge;
+pub mod rackmcp_listen;
+pub mod rackmcp_listen_analysis;
+#[doc(hidden)]
+pub mod rackmcp_sequence;
 #[doc(hidden)]
 pub use rack264_vcf::{Rack264VcfProbe, Rack264VcfSnapshot};
+pub use rackmcp_listen::{ListenFrame, ListenSink, ListenStatus};
+pub use rackmcp_sequence::{RackMcpSequenceStatus, RackMcpTransport};
 mod rack264_vco;
 mod stereo_output;
 mod stock_delay;
@@ -156,7 +168,7 @@ pub use scope_measurement::{ScopeExtrema, ScopeMeasurements};
 mod saved_state;
 mod sum;
 mod viz;
-pub use saved_state::SavedModuleState;
+pub use saved_state::{FixedPatternName, SavedModuleState};
 mod routing;
 mod sequence;
 mod signal;
@@ -243,6 +255,9 @@ pub struct Node {
     /// Structured patterns and automation for score_sequencer only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub score: Option<ScoreData>,
+    /// Source-version RackMCP sequence and explicit native target bindings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rackmcp_sequence: Option<Box<rackmcp_sequence::SequenceState>>,
     pub id: String,
     pub kind: String,
     #[serde(default, skip_serializing_if = "is_false")]
@@ -506,6 +521,18 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(score::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(rackmcp_sequence::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(rackmcp_listen::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(rackmcp_bridge::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
@@ -888,6 +915,14 @@ impl Patch {
             if node.score.is_some() && (node.kind != "score_sequencer" || self.version != 2) {
                 return Err(format!(
                     "node {}: score data requires version-2 score_sequencer",
+                    node.id
+                ));
+            }
+            if node.rackmcp_sequence.is_some()
+                && (node.kind != "rackmcp_sequencer" || self.version != 2)
+            {
+                return Err(format!(
+                    "node {}: RackMCP sequence data requires version-2 rackmcp_sequencer",
                     node.id
                 ));
             }
@@ -1360,6 +1395,13 @@ enum EngineKind {
     Poly(Box<poly::PolyEngine>),
 }
 impl Engine {
+    /// Actual processing rate of the active compiled engine.
+    pub fn sample_rate(&self) -> u32 {
+        match &self.inner {
+            EngineKind::Legacy(engine) => engine.sample_rate as u32,
+            EngineKind::Poly(engine) => engine.sample_rate(),
+        }
+    }
     fn port_light_observer(&self) -> &port_lights::Observer {
         match &self.inner {
             EngineKind::Legacy(engine) => &engine.port_lights,
@@ -1464,6 +1506,17 @@ impl Engine {
             generation: self.identity,
             node,
         })
+    }
+    /// Actual Listen counters and published connection/lamp hints.
+    /// The handle is fenced to this compiled engine generation.
+    pub fn listen_status(&self, handle: ModuleHandle) -> Option<ListenStatus> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.listen_status(handle.node),
+            EngineKind::Legacy(_) => None,
+        }
     }
     /// Inspect actual Stock Mix controls without consuming an output.
     #[doc(hidden)]
@@ -2019,6 +2072,107 @@ impl Engine {
             _ => false,
         }
     }
+    /// Apply a bounded RackMCP source request without allocation or target ownership changes.
+    /// Reset/seek/selection are consumed by the next processed sample; run changes are immediate.
+    pub fn rackmcp_sequence_transport(
+        &mut self,
+        handle: ModuleHandle,
+        request: RackMcpTransport,
+    ) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.rackmcp_sequence_transport(handle.node, request),
+            _ => false,
+        }
+    }
+
+    /// Return source publication plus current controls. Position/clock update every 64 samples.
+    pub fn rackmcp_sequence_status(&self, handle: ModuleHandle) -> Option<RackMcpSequenceStatus> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.rackmcp_sequence_status(handle.node),
+            _ => None,
+        }
+    }
+
+    /// Prepared source content identity, excluding only persisted selection.
+    pub fn rackmcp_sequence_content_fingerprint(&self, handle: ModuleHandle) -> Option<[u8; 32]> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.rackmcp_sequence_content_fingerprint(handle.node),
+            _ => None,
+        }
+    }
+
+    pub fn rackmcp_sequence_content_matches(
+        &self,
+        handle: ModuleHandle,
+        previous: &Self,
+        previous_handle: ModuleHandle,
+    ) -> bool {
+        if handle.generation != self.identity || previous_handle.generation != previous.identity {
+            return false;
+        }
+        match (&self.inner, &previous.inner) {
+            (EngineKind::Poly(current), EngineKind::Poly(previous)) => current
+                .rackmcp_sequence_content_matches(handle.node, previous, previous_handle.node),
+            _ => false,
+        }
+    }
+
+    /// Compare compiled source sequence data without allocating or resolving
+    /// strings. Native routing metadata is independent of source data loads.
+    pub fn rackmcp_sequence_data_matches(
+        &self,
+        handle: ModuleHandle,
+        previous: &Self,
+        previous_handle: ModuleHandle,
+    ) -> bool {
+        if handle.generation != self.identity || previous_handle.generation != previous.identity {
+            return false;
+        }
+        match (&self.inner, &previous.inner) {
+            (EngineKind::Poly(current), EngineKind::Poly(previous)) => {
+                current.rackmcp_sequence_data_matches(handle.node, previous, previous_handle.node)
+            }
+            _ => false,
+        }
+    }
+
+    /// Apply an explicit RackMCP data-load event to the receiving compiled
+    /// sequence. Preserves transport and rearms selection/automation caches,
+    /// including when loaded data equals the prior data, and atomically acquires its
+    /// native targets. Hosts call this after
+    /// compatible graph adoption, never for unrelated graph replacements.
+    pub fn reload_rackmcp_sequence_data(&mut self, handle: ModuleHandle) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.reload_rackmcp_sequence_data(handle.node),
+            _ => false,
+        }
+    }
+
+    /// Acquire this sequence's compiled native targets without reloading data
+    /// or clearing its acknowledged-write cache. Explicit host events call this
+    /// in their persistent global event order after graph adoption.
+    pub fn claim_rackmcp_sequence_targets(&mut self, handle: ModuleHandle) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.claim_rackmcp_sequence_targets(handle.node),
+            _ => false,
+        }
+    }
+
     /// Apply a module's dedicated Initialize runtime policy after compatible
     /// state adoption. This leaves cable histories and unrelated state intact.
     pub fn initialize_module_state(&mut self, handle: ModuleHandle) -> bool {
@@ -2256,6 +2410,27 @@ impl Engine {
             }
         }
     }
+    /// Render with a borrowed capture sink at the selected Listen's actual
+    /// per-sample processing point. Stale or non-Listen handles capture nothing.
+    pub fn process_audio_block_with_listen_capture(
+        &mut self,
+        output: &mut [[f32; 2]],
+        handle: ModuleHandle,
+        sink: &mut dyn ListenSink,
+    ) {
+        let index = (handle.generation == self.identity).then_some(handle.node);
+        match &mut self.inner {
+            EngineKind::Poly(engine) => {
+                let stereo = engine.output_channels() == 2;
+                for sample in output {
+                    let frame = engine.process_sample_with_listen_capture(index, Some(&mut *sink));
+                    let left = frame.channel(0);
+                    *sample = [left, if stereo { frame.channel(1) } else { left }];
+                }
+            }
+            EngineKind::Legacy(_) => self.process_audio_block(output),
+        }
+    }
     /// Resolve on the control thread. Channels are zero-based direct reads,
     /// never mono broadcasts; a valid but absent lane reports inactive.
     pub fn resolve_tap(&self, id: &str, port: &str, channel: usize) -> Result<ResolvedTap, String> {
@@ -2336,6 +2511,42 @@ impl Engine {
             }
         }
     }
+    /// Render Scope taps and the selected Listen capture in the same traversal.
+    /// Both output slices must have equal length. No transport is retained here.
+    pub fn process_audio_block_with_taps_and_listen_capture<const N: usize>(
+        &mut self,
+        output: &mut [[f32; 2]],
+        taps: &[Option<ResolvedTap>; N],
+        samples: &mut [[TapSample; N]],
+        handle: ModuleHandle,
+        sink: &mut dyn ListenSink,
+    ) {
+        assert_eq!(output.len(), samples.len());
+        let identity = self.identity;
+        let index = (handle.generation == identity).then_some(handle.node);
+        match &mut self.inner {
+            EngineKind::Poly(engine) => {
+                let stereo = engine.output_channels() == 2;
+                engine.begin_taps(
+                    &taps.map(|tap| tap.filter(|t| t.owner == identity).map(|t| t.index)),
+                );
+                for (audio, sample) in output.iter_mut().zip(samples) {
+                    let frame = engine.process_sample_with_listen_capture(index, Some(&mut *sink));
+                    let left = frame.channel(0);
+                    *audio = [left, if stereo { frame.channel(1) } else { left }];
+                    for (sample, tap) in sample.iter_mut().zip(taps) {
+                        *sample = tap
+                            .filter(|tap| tap.owner == identity)
+                            .map_or(TapSample::default(), |tap| {
+                                engine.tap_sample(tap.index, tap.channel)
+                            });
+                    }
+                }
+                engine.end_taps();
+            }
+            EngineKind::Legacy(_) => self.process_audio_block_with_taps(output, taps, samples),
+        }
+    }
     pub fn solver_failures(&self) -> u64 {
         match &self.inner {
             EngineKind::Legacy(engine) => engine.solver_failures(),
@@ -2364,6 +2575,31 @@ impl Engine {
         excluded: &[ModuleHandle],
         excluded_cables: &[CableHandle],
     ) -> bool {
+        self.handoff_state_from_excluding_routes_preserving_sequences(
+            previous,
+            excluded,
+            excluded_cables,
+            &[],
+        )
+    }
+
+    /// Preserve selected RackMCP runtime across selection-only authored overlays.
+    /// Handles resolve against self. Musical content and target identity still fence adoption.
+    pub fn handoff_state_from_excluding_routes_preserving_sequences(
+        &mut self,
+        previous: &mut Self,
+        excluded: &[ModuleHandle],
+        excluded_cables: &[CableHandle],
+        preserve_sequence_runtime: &[ModuleHandle],
+    ) -> bool {
+        let mut sequence_mask = [false; MAX_NODES];
+        for handle in preserve_sequence_runtime {
+            if handle.generation == self.identity {
+                if let Some(slot) = sequence_mask.get_mut(handle.node) {
+                    *slot = true;
+                }
+            }
+        }
         let mut mask = [false; MAX_NODES];
         for handle in excluded {
             if handle.generation == self.identity {
@@ -2389,7 +2625,7 @@ impl Engine {
                 false
             }
             (EngineKind::Poly(current), EngineKind::Poly(old)) => {
-                current.handoff_state_from_excluding(old, &mask, &cable_mask)
+                current.handoff_state_from_excluding(old, &mask, &cable_mask, &sequence_mask)
             }
             (EngineKind::Legacy(current), _) => {
                 current.port_lights.reset_epoch();
@@ -2418,6 +2654,31 @@ impl Engine {
         excluded: &[ModuleHandle],
         excluded_cables: &[CableHandle],
     ) {
+        self.adopt_state_from_excluding_routes_preserving_sequences(
+            previous,
+            excluded,
+            excluded_cables,
+            &[],
+        )
+    }
+
+    /// Preserve selected RackMCP runtime across selection-only authored overlays.
+    /// Handles resolve against self. Musical content and target identity still fence adoption.
+    pub fn adopt_state_from_excluding_routes_preserving_sequences(
+        &mut self,
+        previous: &Self,
+        excluded: &[ModuleHandle],
+        excluded_cables: &[CableHandle],
+        preserve_sequence_runtime: &[ModuleHandle],
+    ) {
+        let mut sequence_mask = [false; MAX_NODES];
+        for handle in preserve_sequence_runtime {
+            if handle.generation == self.identity {
+                if let Some(slot) = sequence_mask.get_mut(handle.node) {
+                    *slot = true;
+                }
+            }
+        }
         let mut mask = [false; MAX_NODES];
         for handle in excluded {
             if handle.generation == self.identity {
@@ -2442,7 +2703,7 @@ impl Engine {
                 current.adopt_port_lights(old, &mask);
             }
             (EngineKind::Poly(current), EngineKind::Poly(old)) => {
-                current.adopt_state_from_excluding(old, &mask, &cable_mask)
+                current.adopt_state_from_excluding(old, &mask, &cable_mask, &sequence_mask)
             }
             (EngineKind::Legacy(current), _) => current.port_lights.reset_epoch(),
             (EngineKind::Poly(current), _) => current.port_lights.reset_epoch(),
@@ -2457,6 +2718,23 @@ impl Engine {
                     *sample = engine.process_sample().channel(0);
                 }
             }
+        }
+    }
+    /// Render full port frames while capturing one generation-fenced Listen.
+    pub fn process_poly_block_with_listen_capture(
+        &mut self,
+        output: &mut [PortFrame],
+        handle: ModuleHandle,
+        sink: &mut dyn ListenSink,
+    ) {
+        let index = (handle.generation == self.identity).then_some(handle.node);
+        match &mut self.inner {
+            EngineKind::Poly(engine) => {
+                for frame in output {
+                    *frame = engine.process_sample_with_listen_capture(index, Some(&mut *sink));
+                }
+            }
+            EngineKind::Legacy(_) => self.process_poly_block(output),
         }
     }
     /// Render full port frames. Unused values are zero. No allocation, locking,
@@ -2485,6 +2763,7 @@ impl Engine {
 pub fn demo_patch() -> Patch {
     let node = |id: &str, kind: &str, params: &[(&str, f32)]| Node {
         content: None,
+        rackmcp_sequence: None,
         score: None,
         bypassed: false,
         id: id.into(),
@@ -2535,6 +2814,7 @@ pub fn demo_patch() -> Patch {
 pub fn analog_demo_patch() -> Patch {
     let node = |id: &str, kind: &str, params: &[(&str, f32)]| Node {
         content: None,
+        rackmcp_sequence: None,
         score: None,
         bypassed: false,
         id: id.into(),

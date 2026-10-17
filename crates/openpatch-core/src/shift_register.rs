@@ -324,6 +324,7 @@ mod tests {
     fn node() -> Node {
         Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             id: "s".into(),
             kind: "sh_asr".into(),

@@ -155,6 +155,7 @@ mod tests {
         Pulses::build(
             &Node {
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 id: "p".into(),
                 kind: "pulses".into(),

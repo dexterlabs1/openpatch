@@ -47,6 +47,7 @@ fn node(params: [f32; 6]) -> Node {
             ("soft_sync".into(), params[5]),
         ]),
         content: None,
+        rackmcp_sequence: None,
         score: None,
         bypassed: false,
     }

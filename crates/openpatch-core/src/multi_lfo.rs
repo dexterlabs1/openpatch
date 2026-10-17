@@ -212,6 +212,7 @@ mod tests {
         MultiLfo::build(
             &Node {
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 bypassed: false,
                 id: "lfo".into(),
@@ -356,6 +357,7 @@ mod tests {
         // Unknown/nonfinite parameters reject on the control thread.
         let n = Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             bypassed: false,
             id: "bad".into(),

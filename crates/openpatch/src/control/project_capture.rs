@@ -1,5 +1,6 @@
 //! A coherent project save snapshot, independent of the live patch/history.
 use super::*;
+type EffectiveParameters = BTreeMap<String, BTreeMap<String, f32>>;
 
 #[derive(Clone, Debug)]
 pub struct ProjectPatchSnapshot {
@@ -32,6 +33,15 @@ impl Session {
         &self,
         expected_revision: Option<u64>,
     ) -> Result<ProjectRunningSnapshot, String> {
+        self.capture_project_state(expected_revision, false)
+            .map(|(state, _)| state)
+    }
+
+    fn capture_project_state(
+        &self,
+        expected_revision: Option<u64>,
+        with_parameters: bool,
+    ) -> Result<(ProjectRunningSnapshot, EffectiveParameters), String> {
         self.check_midi_cc_capture()?;
         self.check_revision(expected_revision)?;
         let mut running = BTreeMap::new();
@@ -43,19 +53,29 @@ impl Session {
             .nodes
             .iter()
             .any(|node| SavedModuleState::from_node(node).is_some());
-        let snapshot = if has_state {
+        let has_live_parameters = with_parameters
+            && self
+                .live_module_events
+                .as_ref()
+                .is_some_and(|backend| backend.supports_live_parameters())
+            && self
+                .patch
+                .nodes
+                .iter()
+                .any(|node| !openpatch_core::runtime_parameter_names(&node.kind).is_empty());
+        let snapshot = if has_state || has_live_parameters {
             self.live_module_events
                 .as_ref()
                 .map(|backend| backend.snapshot())
         } else {
             None
         };
-        let state_source = if !has_state {
-            "parameters"
-        } else if snapshot.is_some() {
+        let state_source = if snapshot.is_some() {
             "live"
-        } else {
+        } else if has_state {
             "offline_reset"
+        } else {
+            "parameters"
         };
         for node in &self.patch.nodes {
             let Some(initial) = SavedModuleState::from_node(node) else {
@@ -74,6 +94,7 @@ impl Session {
             } else {
                 initial
             };
+            super::rackmcp_transport::validate_selection(node, state)?;
             saved_states.insert(node.id.clone(), state);
             match state {
                 SavedModuleState::Seq3Run(value)
@@ -83,7 +104,8 @@ impl Session {
                 SavedModuleState::PushHold(value) => {
                     holding.insert(node.id.clone(), value);
                 }
-                SavedModuleState::StockSeq3Fields { .. }
+                SavedModuleState::RackMcpSelection(_)
+                | SavedModuleState::StockSeq3Fields { .. }
                 | SavedModuleState::StockQuantizerNotes(_)
                 | SavedModuleState::RandomValues { .. }
                 | SavedModuleState::ShiftRegister { .. }
@@ -92,16 +114,71 @@ impl Session {
                 | SavedModuleState::MidiGateMappings(_) => {}
             }
         }
+        let mut parameters = EffectiveParameters::new();
+        if has_live_parameters {
+            let snapshot = snapshot
+                .as_ref()
+                .expect("live parameter backend was captured");
+            if snapshot["coherent"].as_bool() == Some(false) {
+                return Err("live project parameters are not coherent; retry capture".into());
+            }
+            for node in &self.patch.nodes {
+                let names = openpatch_core::runtime_parameter_names(&node.kind);
+                if names.is_empty() {
+                    continue;
+                }
+                let module = &snapshot["modules"][&node.id];
+                if module["available"] != true
+                    || module["revision"].as_u64() != Some(self.revision)
+                    || module["kind"].as_str() != Some(node.kind.as_str())
+                {
+                    return Err(format!(
+                        "live parameters unavailable for module '{}'; wait for revision {}",
+                        node.id, self.revision
+                    ));
+                }
+                let captured_frame = module["frame"]
+                    .as_u64()
+                    .ok_or_else(|| format!("live parameter frame unavailable for '{}'", node.id))?;
+                if frame.is_some_and(|seen| seen != captured_frame) {
+                    return Err(
+                        "live project state has mixed callback frames; retry capture".into(),
+                    );
+                }
+                frame = Some(captured_frame);
+                let mut values = BTreeMap::new();
+                for &name in names {
+                    let value = module["parameters"][name].as_f64().ok_or_else(|| {
+                        format!("live parameter '{name}' unavailable for '{}'", node.id)
+                    })?;
+                    let descriptor = openpatch_core::runtime_parameter_descriptor(&node.kind, name)
+                        .expect("declared native capability");
+                    let raw = value as f32;
+                    if !raw.is_finite()
+                        || raw < descriptor.min
+                        || raw > descriptor.max
+                        || (descriptor.snap && raw.fract() != 0.0)
+                    {
+                        return Err(format!("invalid live parameter '{name}' for '{}'", node.id));
+                    }
+                    values.insert(name.to_owned(), raw);
+                }
+                parameters.insert(node.id.clone(), values);
+            }
+        }
         self.check_midi_cc_capture()?;
-        Ok(ProjectRunningSnapshot {
-            revision: self.revision,
-            state_id: self.state_id,
-            running,
-            holding,
-            saved_states,
-            state_source,
-            frame,
-        })
+        Ok((
+            ProjectRunningSnapshot {
+                revision: self.revision,
+                state_id: self.state_id,
+                running,
+                holding,
+                saved_states,
+                state_source,
+                frame,
+            },
+            parameters,
+        ))
     }
 
     /// Project live persistent flags into a cloned patch without modifying history.
@@ -117,11 +194,15 @@ impl Session {
         &self,
         expected_revision: Option<u64>,
     ) -> Result<ProjectPatchSnapshot, String> {
-        let captured = self.capture_project_running(expected_revision)?;
+        let (captured, parameters) = self.capture_project_state(expected_revision, true)?;
         let mut patch = self.patch.clone();
         for node in &mut patch.nodes {
             if let Some(state) = captured.saved_states.get(&node.id) {
-                state.write_params(&mut node.params);
+                state.write_node(node);
+            }
+            if let Some(values) = parameters.get(&node.id) {
+                node.params
+                    .extend(values.iter().map(|(name, value)| (name.clone(), *value)));
             }
         }
         Ok(ProjectPatchSnapshot {
@@ -140,15 +221,19 @@ impl Session {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     #[derive(Default)]
     struct Live {
         snapshot: Mutex<Value>,
         reads: AtomicUsize,
         writes: AtomicUsize,
+        parameters: AtomicBool,
     }
     impl LiveModuleEvents for Live {
+        fn supports_live_parameters(&self) -> bool {
+            self.parameters.load(Ordering::Relaxed)
+        }
         fn snapshot(&self) -> Value {
             self.reads.fetch_add(1, Ordering::Relaxed);
             self.snapshot.lock().unwrap().clone()
@@ -190,6 +275,116 @@ mod tests {
         *live.snapshot.lock().unwrap() = snapshot(session.revision());
         session.set_live_module_events(Some(live.clone())).unwrap();
         live
+    }
+
+    fn parameter_session() -> (Session, Arc<Live>) {
+        let mut session = Session::new(&std::env::temp_dir()).unwrap();
+        session
+            .execute(
+                "replace_patch",
+                json!({"patch":{"version":2,"sample_rate":48000,"nodes":[
+            {"id":"seq","kind":"seq3","params":{"running":1}},
+            {"id":"vca","kind":"stock_vca","params":{"level":1}},
+            {"id":"filter","kind":"rack264_vcf","params":{"frequency":0.5}}
+        ],"cables":[],"output":"vca","output_port":"out"}}),
+            )
+            .unwrap();
+        let live = Arc::new(Live::default());
+        live.parameters.store(true, Ordering::Relaxed);
+        *live.snapshot.lock().unwrap() = json!({"coherent":true,"modules":{
+            "seq":{"kind":"seq3","available":true,"revision":1,"frame":128,"state":{"running":false}},
+            "vca":{"kind":"stock_vca","available":true,"revision":1,"frame":128,"parameters":{"level":0.25}},
+            "filter":{"kind":"rack264_vcf","available":true,"revision":1,"frame":128,"parameters":{"frequency":0.3}}
+        }});
+        session.set_live_module_events(Some(live.clone())).unwrap();
+        (session, live)
+    }
+
+    #[test]
+    fn coherent_effective_parameters_overlay_saved_clone_without_changing_history() {
+        let (session, live) = parameter_session();
+        let before = session.snapshot();
+        let captured = session.capture_project_patch(Some(1)).unwrap();
+        assert_eq!(captured.patch.nodes[1].params["level"], 0.25);
+        assert_eq!(captured.patch.nodes[2].params["frequency"], 0.3);
+        assert!(!captured.running["seq"]);
+        assert_eq!(captured.frame, Some(128));
+        assert_eq!(captured.state_source, "live");
+        assert_eq!(
+            live.reads.load(Ordering::Relaxed),
+            1,
+            "state/parameter capture split into separate observations"
+        );
+        assert_eq!(live.writes.load(Ordering::Relaxed), 0);
+        assert_eq!(session.snapshot(), before);
+        let saved = serde_json::to_value(&captured.patch).unwrap();
+        let reopened: Patch = serde_json::from_value(saved).unwrap();
+        let engine = reopened.compile().unwrap();
+        let handle = engine.resolve_parameter("vca", "level").unwrap();
+        assert_eq!(engine.parameter_value(handle), Some(0.25));
+        let handle = engine.resolve_parameter("filter", "frequency").unwrap();
+        assert_eq!(engine.parameter_value(handle), Some(0.3));
+    }
+
+    #[test]
+    fn effective_parameter_capture_rejects_stale_mixed_missing_or_invalid_publications() {
+        let (session, live) = parameter_session();
+        let valid = live.snapshot.lock().unwrap().clone();
+        let before = session.snapshot();
+        for fault in [
+            "coherent",
+            "available",
+            "revision",
+            "kind",
+            "frame",
+            "mixed",
+            "missing",
+            "bounds",
+            "null",
+        ] {
+            let mut value = valid.clone();
+            match fault {
+                "coherent" => value["coherent"] = json!(false),
+                "available" => value["modules"]["vca"]["available"] = json!(false),
+                "revision" => value["modules"]["vca"]["revision"] = json!(0),
+                "kind" => value["modules"]["vca"]["kind"] = json!("rack264_vcf"),
+                "frame" => {
+                    value["modules"]["vca"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("frame");
+                }
+                "mixed" => value["modules"]["filter"]["frame"] = json!(256),
+                "missing" => {
+                    value["modules"]["vca"]["parameters"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("level");
+                }
+                "bounds" => value["modules"]["vca"]["parameters"]["level"] = json!(1.1),
+                "null" => value["modules"]["vca"]["parameters"]["level"] = Value::Null,
+                _ => unreachable!(),
+            }
+            *live.snapshot.lock().unwrap() = value;
+            assert!(
+                session.capture_project_patch(None).is_err(),
+                "accepted {fault}"
+            );
+            assert_eq!(session.snapshot(), before);
+        }
+    }
+
+    #[test]
+    fn lightweight_dirty_capture_ignores_effective_parameter_changes_and_legacy_backends_keep_authored_values(
+    ) {
+        let (session, live) = parameter_session();
+        let first = session.capture_project_running(None).unwrap();
+        live.snapshot.lock().unwrap()["modules"]["vca"]["parameters"]["level"] = json!(0.7);
+        assert_eq!(session.capture_project_running(None).unwrap(), first);
+        live.parameters.store(false, Ordering::Relaxed);
+        let capture = session.capture_project_patch(None).unwrap();
+        assert_eq!(capture.patch.nodes[1].params["level"], 1.0);
+        assert_eq!(capture.patch.nodes[2].params["frequency"], 0.5);
     }
 
     #[test]

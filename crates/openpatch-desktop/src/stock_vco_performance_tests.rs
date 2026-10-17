@@ -11,6 +11,7 @@ fn stock_vco_is_passive_and_five_lamps_obey_packet_identity_without_clock_metada
         kind: ModuleKind::StockVco,
         bypassed: false,
         action_epoch: 1,
+        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
     };
     let meter = Meter::new();
     assert!(meter.read(entry, 1).is_none());
@@ -26,6 +27,8 @@ fn stock_vco_is_passive_and_five_lamps_obey_packet_identity_without_clock_metada
         meter.write(
             entry.token,
             ModuleSnapshot {
+                rackmcp_sequence: None, listen: None,
+                parameters: [None; MAX_PUBLISHED_PARAMETERS],
                 revision: 7,
                 frame: 512,
                 state: None,
@@ -64,6 +67,7 @@ fn rack264_vco_keeps_its_own_passive_runtime_light_identity() {
         kind: ModuleKind::Rack264Vco,
         bypassed: false,
         action_epoch: 1,
+        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
     };
     let mut lamps = ModuleLightState {
         count: 5,
@@ -75,6 +79,8 @@ fn rack264_vco_keeps_its_own_passive_runtime_light_identity() {
     meter.write(
         entry.token,
         ModuleSnapshot {
+            rackmcp_sequence: None, listen: None,
+            parameters: [None; MAX_PUBLISHED_PARAMETERS],
             revision: 7,
             frame: 512,
             state: None,

@@ -25,6 +25,9 @@ use openpatch::project_document::{
 use openpatch_core::{catalog, MidiEvent, Patch};
 include!("toolbar.rs");
 include!("app_import.rs");
+include!("app_listen.rs");
+include!("app_rackmcp.rs");
+include!("app_bridge.rs");
 use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -511,7 +514,11 @@ impl OpenPatch {
         };
         let audio_revision = None;
         let volume = audio.as_ref().map_or(0.65, Audio::volume);
-        let (rack, documents) = Self::startup_view(&startup, &project, revision);
+        let (rack, mut documents) = Self::startup_view(&startup, &project, revision);
+        if let Ok(live) = shared.lock() {
+            live.bridge_observation().set_stdio_enabled(mcp);
+            documents.attach_baseline(live.project_save_baseline());
+        }
         let history_layouts = BTreeMap::from([
             (startup.state_id, startup.document.layout().clone()),
             (state_id, rack.layout()),
@@ -1283,6 +1290,21 @@ impl OpenPatch {
         self.files.sort();
     }
     fn command(&mut self, name: &str, mut args: Value) -> bool {
+        if matches!(
+            name,
+            "start_listen_capture"
+                | "inspect_listen_capture"
+                | "cancel_listen_capture"
+                | "inspect_listen"
+        ) {
+            return self.listen_command(name, args);
+        }
+        if name == "inspect_bridge" || name.starts_with("_native_bridge_") {
+            return self.bridge_command(name, args);
+        }
+        if matches!(name, "rackmcp_transport" | "inspect_rackmcp_sequence") {
+            return self.rackmcp_command(name, args);
+        }
         if matches!(name, "open_wavetable_import" | "open_wavetable_export") {
             return self.wavetable_file_dialog(name, &args);
         }
@@ -1955,31 +1977,12 @@ impl OpenPatch {
     }
     fn observe_document(&mut self) {
         let _ = self.publish_current_layout();
-        let running = self.shared.try_lock().ok().and_then(|live| {
-            if live.revision() != self.revision {
-                return None;
-            }
-            if !live.execution_disposition().is_runnable() {
-                Some(
-                    live.patch()
-                        .nodes
-                        .iter()
-                        .filter_map(|node| {
-                            openpatch_core::SavedModuleState::from_node(node)
-                                .map(|state| (node.id.clone(), state))
-                        })
-                        .collect(),
-                )
-            } else {
-                live.capture_project_running(Some(self.revision))
-                    .ok()
-                    .map(|snapshot| snapshot.saved_states)
-            }
-        });
-        if self
-            .documents
-            .observe_saved_runtime(&self.project, self.revision, &self.rack, running)
-        {
+        let content = self
+            .shared
+            .try_lock()
+            .ok()
+            .and_then(|live| live.project_edit_content(Some(self.revision)).ok());
+        if self.documents.observe_canonical(content) {
             self.last_document_change = Instant::now();
             self.autosave_needed = true;
         }
@@ -1987,6 +1990,11 @@ impl OpenPatch {
     // Persist one coherent graph/Run/HOLD/layout snapshot. Raw capture_document below
     // remains the graph/layout receipt used by history and UI installers.
     fn capture_persisted_document(&mut self) -> Result<Document, String> {
+        self.capture_persisted_save().map(|(document, _)| document)
+    }
+    fn capture_persisted_save(
+        &mut self,
+    ) -> Result<(Document, openpatch::control::ProjectSaveCheckpoint), String> {
         self.rack
             .reconcile_document(&self.patch, &self.project, &self.catalog);
         self.publish_current_layout()?;
@@ -1994,30 +2002,18 @@ impl OpenPatch {
             .shared
             .try_lock()
             .map_err(|_| "Project is busy; try again".to_string())?
-            .capture_project_document(Some(self.revision))?;
-        let states = captured
-            .document
-            .graph
-            .nodes
-            .iter()
-            .filter_map(|node| match node {
-                DocumentNode::Native { node, .. } => {
-                    openpatch_core::SavedModuleState::from_node(node)
-                        .map(|state| (node.id.clone(), state))
-                }
-                _ => None,
-            })
-            .collect();
-        if self.documents.observe_saved_runtime(
-            &captured.document,
-            self.revision,
-            &self.rack,
-            Some(states),
-        ) {
+            .capture_active_project_save(Some(self.revision))?;
+        if self
+            .documents
+            .observe_canonical(Some(captured.checkpoint.edit_content.clone()))
+        {
             self.last_document_change = Instant::now();
             self.autosave_needed = true;
         }
-        Document::from_project(captured.document)
+        Ok((
+            Document::from_project(captured.snapshot.document)?,
+            captured.checkpoint,
+        ))
     }
     fn close_if_saved(&mut self) {
         if let Err(error) = self.publish_current_layout() {
@@ -2026,17 +2022,15 @@ impl OpenPatch {
             return;
         }
         let result = match self.shared.try_lock() {
-            Ok(mut live) => {
-                live.capture_project_document(Some(self.revision))
-                    .and_then(|snapshot| {
-                        let document = Document::from_project(snapshot.document)?;
-                        if self.documents.matches_saved(&document) {
-                            live.seal_for_close(self.revision).map(|()| true)
-                        } else {
-                            Ok(false)
-                        }
-                    })
-            }
+            Ok(mut live) => live
+                .project_edit_content(Some(self.revision))
+                .and_then(|content| {
+                    if live.project_save_baseline().matches_content(&content) {
+                        live.seal_for_close(self.revision).map(|()| true)
+                    } else {
+                        Ok(false)
+                    }
+                }),
             Err(_) => {
                 self.deferred_action = Some(PendingAction::Close);
                 return;
@@ -2178,6 +2172,32 @@ impl OpenPatch {
         });
         match result {
             Ok(applied) => {
+                let shared = self.shared.clone();
+                let live = match shared.lock() {
+                    Ok(live) => live,
+                    Err(_) => {
+                        self.status = "Project session unavailable".into();
+                        return;
+                    }
+                };
+                let baseline = live.project_save_baseline();
+                let checkpoint = openpatch::control::ProjectSaveCheckpoint {
+                    generation: applied.document_generation,
+                    revision: applied.revision,
+                    frame: None,
+                    edit_content: openpatch::control::saved_content(
+                        &applied.project,
+                        applied.rack.layout(),
+                        &openpatch::control::configured_document_states(&applied.project),
+                    ),
+                };
+                if let Err(error) = baseline.register(&checkpoint, None) {
+                    self.status = format!("Newer document kept: {error}");
+                    drop(live);
+                    self.sync();
+                    return;
+                }
+
                 let locked = self.rack.positions_locked();
                 let room_brightness = self.rack.room_brightness();
                 self.project = applied.project;
@@ -2197,6 +2217,7 @@ impl OpenPatch {
                 }
                 self.clear_recovery();
                 self.documents = DocumentState::new(&self.project, self.revision, &self.rack);
+                self.documents.attach_baseline(baseline);
                 self.active_file = None;
                 self.active_token = None;
                 self.title = "Untitled".into();
@@ -2206,6 +2227,7 @@ impl OpenPatch {
                 self.autosave_needed = false;
                 self.status = warning
                     .unwrap_or_else(|| "New patch from template — playback is paused".into());
+                drop(live);
                 self.sync();
                 self.capture_document();
             }
@@ -2281,28 +2303,34 @@ impl OpenPatch {
         self.replace_now_guarded(patch, title, false);
     }
     fn check_saved_content(&self, live: &openpatch::control::Session) -> Result<(), String> {
-        let snapshot = live.capture_project_document(Some(self.revision))?;
-        let document = Document::from_project(snapshot.document)?;
-        if self.documents.matches_saved(&document) {
+        let content = live.project_edit_content(Some(self.revision))?;
+        if live.project_save_baseline().matches_content(&content) {
             Ok(())
         } else {
             Err("New unsaved changes arrived; choose Save, Discard, or Cancel".into())
         }
     }
     fn replace_now_guarded(&mut self, patch: Patch, title: &str, require_saved: bool) {
-        let result = self
-            .shared
-            .lock()
-            .map_err(|_| "Session lock poisoned".to_string())
-            .and_then(|mut live| {
-                if require_saved {
-                    self.check_saved_content(&live)?;
-                }
-                live.replace_project_document(
-                    ProjectDocument::from_patch(patch.clone(), ProjectLayout::default())?,
-                    Some(self.revision),
-                )
-            });
+        // Commit and local project metadata share the same serialization
+        // boundary. A later MCP replacement cannot be adopted by sync and then
+        // accidentally relabeled with this bundled example's title/layout.
+        let shared = self.shared.clone();
+        let mut live = match shared.lock() {
+            Ok(live) => live,
+            Err(_) => {
+                self.status = "Session lock poisoned".into();
+                return;
+            }
+        };
+        let result = (|| {
+            if require_saved {
+                self.check_saved_content(&live)?;
+            }
+            live.replace_project_document(
+                ProjectDocument::from_patch(patch.clone(), ProjectLayout::default())?,
+                Some(self.revision),
+            )
+        })();
         let document_revision = match result {
             Ok(revision) => revision,
             Err(error) => {
@@ -2310,12 +2338,18 @@ impl OpenPatch {
                 if require_saved {
                     self.confirm_discard = Some(PendingAction::Replace(patch, title.into()));
                 }
+                drop(live);
                 self.sync();
                 self.observe_document();
                 return;
             }
         };
-        self.sync();
+        self.project = live.project_document().clone();
+        self.patch = live.patch().clone();
+        self.revision = document_revision;
+        self.state_id = live.state_id();
+        self.layout_generation = live.layout_generation();
+        self.history_layouts.clear();
         self.panic_notes();
         self.clear_recovery();
         self.title = title.into();
@@ -2423,8 +2457,13 @@ impl OpenPatch {
                 .restore_layout(&Self::wavetable_voice_layout())
                 .expect("bundled wavetable voice layout");
         }
+        self.documents.attach_baseline(live.project_save_baseline());
         self.documents.mark_unsaved();
+        self.history_layouts
+            .insert(self.state_id, self.rack.layout());
         self.autosave_needed = true;
+        drop(live);
+        self.sync();
         self.capture_document();
     }
     fn stock_mix_voice_layout() -> Value {
@@ -2704,8 +2743,8 @@ impl OpenPatch {
         // This pair belongs to one observed UI revision. Never re-sync between
         // capturing its graph and layout, or while doing disk I/O.
         self.sync();
-        let document = match self.capture_persisted_document() {
-            Ok(document) => document,
+        let (document, checkpoint) = match self.capture_persisted_save() {
+            Ok(captured) => captured,
             Err(error) => {
                 self.observe_document();
                 self.status = format!(
@@ -2734,16 +2773,37 @@ impl OpenPatch {
             });
         match result {
             Ok(token) => {
+                let shared = self.shared.clone();
+                let mut live = match shared.lock() {
+                    Ok(live) => live,
+                    Err(_) => {
+                        self.status = format!("Saved snapshot {name}; project session unavailable");
+                        return;
+                    }
+                };
+                let baseline = live
+                    .project_save_baseline()
+                    .register(&checkpoint, Some(name.into()));
+                if let Err(error) = baseline {
+                    self.status = format!(
+                        "Saved snapshot {name}; active project was not marked saved: {error}"
+                    );
+                    self.after_save = None;
+                    drop(live);
+                    self.sync();
+                    return;
+                }
                 let warning = token.durability_warning.clone();
                 self.active_file = Some(name.into());
                 self.active_token = Some(token);
-                self.documents.mark_saved(&document);
                 self.title = name.trim_end_matches(".openpatch").into();
                 self.filename = name.into();
                 self.file_mode = None;
                 self.refresh_files();
                 self.status = warning.unwrap_or_else(|| format!("Saved {name}"));
                 self.clear_recovery();
+                live.record_bridge_action("save_project", true);
+                drop(live);
                 self.sync();
                 self.capture_document();
                 if let Some(action) = self.after_save.take() {
@@ -2800,6 +2860,37 @@ impl OpenPatch {
             });
         match result {
             Ok((loaded, applied)) => {
+                let shared = self.shared.clone();
+                let live = match shared.lock() {
+                    Ok(live) => live,
+                    Err(_) => {
+                        self.status = "Project session unavailable".into();
+                        return;
+                    }
+                };
+                let baseline = live.project_save_baseline();
+                let checkpoint = openpatch::control::ProjectSaveCheckpoint {
+                    generation: applied.document_generation,
+                    revision: applied.revision,
+                    frame: None,
+                    edit_content: openpatch::control::saved_content(
+                        &applied.project,
+                        applied.rack.layout(),
+                        &openpatch::control::configured_document_states(&applied.project),
+                    ),
+                };
+                let target = if loaded.imported || recovery {
+                    None
+                } else {
+                    Some(name.into())
+                };
+                if let Err(error) = baseline.register(&checkpoint, target) {
+                    self.status = format!("Newer document kept: {error}");
+                    drop(live);
+                    self.sync();
+                    return;
+                }
+
                 self.history_layouts
                     .insert(self.state_id, self.rack.layout());
                 self.project = applied.project;
@@ -2820,8 +2911,7 @@ impl OpenPatch {
                 }
                 self.clear_recovery();
                 self.documents.invalidate();
-                let document = self.capture_document();
-                self.documents.mark_saved(&document);
+                self.documents.attach_baseline(baseline);
                 self.active_file = if loaded.imported || recovery {
                     None
                 } else {
@@ -2849,6 +2939,7 @@ impl OpenPatch {
                 self.filename = name.into();
                 self.file_mode = None;
                 self.recovery_open = false;
+                drop(live);
                 self.sync();
                 self.capture_document();
             }
@@ -8239,6 +8330,9 @@ impl eframe::App for OpenPatch {
         self.rack
             .set_construction_motion_mode(self.construction.motion_mode());
         self.footer(ctx);
+        self.listen_capture_ui(ctx);
+        self.rackmcp_live_ui(ctx);
+        self.bridge_live_ui(ctx);
         let library_action = self.browser(ctx);
         let palette_enabled = self.library_enabled();
         if self
@@ -8422,6 +8516,18 @@ impl eframe::App for OpenPatch {
 
 #[cfg(test)]
 mod project_workflow_tests {
+    mod bridge_save_app_tests {
+        include!("bridge_save_app_tests.rs");
+    }
+    mod bridge_app_tests {
+        include!("bridge_app_tests.rs");
+    }
+    mod rackmcp_app_tests {
+        include!("rackmcp_app_tests.rs");
+    }
+    mod listen_app_tests {
+        include!("listen_app_tests.rs");
+    }
     mod toolbar_settings_tests {
         include!("toolbar_settings_tests.rs");
     }
@@ -8519,7 +8625,12 @@ mod project_workflow_tests {
             .unwrap();
         project.layout = session.project_document().layout.clone();
         let layout_generation = session.layout_generation();
-        let documents = DocumentState::new(&project, revision, &rack);
+        let mut documents = DocumentState::new(&project, revision, &rack);
+        let baseline = session.project_save_baseline();
+        baseline
+            .mark_initial(session.project_edit_content(None).unwrap())
+            .unwrap();
+        documents.attach_baseline(baseline);
         let store = Store::new(path).unwrap();
         let recovery_names = store.recoveries();
         OpenPatch {
@@ -10118,6 +10229,7 @@ mod project_workflow_tests {
             nodes: (0..openpatch_core::MAX_NODES)
                 .map(|i| openpatch_core::Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: format!("node{i}"),
                     kind: "constant".into(),
@@ -11757,6 +11869,7 @@ mod project_workflow_tests {
             nodes: (0..openpatch_core::MAX_NODES)
                 .map(|i| openpatch_core::Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: format!("node{i}"),
                     kind: "constant".into(),
@@ -11801,6 +11914,7 @@ mod project_workflow_tests {
                 .iter()
                 .map(|id| openpatch_core::Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: id.clone(),
                     kind: "constant".into(),

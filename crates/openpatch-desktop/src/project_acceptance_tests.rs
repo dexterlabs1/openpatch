@@ -15,6 +15,7 @@ fn patch(version: u32, value: f32) -> Patch {
         version,
         nodes: vec![Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             bypassed: false,
             id: "dc".into(),
@@ -153,6 +154,7 @@ fn legacy_v1_and_v2_import_preserve_sources_and_sidecars_without_native_save_tok
             original_patch.nodes.extend([
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     bypassed: false,
                     id: "a".into(),
@@ -161,6 +163,7 @@ fn legacy_v1_and_v2_import_preserve_sources_and_sidecars_without_native_save_tok
                 },
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     bypassed: false,
                     id: "b".into(),

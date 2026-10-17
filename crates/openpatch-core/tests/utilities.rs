@@ -37,6 +37,7 @@ static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 fn node(id: &str, kind: &str, params: &[(&str, f32)]) -> Node {
     Node {
         content: None,
+        rackmcp_sequence: None,
         score: None,
         bypassed: false,
         id: id.into(),

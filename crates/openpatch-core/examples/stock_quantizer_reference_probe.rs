@@ -14,6 +14,7 @@ fn node(mask: u16) -> Node {
         kind: "stock_quantizer".into(),
         params: BTreeMap::from([("scale_mask".into(), f32::from(mask))]),
         content: None,
+        rackmcp_sequence: None,
         score: None,
         bypassed: false,
     }

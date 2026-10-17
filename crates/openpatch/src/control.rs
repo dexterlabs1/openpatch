@@ -1,8 +1,15 @@
 //! Control-thread operations, shared by transports. Never called by the DSP loop.
+mod bridge;
 mod cable_edits;
 mod capture;
 mod construction;
 mod document;
+pub use bridge::BridgeObservation;
+pub mod project_saved;
+pub use project_saved::{
+    configured_document_states, saved_content, ActiveProjectSave, ProjectSaveCheckpoint,
+    SharedProjectSave,
+};
 #[cfg(test)]
 mod document_tests;
 #[cfg(test)]
@@ -50,12 +57,21 @@ mod cable_edit_tests;
 mod cable_order_tests;
 #[cfg(test)]
 mod duplicate_tests;
+mod listen;
+#[cfg(test)]
+mod listen_tests;
 #[cfg(test)]
 mod parameter_action_tests;
+mod parameters;
 #[cfg(test)]
 mod preset_tests;
 #[cfg(test)]
 mod push_tests;
+#[cfg(test)]
+mod rackmcp_sequence_tests;
+mod rackmcp_transport;
+#[cfg(test)]
+mod rackmcp_transport_tests;
 #[cfg(test)]
 mod score_tests;
 #[cfg(test)]
@@ -155,6 +171,43 @@ impl MidiLearnReceipt {
 pub trait LiveModuleEvents: Send + Sync {
     fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String>;
     fn snapshot(&self) -> Value;
+    /// Atomically queue at most two source sequencer requests. Data identifies
+    /// the pattern ordering; the callback must reject a superseded identity.
+    fn rackmcp_transport(
+        &self,
+        _id: &str,
+        _requests: &[openpatch_core::RackMcpTransport],
+        _data: &openpatch_core::rackmcp_sequence::SequenceData,
+    ) -> Result<Value, String> {
+        Err("RackMCP transport unsupported by this backend".into())
+    }
+    /// Capture work is off the audio thread and never edits the document.
+    fn start_listen_capture(
+        &self,
+        _id: &str,
+        _seconds: f64,
+        _write_wav: bool,
+        _workspace: &Path,
+    ) -> Result<Value, String> {
+        Err("Listen capture unsupported by this backend".into())
+    }
+    /// Latest global capture, only when it belongs to this module. Lets native
+    /// controls discover jobs started by an external MCP client.
+    fn latest_listen_capture(&self, _id: &str) -> Option<Value> {
+        None
+    }
+    fn inspect_listen_capture(&self, _job: &str) -> Result<Value, String> {
+        Err("Listen capture unsupported by this backend".into())
+    }
+    fn cancel_listen_capture(&self, _job: &str) -> Result<Value, String> {
+        Err("Listen capture unsupported by this backend".into())
+    }
+    /// Effective native raw parameter values are present in the same fenced
+    /// module snapshot as persistent state. Older backends retain authored
+    /// parameter behavior and must not be described as live parameter sources.
+    fn supports_live_parameters(&self) -> bool {
+        false
+    }
     fn learn_midi(
         &self,
         kind: openpatch_core::MidiLearnKind,
@@ -235,6 +288,30 @@ pub trait LiveModuleEvents: Send + Sync {
         Err("live Scope inspection is unsupported by this backend".into())
     }
     fn sync_patch(&self, _patch: &Patch, _revision: u64) {}
+    /// Atomically publish authored parameters and explicit assignment intent.
+    /// Equal-value assignments still count. Prepared graphs freeze these
+    /// intents; later revisions must not change an earlier graph's meaning.
+    fn sync_patch_with_parameters(
+        &self,
+        patch: &Patch,
+        revision: u64,
+        _assignments: &BTreeMap<String, BTreeMap<String, f32>>,
+    ) {
+        self.sync_patch(patch, revision);
+    }
+    /// Atomically publish authored state with parameter assignments and explicit
+    /// RackMCP sequence-data load events. Equal data still counts as a load;
+    /// prepared graph plans must freeze its meaning before later edits arrive.
+    /// IDs are unique and ordered by their final load within the transaction.
+    fn sync_patch_with_intents(
+        &self,
+        patch: &Patch,
+        revision: u64,
+        assignments: &BTreeMap<String, BTreeMap<String, f32>>,
+        _sequence_loads: &[String],
+    ) {
+        self.sync_patch_with_parameters(patch, revision, assignments);
+    }
     /// Imported documents need a fenced execution gate, independent of mute.
     fn supports_document_execution(&self) -> bool {
         false
@@ -259,6 +336,8 @@ pub trait LiveModuleEvents: Send + Sync {
     /// Assign saved PUSH HOLD after adoption, including equal-value loads/history.
     fn load_module_holding(&self, _states: &BTreeMap<String, bool>) {}
     /// Assign typed persistent state after adoption, including equal-value loads.
+    /// RackMCP selection must already be projected into the receiving typed node;
+    /// its saved generation acknowledges the data load without a second request.
     fn load_module_saved_states(&self, states: &BTreeMap<String, SavedModuleState>) {
         let mut running = BTreeMap::new();
         let mut holding = BTreeMap::new();
@@ -270,7 +349,8 @@ pub trait LiveModuleEvents: Send + Sync {
                 SavedModuleState::PushHold(value) => {
                     holding.insert(id.clone(), *value);
                 }
-                SavedModuleState::StockSeq3 { .. }
+                SavedModuleState::RackMcpSelection(_)
+                | SavedModuleState::StockSeq3 { .. }
                 | SavedModuleState::StockSeq3Fields { .. }
                 | SavedModuleState::StockQuantizerNotes(_)
                 | SavedModuleState::RandomValues { .. }
@@ -294,6 +374,9 @@ pub trait LiveModuleEvents: Send + Sync {
 pub struct Session {
     // Authoritative portable document; patch is its validated native state carrier.
     document: ProjectDocument,
+    project_save: SharedProjectSave,
+    bridge_observation: Arc<BridgeObservation>,
+    last_operation: Option<Value>,
     playback_mode: PlaybackMode,
     document_execution: bool,
     patch: Patch,
@@ -324,6 +407,9 @@ impl Clone for Session {
     fn clone(&self) -> Self {
         Self {
             document: self.document.clone(),
+            project_save: self.project_save.detached(),
+            bridge_observation: self.bridge_observation.clone(),
+            last_operation: self.last_operation.clone(),
             playback_mode: self.playback_mode,
             document_execution: self.document_execution,
             patch: self.patch.clone(),
@@ -359,6 +445,9 @@ impl Drop for Session {
 
 #[derive(Clone)]
 struct HistoryEntry {
+    sequence_loads: Vec<String>,
+    restore_parameters: parameters::ParameterValues,
+    return_parameters: parameters::ParameterValues,
     document: ProjectDocument,
     layout_origin: Option<LayoutOrigin>,
     playback_mode: PlaybackMode,
@@ -405,6 +494,7 @@ const EDIT_TOOLS: &[&str] = &[
     "clear_cables",
     "set_parameter",
     "set_score",
+    "set_rackmcp_sequence",
     "set_module_content",
     "set_bypass",
     "rotate_sequence",
@@ -450,10 +540,18 @@ pub(crate) fn execute_shared_authorized(
     authorization: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<Value, String> {
     if name == "start_construction" {
-        return construction::start(session, args, authorization);
+        let result = construction::start(session, args, authorization);
+        if let Ok(mut live) = session.lock() {
+            live.record_operation(name, authorization.is_some(), &result);
+        }
+        return result;
     }
     if name == "import_wavetable" {
-        return wavetable_import::execute(session, args, authorization);
+        let result = wavetable_import::execute(session, args, authorization);
+        if let Ok(mut live) = session.lock() {
+            live.record_operation(name, authorization.is_some(), &result);
+        }
+        return result;
     }
     #[cfg(test)]
     transport_authorization_tests::pause_if_requested(
@@ -469,7 +567,11 @@ pub(crate) fn execute_shared_authorized(
         let filename = string(&args, "filename")?;
         let path = live.file(filename, ".json")?;
         drop(live);
-        return document::write_document_snapshot(&path, filename, captured);
+        let result = document::write_document_snapshot(&path, filename, captured);
+        if let Ok(mut live) = session.lock() {
+            live.record_operation(name, authorization.is_some(), &result);
+        }
+        return result;
     }
     match name {
         "export_visualizer"
@@ -489,10 +591,15 @@ pub(crate) fn execute_shared_authorized(
                 snapshot.patch = live.capture_project_patch(expected_revision(&args)?)?.patch;
             }
             drop(live);
-            snapshot.execute(name, args)
+            let result = snapshot.execute(name, args);
+            if let Ok(mut live) = session.lock() {
+                live.record_operation(name, authorization.is_some(), &result);
+            }
+            result
         }
         _ => {
             let result = live.execute(name, args);
+            live.record_operation(name, authorization.is_some(), &result);
             midi_cc::start_worker(session, &mut live);
             result
         }
@@ -535,6 +642,9 @@ impl Session {
         let document = ProjectDocument::from_patch(patch.clone(), ProjectLayout::default())?;
         Ok(Self {
             document,
+            project_save: SharedProjectSave::default(),
+            bridge_observation: Arc::new(BridgeObservation::default()),
+            last_operation: None,
             playback_mode: PlaybackMode::Exact,
             document_execution: false,
             patch,
@@ -579,12 +689,31 @@ impl Session {
         Ok(())
     }
 
-    fn sync_live_module_events(&self) {
+    fn sync_live_intents(
+        &self,
+        assignments: &parameters::ParameterValues,
+        sequence_loads: &[String],
+    ) {
         if let Some(backend) = &self.live_module_events {
             if self.document_execution {
                 backend.request_document_execution(self.revision, self.execution_disposition());
             }
-            backend.sync_patch(&self.patch, self.revision);
+            let sequence_loads = sequence_loads
+                .iter()
+                .filter(|id| {
+                    self.patch
+                        .nodes
+                        .iter()
+                        .any(|node| node.id == **id && node.kind == "rackmcp_sequencer")
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            backend.sync_patch_with_intents(
+                &self.patch,
+                self.revision,
+                assignments,
+                &sequence_loads,
+            );
         }
     }
 
@@ -727,6 +856,7 @@ impl Session {
         self.intern_candidate_assets(&mut candidate)?;
         let prepared = candidate.prepare_wave_banks(&self.wave_preparation_cache)?;
         candidate.compile_with_wave_banks(&prepared)?;
+        let parameter_effects = parameters::for_commit(self, &mut candidate, effects)?;
         let document = self.document_after_edit(&candidate, effects)?;
         let needs_layout = self.layout_host_attached
             && !prepared_layout
@@ -776,11 +906,18 @@ impl Session {
         // A gesture may grow or shrink the persistent state it changes. Retain
         // a separate checkpoint whenever its saved-state coverage changes, so
         // neither the original undo snapshot nor the final redo loses fields.
-        let merge_group = group.is_some()
+        let merge_group = effects.sequence_loads.is_empty()
+            && group.is_some()
             && group == self.history_group
             && self.undo.back().is_some_and(|entry| {
-                saved_state_coverage_matches(&entry.restore_saved, &effects.before_saved)
+                entry.sequence_loads.is_empty()
+                    && saved_state_coverage_matches(&entry.restore_saved, &effects.before_saved)
                     && saved_state_coverage_matches(&entry.return_saved, &effects.after_saved)
+                    && parameters::same_coverage(
+                        &entry.restore_parameters,
+                        &parameter_effects.before,
+                    )
+                    && parameters::same_coverage(&entry.return_parameters, &parameter_effects.after)
                     && entry
                         .release_controls
                         .iter()
@@ -792,6 +929,9 @@ impl Session {
             self.playback_mode = playback_mode;
             if let Some(entry) = self.undo.back_mut() {
                 entry.return_saved.extend(effects.after_saved.clone());
+                entry
+                    .return_parameters
+                    .extend(parameter_effects.after.clone());
                 entry.return_lifecycle.append(&forward_lifecycle);
                 entry.restore_lifecycle = reverse_lifecycle
                     .clone()
@@ -802,6 +942,9 @@ impl Session {
                 self.undo.pop_front();
             }
             self.undo.push_back(HistoryEntry {
+                sequence_loads: effects.sequence_loads.iter().rev().cloned().collect(),
+                restore_parameters: parameter_effects.before.clone(),
+                return_parameters: parameter_effects.after.clone(),
                 document: std::mem::replace(&mut self.document, document),
                 layout_origin: self.layout_origin,
                 playback_mode: std::mem::replace(&mut self.playback_mode, playback_mode),
@@ -846,7 +989,7 @@ impl Session {
                 backend.retire_cables(&effects.retired_cables);
             }
         }
-        self.sync_live_module_events();
+        self.sync_live_intents(&parameter_effects.after, &effects.sequence_loads);
         if let Some(backend) = &self.live_module_events {
             if !effects.initialized.is_empty() {
                 backend
@@ -974,7 +1117,31 @@ impl Session {
         } else {
             self.undo.back().unwrap().clone()
         };
+        // A sequence selection is structured source data. Materialize a
+        // captured history selection before compilation; the source-data load
+        // epoch performs its sole transport request and ownership acquisition.
+        let mut selection_overlay = false;
+        for node in &mut target.patch.nodes {
+            if let Some(state @ SavedModuleState::RackMcpSelection(_)) =
+                target.restore_saved.get(&node.id).copied()
+            {
+                rackmcp_transport::validate_selection(node, state)?;
+                state.write_node(node);
+                selection_overlay = true;
+            }
+        }
+        if selection_overlay {
+            target.document = target
+                .document
+                .with_native_patch(target.patch.clone(), &BTreeMap::new())?;
+        }
         let outgoing_capture = self.prepare_history_suspension(&mut target)?;
+        if !target.restore_parameters.is_empty() {
+            parameters::overlay(&mut target.patch, &target.restore_parameters);
+            target.document = target
+                .document
+                .with_native_patch(target.patch.clone(), &BTreeMap::new())?;
+        }
         target.document.layout.zoom = self.document.layout.zoom;
         target.document.layout.pan = self.document.layout.pan;
         let needs_layout = self.layout_host_attached
@@ -1010,6 +1177,9 @@ impl Session {
         }
         let entry = target;
         let mut opposite = HistoryEntry {
+            sequence_loads: entry.sequence_loads.iter().rev().cloned().collect(),
+            restore_parameters: entry.return_parameters.clone(),
+            return_parameters: entry.restore_parameters.clone(),
             document: std::mem::replace(&mut self.document, entry.document),
             layout_origin: self.layout_origin,
             playback_mode: std::mem::replace(&mut self.playback_mode, entry.playback_mode),
@@ -1062,7 +1232,7 @@ impl Session {
                 backend.retire_cables(&entry.retired_cables);
             }
         }
-        self.sync_live_module_events();
+        self.sync_live_intents(&entry.restore_parameters, &entry.sequence_loads);
         if let Some(backend) = &self.live_module_events {
             let releases: Vec<_> = entry
                 .release_controls
@@ -1196,6 +1366,9 @@ impl Session {
                     | "redo"
                     | "rotate_sequence"
                     | "trigger_module"
+                    | "rackmcp_transport"
+                    | "start_listen_capture"
+                    | "cancel_listen_capture"
                     | "learn_midi_cc"
                     | "cancel_midi_cc_learn"
                     | "learn_midi_gate"
@@ -1214,6 +1387,8 @@ impl Session {
                 | "analyze_signal"
                 | "capture_signal"
                 | "trigger_module"
+                | "rackmcp_transport"
+                | "start_listen_capture"
         ) {
             self.require_document_execution()?;
         }
@@ -1286,6 +1461,14 @@ impl Session {
             | "learn_midi_gate"
             | "cancel_midi_gate_learn" => {
                 return self.midi_cc_learn_tool(name, &args);
+            }
+            "rackmcp_transport" => return self.rackmcp_transport_tool(&args),
+            "inspect_rackmcp_sequence" => return self.inspect_rackmcp_sequence_tool(&args),
+            "inspect_listen" => return self.inspect_listen_tool(&args),
+            "inspect_bridge" => return self.inspect_bridge_tool(&args),
+            "start_listen_capture" => return self.start_listen_capture_tool(&args),
+            "inspect_listen_capture" | "cancel_listen_capture" => {
+                return self.listen_capture_job_tool(name, &args)
             }
             "trigger_module" => {
                 self.check_revision(expected_revision(&args)?)?;
@@ -2035,6 +2218,10 @@ fn apply_edit(
                     .get("content")
                     .map(|value| serde_json::from_value(value.clone()).map_err(|e| e.to_string()))
                     .transpose()?,
+                rackmcp_sequence: args
+                    .get("rackmcp_sequence")
+                    .map(|value| serde_json::from_value(value.clone()).map_err(|e| e.to_string()))
+                    .transpose()?,
                 score: args
                     .get("score")
                     .map(|value| serde_json::from_value(value.clone()).map_err(|e| e.to_string()))
@@ -2057,6 +2244,24 @@ fn apply_edit(
                 .ok_or("module not found")?;
             node.content = Some(content);
             openpatch_core::validate_content(node)?;
+        }
+        "set_rackmcp_sequence" => {
+            let id = string(args, "id")?;
+            let sequence = serde_json::from_value(
+                args.get("rackmcp_sequence")
+                    .cloned()
+                    .ok_or("rackmcp_sequence is required")?,
+            )
+            .map_err(|error| error.to_string())?;
+            let node = candidate
+                .nodes
+                .iter_mut()
+                .find(|node| node.id == id)
+                .ok_or("module not found")?;
+            if node.kind != "rackmcp_sequencer" {
+                return Err("set_rackmcp_sequence requires rackmcp_sequencer".into());
+            }
+            node.rackmcp_sequence = Some(sequence);
         }
         "set_score" => {
             let id = string(args, "id")?;
@@ -2529,6 +2734,13 @@ pub fn tools() -> Value {
         tool("cancel_midi_gate_learn","Cancel an armed MIDI Gate Learn request. Completed decisions reconcile before cancellation.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("learn_midi_cc","Arm a MIDI CC cell (1..16) to learn the next accepted controller value change on the audio timeline. Completion records one undoable mapping edit independently of the GUI.",json!({"id":s,"cell":{"type":"integer","minimum":1,"maximum":16},"expected_revision":rev}),&["id","cell"],false),
         tool("cancel_midi_cc_learn","Cancel an armed MIDI CC Learn request. Completed decisions reconcile before cancellation.",json!({"id":s,"expected_revision":rev}),&["id"],false),
+        tool("inspect_bridge","Read native local MCP transport liveness, admitted same-user sockets, explicit shared mutation authority, active-project save basis and last operation. Optional id must be a native Bridge panel. No Rack HMAC, TCP port or writer lease is invented. Read-only; never starts/stops a listener or audio device.",json!({"id":s,"expected_revision":rev}),&[],true),
+        tool("inspect_listen","Read actual coherent Listen counters, connection hints and capture lamp. Reports unavailable without current runnable live publication; never substitutes authored or offline state.",json!({"id":s,"expected_revision":rev}),&["id"],true),
+        tool("start_listen_capture","Capture 0.1 to 30 seconds from a live Listen module. Omit id only when exactly one Listen exists. One global job; raw poly sums, fixed initial sample rate, off-thread source analysis. write_wav explicitly writes a new stereo float WAV in the workspace (10V full scale). Does not start audio or change the patch/history. Poll the returned job.",json!({"id":s,"seconds":{"type":"number","minimum":0.1,"maximum":30},"write_wav":{"type":"boolean"},"expected_revision":rev}),&["seconds"],false),
+        tool("inspect_listen_capture","Poll a retained Listen capture job, including after its module is removed or execution is suspended. Returns actual progress, dropped frames, analysis or failure.",json!({"job":s,"expected_revision":rev}),&["job"],true),
+        tool("cancel_listen_capture","Request cancellation of an active Listen capture job. Receipt confirms the request; poll for worker acknowledgment. Does not edit document/history.",json!({"job":s,"expected_revision":rev}),&["job"],false),
+        tool("rackmcp_transport","Queue live RackMCP 2.0.0 Sequencer play/stop/toggle/reset/select/seek. Optional pattern names select atomically with play/stop/toggle/reset; quantize is now (next advance) or wrap (default). select requires pattern; seek requires bar in 0..100000 and forbids pattern/quantize. No sequence data load, automation reclaim, history entry or speaker startup. Requires runnable live execution. Receipt confirms bounded queue acceptance, not callback application.",json!({"id":s,"action":{"type":"string","enum":["play","stop","toggle","reset","select","seek"]},"pattern":{"type":"string","minLength":1,"maxLength":32},"quantize":{"type":"string","enum":["now","wrap"]},"bar":{"type":"number","minimum":0,"maximum":100000},"expected_revision":rev}),&["id","action"],false),
+        tool("inspect_rackmcp_sequence","Read actual coherent live RackMCP sequence transport, selected/active/pending patterns, step/loop/bar, clock source, tempo and counts. Position follows source 64-sample publication. Reports unavailable before publication or without runnable live execution; never substitutes authored state or offline analysis.",json!({"id":s,"expected_revision":rev}),&["id"],true),
         tool("inspect_performance","Read live queue, callback, and emergency-release counters plus coherent per-module state, momentary controls, and lights. Native audio_timing reports a separately coherent completed callback with actual frames/rate, processing duration, budget utilization/peaks and budget overruns (not hardware xruns); it has its own revision, sequence and reset epoch. Each module reports availability and the actual published revision; state is unavailable until the current graph is published. Queued receipts and applied/dropped counters are distinct; headless mode reports unsupported.",json!({"expected_revision":rev}),&[],true),
         tool("rotate_sequence","Rotate all eight seq3 or stock_seq3 columns left or right, including three voltage rows and coherent live gate flags. Commits one revision and one undo step.",json!({"id":s,"direction":{"type":"string","enum":["left","right"]},"expected_revision":rev}),&["id","direction"],false),
         tool("rotate_scale","Transpose the enabled Stock Quantizer notes by -12..12 semitones, preserving offset, identity and cables. Captures the coherent live scale and commits one revision and undo step. Supports atomic batches and previews.",json!({"id":s,"semitones":{"type":"integer","minimum":-12,"maximum":12},"expected_revision":rev}),&["id","semitones"],false),
@@ -2554,7 +2766,7 @@ pub fn tools() -> Value {
         tool("capture_project_patch","Capture a project-save patch with actual SEQ3 Run, Push HOLD, MIDI CC assignments and controller values, and all Random Values and Shift Register held voltages plus next PRNG state overlaid on a cloned graph. All live stateful modules must be available at the current revision and the same callback frame; otherwise retry. Without a backend uses initial/default state. No stateful modules means parameter-only capture without reading the backend. Returns patch, revision, state_id, running, holding, random_values and shift_registers maps, state_source, and frame. Does not change session, history, queue, or runtime.",json!({"expected_revision":rev,"include_asset_data":{"type":"boolean","default":false}}),&[],true),
         tool("export_visualizer","Export the bundled audio-reactive WebGL2 visualizer preview to a new .html file. Includes editable GLSL. Open locally in a browser.",json!({"filename":s}),&["filename"],false),
         tool("replace_patch","Modules start with fresh runtime state. Atomically replace the complete patch. Invalid patches leave state unchanged.",json!({"patch":{"type":"object"},"expected_revision":rev}),&["patch"],false),
-        tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params. Notes and Blank accept typed content. Optional row (0..63) asks the desktop to append the panel to the end of that rack row; without it new panels go to the end of row 0. Group related modules by row (e.g. control, voices, effects, mix) for an organized rack.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"score":{"type":"object"},"content":preset_tools::content_schema(),"row":{"type":"integer","minimum":0,"maximum":layout_history::MAX_LAYOUT_ROW},"expected_revision":rev}),&["id","kind"],false),
+        tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params. Notes and Blank accept typed content. Optional row (0..63) asks the desktop to append the panel to the end of that rack row; without it new panels go to the end of row 0. Group related modules by row (e.g. control, voices, effects, mix) for an organized rack.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"score":{"type":"object"},"rackmcp_sequence":{"type":"object"},"content":preset_tools::content_schema(),"row":{"type":"integer","minimum":0,"maximum":layout_history::MAX_LAYOUT_ROW},"expected_revision":rev}),&["id","kind"],false),
         tool("duplicate_modules","Atomically duplicate 1..256 modules to explicit fresh IDs, preserving kind, parameters, content, and bypass. cable_mode defaults to none (no cables); internal copies only cables between selected sources, inputs also copies external incoming cables, and all copies each cable touching selected modules once, including external outgoing fanout. Selected cable ends are remapped; external ends are retained. Original cable order/IDs stay intact; appended copies have fresh IDs. Selected output is preserved. Version 1 rejects outgoing stacks unless the final transaction removes the conflict. Current SEQ-3 Run, Stock SEQ3 Run/gates/passthrough, Push HOLD and all Random Values and Shift Register voltages plus PRNG are copied; other runtime state starts fresh for the new IDs. Supports preview/batches and one undo step; the final graph must validate.",json!({"modules":duplicate_mappings,"cable_mode":{"type":"string","enum":["none","internal","inputs","all"],"default":"none"},"expected_revision":rev}),&["modules"],false),
         tool("remove_module","Remove a module and its attached cables.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("connect","Connect named ports; output defaults to out. Default mode reject refuses occupied inputs; explicit mode stack adds another version-2 cable, including identical routes. Optional cable_id requests a fresh unique ID; otherwise IDs are assigned immediately. Optional color persists three RGB integer bytes (0..255); omission uses the rack palette. Version 1 rejects stacking/cycles; version 2 delays every cable one sample.",json!({"from":s,"output":s,"to":s,"input":s,"mode":{"type":"string","enum":["reject","stack"],"default":"reject"},"cable_id":module_id,"color":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"integer","minimum":0,"maximum":255}},"expected_revision":rev}),&["from","to","input"],false),
@@ -2565,6 +2777,7 @@ pub fn tools() -> Value {
         tool("promote_cables","Promote 1..1024 unique existing cable plugs at the input or output end, preserving their current relative plug order. Only chosen-end rank metadata changes; IDs, colors, array order, opposite ranks, and DSP state are preserved. Already-top selections are validated no-ops preserving revision/history/redo. Supports preview and batches; exact ranks restore through undo/redo.",json!({"cable_ids":cable_ids,"end":{"type":"string","enum":["input","output"]},"expected_revision":rev}),&["cable_ids","end"],false),
         tool("clear_cables","Remove every cable atomically, preserving modules, parameters, output selection, and live module state. One revision and undo step restores exact cable IDs and order. Supports preview_edits/apply_edits and the full patch cable limit. A direct call on an empty patch validates expected_revision but does not change history or revision; an empty subedit follows normal transaction history semantics.",json!({"expected_revision":rev}),&[],false),
         tool("set_module_content","Replace typed Notes text or Blank width. Notes permits multiline Unicode bounded to 8192 UTF-8 bytes; Blank width is 3..96 HP. Rejects mismatched kinds and version 1. Revision guarded, undoable, and valid in atomic edits and construction. Width changes preserve the left position; layout collision handling belongs to the host.",json!({"id":s,"content":preset_tools::content_schema(),"expected_revision":rev}),&["id","content"],false),
+        tool("set_rackmcp_sequence","Replace RackMCP source patterns and explicit native automation bindings atomically. Preserves transport; each native transaction loads its final sequence state once per module, including equal data. Reloads selection and lane caches. Undoable; valid in apply_edits and preview_edits. Only rackmcp_sequencer accepts this state; consult its catalog schema.",json!({"id":s,"rackmcp_sequence":{"type":"object"},"expected_revision":rev}),&["id","rackmcp_sequence"],false),
         tool("set_score","Replace structured score patterns and automation atomically. Only score_sequencer accepts score data; consult its catalog score_schema. Changed score data resets its transport; unrelated edits preserve playback. Undoable and valid in apply_edits.",json!({"id":s,"score":{"type":"object"},"expected_revision":rev}),&["id","score"],false),
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group (1..128 UTF-8 bytes) merges consecutive changes to the same parameter into one undo step when saved-state coverage and control-release obligations match, including apply_edits with matching history_parameter; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":history_group}),&["id","parameter","value"],false),
         tool("set_bypass","Set module bypass using a boolean. Preserves cables, parameters, and frozen runtime state; bypass routes are listed in the catalog.",json!({"id":s,"bypassed":{"type":"boolean"},"expected_revision":rev}),&["id","bypassed"],false),

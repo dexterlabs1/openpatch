@@ -7,6 +7,7 @@ use serde_json::json;
 fn node(id: &str, kind: &str, content: Option<ModuleContent>) -> Node {
     Node {
         content,
+        rackmcp_sequence: None,
         score: None,
         id: id.into(),
         kind: kind.into(),

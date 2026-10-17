@@ -41,7 +41,11 @@ fn stock_vca_assert_callback_gains(
         } else {
             level * cv
         };
-        assert!((lights.brightness[lane][0] - expected).abs() < 1e-7);
+        assert!(
+            (lights.brightness[lane][0] - expected).abs() < 1e-7,
+            "lane {lane}: measured {}, expected {expected} at level {level}",
+            lights.brightness[lane][0]
+        );
         assert_eq!(lights.brightness[lane][1], 0.0);
     }
 }
@@ -68,7 +72,16 @@ fn stock_vca_callback_first_buffer_and_graph_crossfade_have_no_heap_activity() {
             patch.nodes[2].params.insert("level".into(), level);
             patch.nodes[2].params.insert("response".into(), response);
             let revision = index as u64 + 2;
-            callback.performance.sync_patch(&patch, revision);
+            // Simulate an intentional level edit. Ordinary graph refreshes
+            // preserve the heard value through live-parameter adoption.
+            callback.performance.sync_patch_with_parameters(
+                &patch,
+                revision,
+                &std::collections::BTreeMap::from([(
+                    "vca".into(),
+                    std::collections::BTreeMap::from([("level".into(), level)]),
+                )]),
+            );
             assert!(callback.performance.module_lights("vca").is_none());
             assert!(updates
                 .push(sequence_graph(&callback, &patch, revision))

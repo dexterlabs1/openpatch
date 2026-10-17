@@ -225,6 +225,125 @@ class OpenPatchMCPTests(unittest.TestCase):
         check(payload)
         return payload
 
+    def test_bridge_observation_and_exports_do_not_invent_native_services_or_active_saves(self) -> None:
+        tools = self.client.request("tools/list")["result"]["tools"]
+        names = {tool["name"] for tool in tools}
+        self.assertIn("inspect_bridge", names)
+        self.assertFalse({"_native_bridge_start", "_native_bridge_stop", "_native_bridge_restart", "_native_bridge_save"} & names)
+        for module in ["bridge", "bridge-two"]:
+            self.require_tool_success("add_module", {"id": module, "kind": "rackmcp_bridge"})
+        before = self.patch_snapshot()
+        history = self.payload(self.require_tool_success("inspect_history"))
+        observed = self.payload(self.require_tool_success("inspect_bridge", {"id": "bridge"}))
+        self.assertEqual(observed["bridge_panels"], 2)
+        self.assertEqual(observed["transport"]["state"], "stopped")
+        self.assertIsNone(observed["transport"]["attachment_id"])
+        self.assertEqual(observed["transport"]["admitted_clients"], 0)
+        self.assertTrue(observed["transport"]["stdio_enabled"])
+        self.assertEqual(observed["authority"]["kind"], "same_user_shared_mutation")
+        self.assertFalse(observed["authority"]["writer_lease"])
+        self.assertIsNone(observed["authority"]["stdio_client_count"])
+        self.assertEqual(observed["save"]["basis"], "authored_content_and_durable_state")
+        self.assertFalse(observed["save"]["saved"])
+        receipt = self.payload(self.require_tool_success("save_document", {"filename": "snapshot.json"}))
+        self.assertFalse(receipt["affects_active_project_baseline"])
+        after = self.payload(self.require_tool_success("inspect_bridge", {"id": "bridge-two"}))
+        self.assertEqual(after["transport"], observed["transport"])
+        self.assertEqual(after["save"], observed["save"])
+        self.assertEqual(after["last_operation"]["name"], "save_document")
+        self.assertEqual(after["last_operation"]["outcome"], "completed")
+        self.require_tool_error("inspect_bridge", {"id": "missing"})
+        self.require_tool_error("inspect_bridge", {"expected_revision": 0})
+        self.require_tool_error("_native_bridge_start")
+        self.assertEqual(self.patch_snapshot(), before)
+        self.assertEqual(self.payload(self.require_tool_success("inspect_history")), history)
+        self.assertEqual([path.name for path in self.workspace.iterdir()], ["snapshot.json"])
+
+    def test_listen_capture_discovery_and_headless_unavailable_boundary(self) -> None:
+        tools = self.client.request("tools/list")["result"]["tools"]
+        names = {tool["name"] for tool in tools}
+        self.assertTrue({"inspect_listen", "start_listen_capture", "inspect_listen_capture", "cancel_listen_capture"}.issubset(names))
+        self.require_tool_success("add_module", {"id": "tap", "kind": "rackmcp_listen"})
+        before = self.patch_snapshot()
+        history = self.payload(self.require_tool_success("inspect_history"))
+        observed = self.payload(self.require_tool_success("inspect_listen", {"id": "tap"}))
+        self.assertFalse(observed["available"])
+        self.assertNotIn("listen", observed)
+        for arguments in [{"seconds": 1}, {"id": "tap", "seconds": 0.1, "write_wav": True},
+                          {"seconds": 0.09}, {"seconds": 30.1}, {"seconds": 1, "id": 7},
+                          {"seconds": 1, "write_wav": "yes"}]:
+            self.require_tool_error("start_listen_capture", arguments)
+        self.require_tool_error("inspect_listen_capture", {"job": "listen-1"})
+        self.require_tool_error("cancel_listen_capture", {"job": "listen-1"})
+        self.require_tool_error("inspect_listen", {"id": "tap", "expected_revision": 0})
+        self.assertEqual(self.patch_snapshot(), before)
+        self.assertEqual(self.payload(self.require_tool_success("inspect_history")), history)
+        self.assertEqual(list(self.workspace.iterdir()), [], "unavailable capture wrote a file")
+
+    def test_rackmcp_transport_discovery_and_headless_unavailable_boundary(self) -> None:
+        tools = self.client.request("tools/list")["result"]["tools"]
+        names = {tool["name"] for tool in tools}
+        self.assertTrue({"rackmcp_transport", "inspect_rackmcp_sequence"}.issubset(names))
+        self.require_tool_success("add_module", {
+            "id": "seq", "kind": "rackmcp_sequencer",
+            "rackmcp_sequence": {"data": {"patterns": [
+                {"name": "A", "length": 4}, {"name": "B♭", "length": 4}]}}})
+        before = self.patch_snapshot()
+        history = self.payload(self.require_tool_success("inspect_history"))
+        observed = self.payload(self.require_tool_success("inspect_rackmcp_sequence", {"id": "seq"}))
+        self.assertFalse(observed["available"])
+        self.assertNotIn("rackmcp_sequence", observed)
+        for arguments in [
+            {"id": "seq", "action": "play", "pattern": "B♭", "quantize": "now"},
+            {"id": "seq", "action": "select", "pattern": "missing"},
+            {"id": "seq", "action": "play", "bar": 0},
+            {"id": "seq", "action": "seek", "bar": 1.5},
+            {"id": "seq", "action": "seek", "bar": 1, "pattern": "A"},
+            {"id": "seq", "action": "select"},
+        ]:
+            self.require_tool_error("rackmcp_transport", arguments)
+        self.require_tool_error("inspect_rackmcp_sequence", {"id": "seq", "expected_revision": 0})
+        self.assertEqual(self.patch_snapshot(), before)
+        self.assertEqual(self.payload(self.require_tool_success("inspect_history")), history)
+        captured = self.payload(self.require_tool_success("capture_project_patch"))["patch"]
+        self.assertEqual(captured["nodes"][0]["rackmcp_sequence"]["data"]["selectedPattern"], "A")
+        self.assertEqual(self.patch_snapshot(), before)
+
+    def test_rackmcp_sequence_state_edit_history_preset_and_saved_roundtrip(self) -> None:
+        sequence = {"data": {"selectedPattern": "A", "patterns": [{"name": "A", "length": 4, "tracks": [
+            {"voices": 2, "steps": [{"step": 0, "notes": [0, 7], "accent": True}]}]}]}}
+        self.require_tool_success("replace_patch", {"patch": {
+            "version": 2, "sample_rate": 8000,
+            "nodes": [{"id": "seq", "kind": "rackmcp_sequencer", "rackmcp_sequence": sequence}],
+            "output": "seq", "output_port": "pitch1"}})
+        before = self.patch_snapshot()
+        changed = json.loads(json.dumps(sequence))
+        changed["data"]["patterns"][0]["length"] = 8
+        self.require_tool_success("preview_edits", {"edits": [{"tool": "set_rackmcp_sequence",
+            "arguments": {"id": "seq", "rackmcp_sequence": changed}}]})
+        self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("set_rackmcp_sequence", {"id": "seq", "rackmcp_sequence": changed})
+        after = self.patch_snapshot()
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"], before["patch"])
+        self.require_tool_success("redo")
+        self.assertEqual(self.patch_snapshot()["patch"], after["patch"])
+        # Explicit equal loads are accepted lifecycle events, not no-op edits.
+        revision = self.patch_snapshot()["revision"]
+        self.require_tool_success("set_rackmcp_sequence", {"id": "seq", "rackmcp_sequence": changed})
+        self.assertEqual(self.patch_snapshot()["revision"], revision + 1)
+        bad = json.loads(json.dumps(changed))
+        bad["data"]["patterns"][0]["length"] = 0
+        stable = self.patch_snapshot()
+        self.require_tool_error("set_rackmcp_sequence", {"id": "seq", "rackmcp_sequence": bad})
+        self.assertEqual(self.patch_snapshot(), stable)
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "seq"}))["preset"]
+        self.assertEqual(preset["rackmcp_sequence"]["data"]["patterns"][0]["length"], 8)
+        self.require_tool_success("save_patch", {"filename": "rackmcp-sequence.json"})
+        self.require_tool_success("set_rackmcp_sequence", {"id": "seq", "rackmcp_sequence": sequence})
+        self.require_tool_success("load_patch", {"filename": "rackmcp-sequence.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], stable["patch"])
+
     def test_score_edit_roundtrip_and_bounded_arrangement_render(self) -> None:
         score = {"length":4,"tracks":[{"steps":[{"step":0,"notes":[0]}]}],"lanes":[{"points":[{"bar":0,"value":0.5}]}]}
         self.require_tool_success("replace_patch", {"patch":{"version":2,"sample_rate":8000,"nodes":[{"id":"score","kind":"score_sequencer","score":score}],"output":"score","output_port":"automation"}})
@@ -365,6 +484,70 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertEqual(reopened["execution"]["requested_disposition"], "suspended_unresolved")
         self.assertEqual(inspect()["document"], original)
         self.assertEqual(source_path.read_bytes(), vcv_bytes)
+
+    def test_rackmcp_import_automation_omissions_provenance_history_and_reopen(self) -> None:
+        source = {"version": "2.6.6", "modules": [
+            {"id": 101, "plugin": "RackMCP", "model": "Sequencer", "version": "2.0.0",
+             "params": [{"id": 2, "value": 1}],
+             "data": {"patterns": [{"name": "A", "length": 4}], "lanes": [
+                 {"moduleId": "42", "paramId": 0, "points": [{"bar": 0, "value": 0.25}]},
+                 {"moduleId": "42", "paramId": 1, "points": [{"bar": 0, "value": 1}]}]}},
+            {"id": 7, "plugin": "Fundamental", "model": "VCO", "version": "2.6.4"},
+            {"id": 42, "plugin": "Fundamental", "model": "VCA-1", "version": "2.6.4"}],
+            "cables": [{"id": 1, "outputModuleId": 7, "outputId": 2,
+                        "inputModuleId": 42, "inputId": 1}]}
+        original = (json.dumps(source, indent=2) + "\n").encode()
+        path = self.workspace / "sequence.vcv"
+        path.write_bytes(original)
+        result = self.payload(self.require_tool_success("import_vcv", {"filename": path.name}))
+        self.assertEqual(result["report"]["mapped_count"], 3)
+        self.assertEqual(result["report"]["unresolved_count"], 0)
+
+        def inspect() -> dict[str, Any]:
+            return self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))
+
+        loaded = inspect()
+        self.assertEqual(loaded["execution"]["requested_disposition"], "suspended_unresolved")
+        self.assertEqual(len(loaded["execution"]["omitted_automation"]), 1)
+        self.assertEqual(loaded["execution"]["omitted_automation"][0]["source_param_id"], 1)
+        self.assertEqual(loaded["execution"]["substitutions"][0]["mapping"]["fidelity"], "musical_role")
+        self.require_tool_success("set_output", {"id": "vcv_m_42", "port": "out"})
+        self.require_tool_error("render_audio", {"filename": "blocked.wav", "seconds": 0.05})
+        self.assertFalse((self.workspace / "blocked.wav").exists())
+        before = inspect()
+        self.require_tool_error("apply_edits", {"edits": [
+            {"tool": "remove_module", "arguments": {"id": "vcv_m_42"}},
+            {"tool": "add_module", "arguments": {"id": "vcv_m_42", "kind": "stock_vca"}}]})
+        self.assertEqual(inspect(), before)
+        self.require_tool_success("set_document_playback", {"mode": "partial"})
+        self.assertEqual(inspect()["execution"]["requested_disposition"], "runnable_partial")
+        self.require_tool_success("render_audio", {"filename": "partial.wav", "seconds": 0.05})
+        with wave.open(str(self.workspace / "partial.wav"), "rb") as rendered:
+            samples = self._first_channel_samples(rendered.readframes(rendered.getnframes()),
+                                                  rendered.getsampwidth(), rendered.getnchannels())
+        self.assertTrue(any(abs(sample) > 100 for sample in samples))
+        self.require_tool_success("set_document_playback", {"mode": "exact"})
+        self.assertEqual(inspect()["execution"]["requested_disposition"], "suspended_unresolved")
+        sequence_node = next(item["node"] for item in inspect()["document"]["graph"]["nodes"]
+                             if item.get("node", {}).get("kind") == "rackmcp_sequencer")
+        sequence = sequence_node["rackmcp_sequence"]
+        self.assertEqual(len(sequence["data"]["lanes"]), 2)
+        self.assertEqual(len(sequence["targets"]), 1)
+        sequence["data"]["lanes"] = sequence["data"]["lanes"][:1]
+        self.require_tool_success("set_rackmcp_sequence", {"id": "vcv_m_101", "rackmcp_sequence": sequence})
+        self.assertEqual(inspect()["execution"]["requested_disposition"], "runnable_exact")
+        self.require_tool_success("undo")
+        self.assertEqual(inspect()["execution"]["requested_disposition"], "suspended_unresolved")
+        self.require_tool_success("redo")
+        edited = inspect()["document"]
+        self.require_tool_success("save_document", {"filename": "sequence.json"})
+        self.require_tool_success("load_document", {"filename": "sequence.json"})
+        reopened = inspect()
+        self.assertEqual(reopened["document"], edited)
+        self.assertEqual(reopened["execution"]["requested_disposition"], "runnable_exact")
+        self.assertEqual(reopened["document"]["sources"], loaded["document"]["sources"])
+        self.assertEqual(reopened["document"]["source_blobs"], loaded["document"]["source_blobs"])
+        self.assertEqual(path.read_bytes(), original)
 
     def test_rack264_voice_import_render_edit_and_reopen(self) -> None:
         source = {
