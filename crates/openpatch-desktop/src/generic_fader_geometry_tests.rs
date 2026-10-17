@@ -42,6 +42,7 @@ struct PaintedSurface {
     fills: Vec<(Rect, Color32)>,
     texts: Vec<PaintedText>,
     controls: Vec<ControlGeometry>,
+    warm_face: bool,
 }
 
 fn collect(shape: &egui::Shape, surface: &mut PaintedSurface) {
@@ -50,6 +51,9 @@ fn collect(shape: &egui::Shape, surface: &mut PaintedSurface) {
             for shape in shapes {
                 collect(shape, surface);
             }
+        }
+        egui::Shape::Mesh(mesh) => {
+            surface.warm_face |= mesh.vertices.iter().any(|v| v.color == Color32::from_rgb(242, 234, 209));
         }
         egui::Shape::Rect(rect) => {
             surface.fills.push((rect.rect, rect.fill));
@@ -141,6 +145,7 @@ fn paint(module: &Value, position: Position, scale: f32, browser: bool) -> Paint
         fills: vec![],
         texts: vec![],
         controls: vec![],
+        warm_face: false,
     };
     for _ in 0..2 {
         surface.controls.clear();
@@ -339,8 +344,7 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                 }
                 for (name, surface) in [("rack", &rack), ("browser", &browser)] {
                     if matches!(kind, "multi_vco" | "multi_lfo" | "wavetable_vco" | "wavetable_lfo") {
-                        assert!(surface.fills.iter().any(|(_, color)|
-                            *color == Color32::from_rgb(238, 232, 216)),
+                        assert!(surface.warm_face,
                             "{context}: {name} lost the warm ivory face");
                     }
                     assert_eq!(
@@ -532,8 +536,8 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                                 ("gate", "duty") | ("white_noise", "level") => Some((60.0, 22.9)),
                                 ("analog_vco", "pulse_width") => Some((51.0, 19.5)),
                                 ("rescale", "gain") => Some((46.0, 15.9)),
-                                ("multi_vco" | "multi_lfo", "pulse_width") => Some((58.0, 21.9)),
-                                ("wavetable_vco" | "wavetable_lfo", "position") => Some((44.0, 15.4)),
+                                ("multi_vco" | "multi_lfo", "pulse_width") => Some((62.0, 24.26667)),
+                                ("wavetable_vco" | "wavetable_lfo", "position") => Some((56.0, 21.66667)),
                                 _ => None,
                             };
                             if let Some((target, face_radius)) = expected_target_and_face {

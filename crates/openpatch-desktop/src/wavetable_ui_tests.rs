@@ -21,7 +21,7 @@ fn wavetable_all_controls_have_revision_guarded_numeric_entry() {
             let ctx = egui::Context::default();
             let mut rack = Rack::default();
             frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
-            let position = wavetable_parameter_position(index) + vec2(24.0, 12.0 + 33.0);
+            let position = wavetable_value_center(index) + vec2(24.0, 12.0);
             frame_revision_state(
                 &ctx,
                 &mut rack,

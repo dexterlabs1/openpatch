@@ -35,6 +35,8 @@ include!("atlas_effect_panels.rs");
 include!("atlas_compressor_guide.rs");
 include!("atlas_creative_panels.rs");
 include!("atlas_svf_panel.rs");
+include!("atlas_multi_panels.rs");
+include!("atlas_wavetable_panel.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
 #[path = "agent_follow.rs"]
@@ -241,7 +243,8 @@ fn generic_parameter_hardware(
 ) -> GenericParameterHardware {
     if has_choices {
         GenericParameterHardware::Choice
-    } else if kind == "svf_filter"
+    } else if atlas_oscillator(kind)
+        || kind == "svf_filter"
         || atlas_voice(kind)
         || atlas_studio_effect(kind)
         || atlas_creative_kind(kind)
@@ -3557,6 +3560,9 @@ impl Rack {
                     &self.lighting,
                 );
             }
+            if matches!(node.kind.as_str(), "multi_vco" | "multi_lfo") {
+                paint_atlas_multi_configuration(ui, rect, node, self.zoom, &self.lighting);
+            }
             if is_wavetable(&node.kind) {
                 paint_wavetable_display(
                     &painter,
@@ -3801,7 +3807,11 @@ impl Rack {
                     let response = crate::panel_skin::toggle_button(
                         ui,
                         rect,
-                        if *name == "linear_fm" { "LFM" } else { "SOFT" },
+                        if *name == "linear_fm" {
+                            "Linear FM"
+                        } else {
+                            "Soft sync"
+                        },
                         enabled,
                         self.zoom,
                     );
@@ -3813,11 +3823,14 @@ impl Rack {
                             format!("{} {}", node.id, name),
                         )
                     });
+                    if mode.is_interactive() {
+                        self.register_multi_mode_anchor(ui, node, name, rect, &response);
+                    }
                     if response.clicked() {
                         self.select_primary(node.id.clone());
                         action = Some(RackAction::Command(
                             "set_parameter",
-                            json!({"id":node.id,"parameter":name,"value":if enabled{0.0}else{1.0}}),
+                            json!({"id":node.id,"parameter":name,"value":if enabled{0.0}else{1.0},"expected_revision":revision}),
                         ));
                     }
                     response.on_hover_text(if *name=="linear_fm"{"Use linear FM. Off selects exponential FM. This mode is saved with the patch."}else{"Use soft sync. Off selects hard sync. This mode is saved with the patch."});
@@ -3963,11 +3976,14 @@ impl Rack {
                     };
                     let button =
                         crate::panel_skin::toggle_button(ui, rect, label, enabled, self.zoom);
+                    if mode.is_interactive() {
+                        self.register_multi_mode_anchor(ui, node, name, rect, &button);
+                    }
                     if button.clicked() {
                         self.select_primary(node.id.clone());
                         action = Some(RackAction::Command(
                             "set_parameter",
-                            json!({"id":node.id,"parameter":name,"value":if enabled { 0.0 } else { 1.0 }}),
+                            json!({"id":node.id,"parameter":name,"value":if enabled { 0.0 } else { 1.0 },"expected_revision":revision}),
                         ));
                     }
                     button.on_hover_text(if *name == "invert" {
@@ -4195,15 +4211,12 @@ impl Rack {
                 } else if matches!(node.kind.as_str(), "stock_vco" | "stock_lfo") {
                     stock_vco_control(name)
                 } else if is_wavetable(&node.kind) {
-                    (wavetable_parameter_position(index), 18.0)
-                } else if matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") {
                     (
-                        pos2(
-                            width * (if index.is_multiple_of(2) { 0.25 } else { 0.75 }),
-                            125.0 + (index / 2) as f32 * 100.0,
-                        ),
-                        23.0,
+                        wavetable_parameter_position(index),
+                        wavetable_parameter_radius(index),
                     )
+                } else if matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") {
+                    atlas_multi_control(name)
                 } else if matches!(node.kind.as_str(), "mid_side" | "stock_mid_side") {
                     // Give the section heading and the separate WIDTH caption
                     // distinct lines above the unchanged fader and value well.
@@ -4425,7 +4438,13 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if node.kind == "svf_filter" {
+                let value_center = if is_wavetable(&node.kind) {
+                    let local = wavetable_value_center(index);
+                    point(local.x, local.y)
+                } else if matches!(node.kind.as_str(), "multi_vco" | "multi_lfo") {
+                    let local = atlas_multi_value_center(name);
+                    point(local.x, local.y)
+                } else if node.kind == "svf_filter" {
                     let local = atlas_svf_value_center(name);
                     point(local.x, local.y)
                 } else if atlas_creative_kind(&node.kind) {
@@ -4443,7 +4462,9 @@ impl Rack {
                 } else {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
-                let readout_width = if node.kind == "svf_filter" {
+                let readout_width = if matches!(node.kind.as_str(), "multi_vco" | "multi_lfo") {
+                    82.0
+                } else if node.kind == "svf_filter" {
                     74.0
                 } else if atlas_creative_kind(&node.kind) {
                     if node.kind == "drum_voice" && *name == "mode" {
@@ -4737,7 +4758,8 @@ impl Rack {
                         self.zoom,
                     );
                 } else if let GenericParameterHardware::Rotary { body_radius, .. } = hardware {
-                    let paint_rotary = if node.kind == "svf_filter"
+                    let paint_rotary = if atlas_oscillator(&node.kind)
+                        || node.kind == "svf_filter"
                         || atlas_voice(&node.kind)
                         || atlas_studio_effect(&node.kind)
                         || atlas_creative_kind(&node.kind)
@@ -4775,6 +4797,24 @@ impl Rack {
                         name,
                         clock_ratio,
                         self.zoom,
+                    );
+                } else if is_wavetable(&node.kind) {
+                    paint_atlas_wavetable_print(
+                        &painter,
+                        rect,
+                        index,
+                        name,
+                        clock_ratio,
+                        self.zoom,
+                    );
+                } else if matches!(node.kind.as_str(), "multi_vco" | "multi_lfo") {
+                    paint_atlas_multi_print(
+                        &painter,
+                        rect,
+                        &node.kind,
+                        name,
+                        self.zoom,
+                        clock_ratio,
                     );
                 } else if node.kind == "svf_filter" {
                     paint_atlas_svf_print(&painter, rect, name, self.zoom);
@@ -4829,7 +4869,8 @@ impl Rack {
                         &painter, center, &node.kind, name, radius, self.zoom,
                     );
                 }
-                let paint_readout = if node.kind == "svf_filter"
+                let paint_readout = if atlas_oscillator(&node.kind)
+                    || node.kind == "svf_filter"
                     || atlas_voice(&node.kind)
                     || atlas_studio_effect(&node.kind)
                     || atlas_creative_kind(&node.kind)
@@ -9176,7 +9217,7 @@ fn is_wavetable(kind: &str) -> bool {
 fn wavetable_parameter_position(index: usize) -> Pos2 {
     pos2(
         60.0 + (index % 3) as f32 * 120.0,
-        205.0 + (index / 3) as f32 * 85.0,
+        if index < 3 { 194.0 } else { 288.0 },
     )
 }
 fn wavetable_parameter_label(name: &str) -> &str {
@@ -9390,98 +9431,6 @@ fn wavetable_display_samples(node: &Node, patch: &Patch, position: f32) -> Optio
             + sample(second * points + next) * fraction;
         (a * (1.0 - blend) + b * blend) as f32
     }))
-}
-fn paint_wavetable_display(
-    painter: &egui::Painter,
-    node: &Node,
-    patch: &Patch,
-    rect: Rect,
-    zoom: f32,
-    lights: Option<&ModuleLightState>,
-    lighting: &crate::lighting::RoomLighting,
-) {
-    let point = |x, y| rect.min + vec2(x, y) * zoom;
-    let outer_clip = painter.clip_rect();
-    let screen = Rect::from_min_max(point(18.0, 78.0), point(342.0, 144.0));
-    let painter = painter.with_clip_rect(painter.clip_rect().intersect(screen));
-    painter.rect_filled(screen, 3.0 * zoom, Color32::from_rgb(32, 44, 43));
-    let position = wavetable_display_position(node, lights);
-    let (name, points) = match &node.content {
-        Some(openpatch_core::ModuleContent::Wavetable {
-            name, wave_points, ..
-        }) => (name.as_str(), *wave_points),
-        _ => ("Basic", 1024),
-    };
-    painter.text(
-        point(25.0, 87.0),
-        Align2::LEFT_CENTER,
-        format!("{name} · {points} points"),
-        crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
-        Color32::from_rgb(201, 224, 207),
-    );
-    if let Some(samples) = wavetable_display_samples(node, patch, position) {
-        let peak = samples
-            .iter()
-            .map(|v| f64::from(*v).abs())
-            .fold(1.0_f64, f64::max);
-        let line: Vec<_> = samples
-            .iter()
-            .enumerate()
-            .map(|(i, sample)| {
-                point(
-                    25.0 + i as f32 / 160.0 * 310.0,
-                    115.0 - (f64::from(*sample) / peak) as f32 * 19.0,
-                )
-            })
-            .collect();
-        painter.add(egui::Shape::line(
-            line,
-            Stroke::new(1.2 * zoom, Color32::from_rgb(167, 224, 187)),
-        ));
-    } else {
-        painter.text(
-            point(180.0, 116.0),
-            Align2::CENTER_CENTER,
-            "Table unavailable",
-            crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
-            Color32::from_gray(190),
-        );
-    }
-    let track = Rect::from_min_max(point(25.0, 138.0), point(335.0, 141.0));
-    painter.rect_filled(track, 0.0, Color32::from_gray(85));
-    painter.circle_filled(
-        pos2(egui::lerp(track.x_range(), position), track.center().y),
-        2.5 * zoom,
-        Color32::from_rgb(235, 198, 94),
-    );
-    let painter = painter.with_clip_rect(rect.intersect(outer_clip));
-    let labels = if node.kind == "wavetable_vco" {
-        ["−", "+", "POLY", "SOFT", "LIN"]
-    } else {
-        ["A", "B", "POLY", "OFFSET", "INV"]
-    };
-    for (index, label) in labels.iter().enumerate() {
-        let center = point(54.0 + index as f32 * 63.0, 154.0);
-        let strength = lights
-            .filter(|state| index < usize::from(state.count))
-            .map_or(0.0, |state| state.brightness[index][0])
-            .clamp(0.0, 1.0);
-        lighting.circle(
-            &painter,
-            center,
-            2.5 * zoom,
-            Color32::from_rgb(207, 176, 83).gamma_multiply(0.12 + strength * 0.88),
-            strength,
-            0.12,
-        );
-        painter.text(
-            center + vec2(6.0, 0.0) * zoom,
-            Align2::LEFT_CENTER,
-            label,
-            crate::panel_skin::print_font(painter.ctx(), 7.0 * zoom),
-            MUTED,
-        );
-    }
 }
 
 include!("annotation_panel.rs");
@@ -11739,7 +11688,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "gate" => "GATE",
         "audio_out" => "AUDIO",
         "oscillator" => "SINE VCO",
-        "multi_lfo" => "LFO",
+        "multi_lfo" => "MULTI LFO",
         "multi_vco" => "MULTI VCO",
         "seq3" => "SEQUENCE 3",
         "lfo" => "SINE LFO",
@@ -12581,6 +12530,10 @@ fn paint_panel(
                 | "drum_voice"
                 | "svf_filter"
                 | "modal_resonator"
+                | "multi_vco"
+                | "multi_lfo"
+                | "wavetable_vco"
+                | "wavetable_lfo"
         )
     {
         paint_atlas_voice_face(painter, rect, node, zoom);
@@ -12663,6 +12616,10 @@ fn paint_panel(
                 | "drum_voice"
                 | "svf_filter"
                 | "modal_resonator"
+                | "multi_vco"
+                | "multi_lfo"
+                | "wavetable_vco"
+                | "wavetable_lfo"
         )
     {
         if master {
@@ -12941,6 +12898,10 @@ fn paint_jack(
             | "drum_voice"
             | "svf_filter"
             | "modal_resonator"
+            | "multi_vco"
+            | "multi_lfo"
+            | "wavetable_vco"
+            | "wavetable_lfo"
     ) {
         paint_atlas_socket_hardware(painter, center, 10.3 * zoom * port_scale / 32.0, connected);
     } else {
@@ -20727,6 +20688,9 @@ mod tests {
         include!("large_socket_ui_tests.rs");
     }
 
+    mod atlas_oscillator_ui_tests {
+        include!("atlas_oscillator_ui_tests.rs");
+    }
     mod atlas_modal_filter_ui_tests {
         include!("atlas_modal_filter_ui_tests.rs");
     }

@@ -40,13 +40,7 @@ fn open(parameter: &str, revision: u64) -> (egui::Context, Rack, Patch) {
     let ctx = egui::Context::default();
     let mut rack = Rack::default();
     assert!(step(&ctx, &mut rack, &patch, 0.0, revision, vec![]).is_none());
-    let at = match parameter {
-        "frequency" => pos2(99.0, 169.0),
-        "pulse_width" => pos2(249.0, 169.0),
-        "fm_amount" => pos2(99.0, 269.0),
-        "pwm_amount" => pos2(249.0, 269.0),
-        _ => panic!("not a multi_vco value target"),
-    };
+    let at = atlas_multi_value_center(parameter) + vec2(24.0, 12.0);
     assert!(step(
         &ctx,
         &mut rack,
@@ -562,7 +556,7 @@ fn rendered_transformed_descriptors_preserve_db_slew_and_clock_ratio_during_appl
     for (kind, parameter, at, text, expected) in [
         ("vca_mix", "level1", pos2(61.5, 171.0), "-12.0412", 0.5),
         ("process", "slew", pos2(144.0, 170.0), "1000*2", 1.0),
-        ("multi_lfo", "frequency", pos2(99.0, 169.0), "1+1", 4.0),
+        ("multi_lfo", "frequency", pos2(99.0, 186.0), "1+1", 4.0),
     ] {
         let mut patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
             {"id":"target","kind":kind,"params":{parameter:expected}},
