@@ -3,12 +3,26 @@ use eframe::{egui, egui_glow, glow};
 use glow::HasContext;
 use std::sync::{Arc, Mutex};
 
-pub const MODES: [(i32, &str); 4] = [
+/// Built-in modes in display order. Ids are the `u_mode` values in
+/// `visuals.frag`; they are stable, so the newer studio modes come first in
+/// the picker without renumbering the original four.
+pub const MODES: [(i32, &str); 10] = [
+    (4, "Nebula"),
+    (5, "Tunnel"),
+    (6, "Halos"),
+    (7, "Lissajous"),
+    (8, "Ridges"),
+    (9, "Borealis"),
     (0, "Aurora"),
     (1, "Spectrum"),
     (2, "Waveform"),
     (3, "Ferrofluid"),
 ];
+/// The first mode shown when the Visuals tab opens.
+pub const DEFAULT_MODE: i32 = 4;
+/// Modes before this display index are the newer studio set; a thin divider
+/// separates them from the original four.
+pub const STUDIO_MODE_COUNT: usize = 6;
 
 pub const DEFAULT_SHADER: &str = include_str!("../assets/shaders/visuals.frag");
 const VERTEX: &str = "#version 330 core\nout vec2 v_uv;\nvoid main(){ vec2 p=vec2(float((gl_VertexID << 1) & 2),float(gl_VertexID & 2)); v_uv=p; gl_Position=vec4(p*2.0-1.0,0.0,1.0); }";
@@ -233,6 +247,24 @@ mod tests {
                     .all(|v| v.is_finite() && (0.0..=1.0).contains(v)));
             }
         }
+    }
+
+    #[test]
+    fn built_in_modes_are_unique_and_dispatched_by_the_bundled_shader() {
+        let mut ids: Vec<i32> = super::MODES.iter().map(|(id, _)| *id).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, (0..super::MODES.len() as i32).collect::<Vec<_>>());
+        assert!(super::MODES.iter().any(|(id, _)| *id == super::DEFAULT_MODE));
+        let shader = super::DEFAULT_SHADER;
+        assert!(shader.starts_with("#version 330 core\n"));
+        assert!(shader.len() < 65_536, "editor reset path rejects larger sources");
+        for id in 4..super::MODES.len() as i32 {
+            assert!(
+                shader.contains(&format!("u_mode == {id}")),
+                "mode {id} has no shader branch"
+            );
+        }
+        assert!(shader.contains("if (u_mode >= 4)"));
     }
 
     #[test]

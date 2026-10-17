@@ -583,7 +583,7 @@ impl OpenPatch {
             shader_open: false,
             shader_status,
             analysis_tab: None,
-            visual_mode: 0,
+            visual_mode: crate::visuals::DEFAULT_MODE,
             scope: Scope::default(),
             volume,
             status: startup
@@ -3500,49 +3500,82 @@ impl OpenPatch {
             .frame(
                 egui::Frame::new()
                     .fill(Color32::from_rgb(27, 31, 31))
-                    .inner_margin(8),
+                    .inner_margin(egui::Margin { left: 6, right: 6, top: 3, bottom: 4 }),
             )
             .show(ctx, |ui| {
+                // One slim row holds the dock tabs, every visual mode and the
+                // dock actions, so the visual itself gets the rest of the dock.
+                let small = |text: &str| egui::RichText::new(text).size(12.5);
                 ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(3.0, 0.0);
+                    ui.spacing_mut().button_padding = egui::vec2(5.0, 1.0);
+                    ui.spacing_mut().interact_size.y = 18.0;
                     for (value, label) in [
                         (AnalysisTab::Scope, "Scope"),
                         (AnalysisTab::Visuals, "Visuals"),
                     ] {
-                        if ui.selectable_label(tab == value, label).clicked() {
+                        if ui.selectable_label(tab == value, small(label)).clicked() {
                             self.select_analysis(Some(value));
                         }
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
-                            .button("×")
+                            .button(small("×"))
                             .on_hover_text("Close analysis dock")
                             .clicked()
                         {
                             self.select_analysis(None);
                         }
-                        if tab == AnalysisTab::Visuals && ui.button("Edit GLSL").clicked() {
+                        if tab != AnalysisTab::Visuals {
+                            return;
+                        }
+                        if ui
+                            .button(small("GLSL…"))
+                            .on_hover_text("Edit the visualizer shader")
+                            .clicked()
+                        {
                             self.shader_open = true;
                         }
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            ui.add(egui::Separator::default().spacing(8.0));
+                            // Narrow windows scroll the chips instead of wrapping
+                            // them into a second row.
+                            egui::ScrollArea::horizontal()
+                                .id_salt("visual-modes")
+                                .scroll_bar_visibility(
+                                    egui::scroll_area::ScrollBarVisibility::AlwaysHidden,
+                                )
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        for (index, (mode, name)) in
+                                            crate::visuals::MODES.into_iter().enumerate()
+                                        {
+                                            if index == crate::visuals::STUDIO_MODE_COUNT {
+                                                ui.add(egui::Separator::default().spacing(6.0));
+                                            }
+                                            let response = ui.selectable_value(
+                                                &mut self.visual_mode,
+                                                mode,
+                                                small(name),
+                                            );
+                                            #[cfg(test)]
+                                            ui.ctx().data_mut(|d| {
+                                                d.insert_temp(
+                                                    egui::Id::new(("visual-mode", mode)),
+                                                    response.rect,
+                                                )
+                                            });
+                                            let _ = response;
+                                        }
+                                    });
+                                });
+                        });
                     });
                 });
-                ui.separator();
+                ui.add_space(3.0);
                 match self.analysis_tab {
                     Some(AnalysisTab::Scope) => self.scope.contents(ui, &self.patch, &self.catalog),
                     Some(AnalysisTab::Visuals) => {
-                        ui.horizontal(|ui| {
-                            for (mode, name) in crate::visuals::MODES {
-                                let response =
-                                    ui.selectable_value(&mut self.visual_mode, mode, name);
-                                #[cfg(test)]
-                                ui.ctx().data_mut(|d| {
-                                    d.insert_temp(
-                                        egui::Id::new(("visual-mode", mode)),
-                                        response.rect,
-                                    )
-                                });
-                                let _ = response;
-                            }
-                        });
                         let (wave, peak) = self
                             .audio
                             .as_ref()
@@ -10632,6 +10665,44 @@ mod project_workflow_tests {
             draw(&mut app, 0.15 + step as f64 * 0.1, vec![event(false)]);
             assert_eq!(app.visual_mode, mode);
             assert_eq!(app.analysis_tab, Some(AnalysisTab::Visuals));
+        }
+    }
+
+    #[test]
+    fn compact_visuals_bar_keeps_every_mode_on_one_slim_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.select_analysis(Some(AnalysisTab::Visuals));
+        // Steam Deck and the narrower workflow-test window both fit the row.
+        for width in [1280.0, 1000.0] {
+            let ctx = egui::Context::default();
+            for frame in 0..2 {
+                let _ = ctx.run(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(width, 800.0),
+                        )),
+                        time: Some(frame as f64 * 0.05),
+                        focused: true,
+                        ..Default::default()
+                    },
+                    |ctx| app.analysis_dock(ctx),
+                );
+            }
+            let rects: Vec<egui::Rect> = crate::visuals::MODES
+                .iter()
+                .map(|(mode, _)| {
+                    ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new(("visual-mode", *mode))))
+                        .unwrap()
+                })
+                .collect();
+            let top = rects[0].top();
+            for rect in &rects {
+                assert!((rect.top() - top).abs() < 0.5, "modes share one row");
+                assert!(rect.height() <= 22.0, "mode chips stay slim: {rect:?}");
+                assert!(rect.right() <= width - 6.0, "mode chip clipped at {width}: {rect:?}");
+            }
         }
     }
 
