@@ -50,22 +50,41 @@ fn export_panel_design_preview() {
                     .module_lights
                     .insert(node.id.clone(), lights);
             }
-            if let Some(openpatch_core::SavedModuleState::RandomValues { values, rng }) = engine
+            if let Some(state) = engine
+                .resolve_module_telemetry(&node.id)
+                .ok()
+                .and_then(|h| engine.module_telemetry(h))
+            {
+                preview
+                    .renderer
+                    .sequence_states
+                    .insert(node.id.clone(), state);
+            }
+            match engine
                 .resolve_module_state(&node.id)
                 .ok()
                 .and_then(|h| engine.module_saved_state(h))
             {
-                let values = values.map(|row| row.map(f32::from_bits));
-                let channels = preview
-                    .renderer
-                    .module_lights
-                    .get(&node.id)
-                    .and_then(|l| l.input_channels)
-                    .unwrap_or(1);
-                preview.renderer.set_random_values_states(BTreeMap::from([(
-                    node.id.clone(),
-                    json!({"values":values,"rng_state":rng,"active_channels":channels}),
-                )]));
+                Some(openpatch_core::SavedModuleState::RandomValues { values, rng }) => {
+                    let values = values.map(|row| row.map(f32::from_bits));
+                    let channels = preview
+                        .renderer
+                        .module_lights
+                        .get(&node.id)
+                        .and_then(|l| l.input_channels)
+                        .unwrap_or(1);
+                    preview.renderer.set_random_values_states(BTreeMap::from([(
+                        node.id.clone(),
+                        json!({"values":values,"rng_state":rng,"active_channels":channels}),
+                    )]));
+                }
+                Some(openpatch_core::SavedModuleState::ShiftRegister { values, rng }) => {
+                    preview.renderer.set_shift_register_states(BTreeMap::from([(
+                        node.id.clone(),
+                        json!({"values":values.map(f32::from_bits),"rng_state":rng}),
+                    )]));
+                }
+                _ => {}
             }
             preview.renderer.port_lights = Some(
                 crate::port_light_transport::offline_frame(&preview.patch, &engine, 0).unwrap(),

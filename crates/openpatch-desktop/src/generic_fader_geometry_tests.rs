@@ -278,6 +278,7 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
         ("gate", 0, 2, &[][..]),
         ("attenuverter", 0, 2, &[][..]),
         ("white_noise", 1, 1, &[][..]),
+        ("sample_hold", 0, 1, &[][..]),
         ("random", 0, 8, &["unipolar"][..]),
         ("oscillator", 0, 2, &[][..]),
         ("lfo", 0, 3, &[][..]),

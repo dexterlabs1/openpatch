@@ -774,6 +774,7 @@ fn generic_fader_disabled_modal_and_removed_target_never_redirect_gestures() {
 #[test]
 fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
     for (kind, parameter, initial, local) in [
+        ("sample_hold", "initial", 0.0, pos2(75.0, 135.0)),
         ("white_noise", "level", 1.0, pos2(90.0, 135.0)),
         ("random", "rate", 1.0, pos2(45.0, 127.0)),
         ("random", "probability", 0.5, pos2(135.0, 127.0)),
