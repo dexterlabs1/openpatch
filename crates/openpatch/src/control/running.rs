@@ -3,6 +3,7 @@ use super::*;
 
 #[derive(Default)]
 pub(super) struct EditEffects {
+    pub parameters: super::parameters::ParameterEffects,
     pub replacement_document: Option<ProjectDocument>,
     pub playback_mode: Option<PlaybackMode>,
     pub source_copies: BTreeMap<String, String>,
@@ -26,8 +27,8 @@ pub(super) struct EditEffects {
     replaced: BTreeSet<String>,
     // Host presentation only: requested rack rows for modules added here.
     pub placements: BTreeMap<String, u32>,
-    live_snapshot: Option<Value>,
-    live_frame: Option<u64>,
+    pub(super) live_snapshot: Option<Value>,
+    pub(super) live_frame: Option<u64>,
 }
 
 #[cfg(test)]
@@ -373,7 +374,10 @@ impl Session {
         let lifecycle_before = host_lifecycle::may_change_topology(name)
             .then(|| host_lifecycle::Topology::capture(candidate));
         let retired_before = effects.retired.len();
+        let parameter_targets =
+            super::parameters::before_edit(self, candidate, name, args, effects)?;
         self.apply_session_edit_inner(candidate, name, args, effects)?;
+        super::parameters::after_edit(self, candidate, &parameter_targets, effects);
         effects.lifecycle_captured = true;
         if let Some(before) = lifecycle_before {
             let after = host_lifecycle::Topology::capture(candidate);

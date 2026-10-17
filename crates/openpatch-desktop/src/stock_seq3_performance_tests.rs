@@ -41,6 +41,7 @@ fn stock_seq3_meter_preserves_all_durable_bits_and_copublishes_controls_telemetr
         kind: ModuleKind::StockSeq3,
         bypassed: false,
         action_epoch: 1,
+        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
     };
     let meter = Meter::new();
     assert!(meter.read(entry, 1).is_none());
@@ -128,6 +129,7 @@ fn stock_seq3_snapshot_cannot_tear_full_flags_controls_or_nineteen_light_groups(
                 kind: ModuleKind::StockSeq3,
                 bypassed: false,
                 action_epoch: 1,
+                parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
             },
         );
     }
@@ -210,6 +212,7 @@ fn stock_seq3_selective_state_tag_eight_roundtrips_every_optional_flag_and_gate_
         kind: ModuleKind::StockSeq3,
         bypassed: false,
         action_epoch: 1,
+        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
     };
     let meter = Meter::new();
     for running in [None, Some(false), Some(true)] {
@@ -279,6 +282,7 @@ fn performance_wire_lights_publish_logical_groups_instead_of_callback_storage_ca
                 kind: ModuleKind::StockSeq3,
                 bypassed: false,
                 action_epoch: 1,
+                parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
             },
         );
     }

@@ -6,6 +6,7 @@ fn quantizer_entry() -> Entry {
         kind: ModuleKind::StockQuantizer,
         bypassed: false,
         action_epoch: 1,
+        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
     }
 }
 #[test]

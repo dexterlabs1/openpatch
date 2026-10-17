@@ -260,6 +260,7 @@ struct Entry {
     kind: ModuleKind,
     bypassed: bool,
     action_epoch: u64,
+    parameter_epochs: [u64; MAX_PUBLISHED_PARAMETERS],
 }
 struct StateEntry {
     slot: usize,
@@ -892,6 +893,10 @@ pub(super) struct ModulePlan {
     scope_interval: u64,
     pub bindings: [Option<Binding>; MAX_NODES],
     parameters: Box<[[Option<ParameterHandle>; MAX_PUBLISHED_PARAMETERS]; MAX_NODES]>,
+    parameter_epochs: Box<[[u64; MAX_PUBLISHED_PARAMETERS]; MAX_NODES]>,
+    // Sized to this graph's actual capabilities on the control thread. Avoid
+    // a maximum-capacity ParameterHandle array on the callback stack.
+    parameter_assignments: Box<[ParameterHandle]>,
     pub states: Box<[Option<StateBinding>; MAX_NODES]>,
     pub fresh_states: [Option<ModuleHandle>; MAX_NODES],
     // Compile/control owns these fixed-capacity allocations. Queued graph
@@ -912,6 +917,11 @@ impl Default for ModulePlan {
                 .into_boxed_slice()
                 .try_into()
                 .expect("fixed parameter binding capacity"),
+            parameter_epochs: vec![[0; MAX_PUBLISHED_PARAMETERS]; MAX_NODES]
+                .into_boxed_slice()
+                .try_into()
+                .expect("fixed parameter epoch capacity"),
+            parameter_assignments: Box::default(),
             states: vec![None; MAX_NODES]
                 .into_boxed_slice()
                 .try_into()
@@ -1043,6 +1053,50 @@ impl ModulePlan {
             }
         });
         moved
+    }
+    /// Frozen assignment epochs belong to these compiled graphs, never to the
+    /// current control registry. A skipped assignment plan still changes the
+    /// later receiver's epoch; identical authored floats remain assignments.
+    pub(super) fn inherit_parameters_with_host_exclusions(
+        &mut self,
+        engine: &mut Engine,
+        previous: &Self,
+        old: &Engine,
+        host_resets: &[ModuleHandle],
+    ) {
+        let Some(first) = self.parameter_assignments.first().copied() else {
+            return;
+        };
+        let mut assigned_count = 0;
+        for (slot, parameters) in self.parameters.iter().enumerate() {
+            let same_instance = self.bindings[slot].is_some_and(|binding| {
+                previous.bindings[slot].is_some_and(|old| old.token == binding.token)
+            });
+            for (index, handle) in parameters.iter().enumerate() {
+                let Some(handle) = handle else { continue };
+                if !same_instance
+                    || self.parameter_epochs[slot][index] != previous.parameter_epochs[slot][index]
+                {
+                    self.parameter_assignments[assigned_count] = *handle;
+                    assigned_count += 1;
+                }
+            }
+        }
+        let mut fresh = [first.module(); MAX_NODES];
+        let mut fresh_count = 0;
+        self.with_adoption_exclusions(previous, |modules, _| {
+            for handle in modules.iter().chain(host_resets) {
+                if !fresh[..fresh_count].contains(handle) {
+                    fresh[fresh_count] = *handle;
+                    fresh_count += 1;
+                }
+            }
+        });
+        engine.inherit_parameter_values(
+            old,
+            &fresh[..fresh_count],
+            &self.parameter_assignments[..assigned_count],
+        );
     }
     /// Exclusions are fixed stack storage; no control registry reaches audio.
     fn with_adoption_exclusions(
@@ -1275,6 +1329,16 @@ impl Performance {
             .control
             .lock()
             .map_err(|_| "Module event registry poisoned")?;
+        // An old snapshot cannot reconstruct epochs after newer registry intent.
+        // Already-prepared graphs retain their frozen epochs and remain valid.
+        if revision < control.revision
+            && patch
+                .nodes
+                .iter()
+                .any(|node| !openpatch_core::runtime_parameter_names(&node.kind).is_empty())
+        {
+            return Err("Stale live parameter plan revision".into());
+        }
         let mut plan = ModulePlan {
             execution: ExecutionRequest {
                 revision,
@@ -1351,6 +1415,7 @@ impl Performance {
                 *slot = Some(engine.resolve_parameter(id, name)?);
             }
             plan.parameters[entry.slot] = parameters;
+            plan.parameter_epochs[entry.slot] = entry.parameter_epochs;
             plan.bindings[entry.slot] = Some(Binding {
                 token: entry.token,
                 handle: if entry.kind.sequential() {
@@ -1401,7 +1466,247 @@ impl Performance {
                 next_frame: 0,
             });
         }
+        plan.parameter_assignments = plan
+            .parameters
+            .iter()
+            .flatten()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
         Ok(plan)
+    }
+    /// Control precondition: assignments name native capabilities and match the
+    /// validated receiving patch exactly, including materialized default values.
+    fn sync_patch_parameters(
+        &self,
+        patch: &Patch,
+        revision: u64,
+        assignments: &BTreeMap<String, BTreeMap<String, f32>>,
+    ) {
+        let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        if revision < control.revision || self.shared.closed.load(Ordering::Acquire) {
+            return;
+        }
+        // The trait's sync boundary is infallible. Reject invalid control intent
+        // explicitly before mutating any registry state instead of truncating it.
+        for (id, parameters) in assignments {
+            let node = patch
+                .nodes
+                .iter()
+                .find(|node| node.id == *id)
+                .expect("parameter assignment target is absent from patch");
+            assert_eq!(
+                patch.version, 2,
+                "live parameter assignment requires patch version 2"
+            );
+            for (name, value) in parameters {
+                let descriptor = openpatch_core::runtime_parameter_descriptor(&node.kind, name)
+                    .expect("unknown live parameter assignment key");
+                assert!(
+                    value.is_finite() && *value >= descriptor.min && *value <= descriptor.max,
+                    "invalid live parameter assignment value"
+                );
+                assert!(
+                    node.params
+                        .get(name)
+                        .is_some_and(|authored| authored.to_bits() == value.to_bits()),
+                    "live parameter assignment differs from receiving patch"
+                );
+            }
+        }
+        let assignment_epoch = assignments
+            .values()
+            .any(|parameters| !parameters.is_empty())
+            .then(|| {
+                revision
+                    .checked_add(1)
+                    .expect("parameter assignment epoch exhausted")
+            });
+        if control.execution.generation != 0 && revision > control.execution.revision {
+            let disposition = control.execution.disposition;
+            self.set_execution(&mut control, revision, disposition);
+        }
+        control.cable_entries.retain(|id, entry| {
+            patch.cables.iter().any(|cable| {
+                cable.id.as_ref() == Some(id) && route_signature(patch, cable) == entry.route
+            })
+        });
+        let mut cable_used = [false; MAX_CABLES];
+        for entry in control.cable_entries.values() {
+            cable_used[entry.slot] = true;
+        }
+        for cable in &patch.cables {
+            let Some(id) = cable.id.as_ref() else {
+                continue;
+            };
+            if control.cable_entries.contains_key(id) {
+                continue;
+            }
+            let Some(slot) = cable_used.iter().position(|used| !used) else {
+                break;
+            };
+            cable_used[slot] = true;
+            let token = control.next_token;
+            control.next_token = control.next_token.wrapping_add(1).max(1);
+            control.cable_entries.insert(
+                id.clone(),
+                CableEntry {
+                    slot,
+                    token,
+                    born_revision: revision,
+                    route: route_signature(patch, cable),
+                },
+            );
+        }
+        control.state_entries.retain(|id, entry| {
+            patch
+                .nodes
+                .iter()
+                .any(|node| node.id == *id && node.kind == entry.kind)
+        });
+        {
+            let Control {
+                scope_readers,
+                state_entries,
+                ..
+            } = &mut *control;
+            scope_readers.retain(|id, _| {
+                state_entries.get(id).is_some_and(|entry| {
+                    rack_scope_kind(&entry.kind)
+                        && patch
+                            .nodes
+                            .iter()
+                            .any(|node| node.id == *id && node.kind == entry.kind)
+                })
+            });
+        }
+        let mut state_used = [false; MAX_NODES];
+        for entry in control.state_entries.values() {
+            state_used[entry.slot] = true;
+        }
+        for node in &patch.nodes {
+            if control.state_entries.contains_key(&node.id) {
+                continue;
+            }
+            let Some(slot) = state_used.iter().position(|used| !used) else {
+                break;
+            };
+            state_used[slot] = true;
+            let token = control.next_token;
+            control.next_token = control.next_token.wrapping_add(1).max(1);
+            control.state_entries.insert(
+                node.id.clone(),
+                StateEntry {
+                    slot,
+                    token,
+                    born_revision: revision,
+                    kind: node.kind.clone(),
+                    initialize_generation: 0,
+                    initialize_revision: revision,
+                    saved_generation: 0,
+                    saved_revision: revision,
+                    desired_state: SavedModuleState::from_node(node),
+                    stock_field_generations: [0; 10],
+                },
+            );
+        }
+        control.entries.retain(|id, entry| {
+            let retained = patch.version == 2
+                && patch.nodes.iter().any(|node| {
+                    node.id == *id && ModuleKind::from_name(&node.kind) == Some(entry.kind)
+                });
+            if !retained {
+                self.shared.desired[entry.slot].store(0, Ordering::Release);
+            }
+            retained
+        });
+        let mut used = [false; MAX_NODES];
+        for entry in control.entries.values() {
+            used[entry.slot] = true;
+        }
+        let cancel_through_serial = control.next_learn_serial.saturating_sub(1);
+        if patch.version == 2 {
+            for (node, kind) in patch
+                .nodes
+                .iter()
+                .filter_map(|node| ModuleKind::from_name(&node.kind).map(|kind| (node, kind)))
+            {
+                if let Some(entry) = control.entries.get_mut(&node.id) {
+                    if node.bypassed && !entry.bypassed {
+                        // Cancel pending actions without replacing DSP identity.
+                        // This survives a bypass/resume coalesced before audio.
+                        entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
+                        self.shared.action_epochs[entry.slot]
+                            .store(entry.action_epoch, Ordering::Release);
+                        if entry.kind.has_safety_release() {
+                            self.shared.emergency_learn_cutoffs[entry.slot]
+                                .store(cancel_through_serial, Ordering::Release);
+                            self.shared.emergency_release_epochs[entry.slot]
+                                .fetch_add(1, Ordering::Release);
+                            self.shared
+                                .emergency_release_requests
+                                .fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                    entry.bypassed = node.bypassed;
+                    continue;
+                }
+                let Some(slot) = used.iter().position(|used| !used) else {
+                    break;
+                };
+                used[slot] = true;
+                let token = control.next_token;
+                control.next_token = control.next_token.wrapping_add(1).max(1);
+                control.entries.insert(
+                    node.id.clone(),
+                    Entry {
+                        slot,
+                        token,
+                        born_revision: revision,
+                        kind,
+                        bypassed: node.bypassed,
+                        action_epoch: 1,
+                        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
+                    },
+                );
+                self.shared.emergency_release_epochs[slot].store(0, Ordering::Release);
+                self.shared.emergency_learn_cutoffs[slot].store(0, Ordering::Release);
+                self.shared.action_epochs[slot].store(1, Ordering::Release);
+                self.shared.desired[slot].store(token, Ordering::Release);
+            }
+        }
+        for (id, parameters) in assignments {
+            if parameters.is_empty() {
+                continue;
+            }
+            let entry = control
+                .entries
+                .get_mut(id)
+                .expect("live parameter assignment target has no capability entry");
+            for name in parameters.keys() {
+                let index = entry
+                    .kind
+                    .parameter_names()
+                    .iter()
+                    .position(|key| *key == name)
+                    .expect("unknown live parameter assignment key");
+                entry.parameter_epochs[index] =
+                    assignment_epoch.expect("nonempty parameter assignment");
+            }
+        }
+        let Control {
+            entries,
+            stock_click_releases,
+            ..
+        } = &mut *control;
+        stock_click_releases.retain(|id, release| {
+            entries
+                .get(id)
+                .is_some_and(|entry| entry.token == release.token)
+        });
+        self.sync_midi_learns(&mut control, patch, revision);
+        control.revision = revision;
     }
     pub(super) fn scope_frame(&self, id: &str) -> Option<ScopeFrame> {
         let control = self.control.lock().ok()?;
@@ -1820,174 +2125,15 @@ impl LiveModuleEvents for Performance {
         }
     }
     fn sync_patch(&self, patch: &Patch, revision: u64) {
-        let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
-        if revision < control.revision || self.shared.closed.load(Ordering::Acquire) {
-            return;
-        }
-        if control.execution.generation != 0 && revision > control.execution.revision {
-            let disposition = control.execution.disposition;
-            self.set_execution(&mut control, revision, disposition);
-        }
-        control.cable_entries.retain(|id, entry| {
-            patch.cables.iter().any(|cable| {
-                cable.id.as_ref() == Some(id) && route_signature(patch, cable) == entry.route
-            })
-        });
-        let mut cable_used = [false; MAX_CABLES];
-        for entry in control.cable_entries.values() {
-            cable_used[entry.slot] = true;
-        }
-        for cable in &patch.cables {
-            let Some(id) = cable.id.as_ref() else {
-                continue;
-            };
-            if control.cable_entries.contains_key(id) {
-                continue;
-            }
-            let Some(slot) = cable_used.iter().position(|used| !used) else {
-                break;
-            };
-            cable_used[slot] = true;
-            let token = control.next_token;
-            control.next_token = control.next_token.wrapping_add(1).max(1);
-            control.cable_entries.insert(
-                id.clone(),
-                CableEntry {
-                    slot,
-                    token,
-                    born_revision: revision,
-                    route: route_signature(patch, cable),
-                },
-            );
-        }
-        control.state_entries.retain(|id, entry| {
-            patch
-                .nodes
-                .iter()
-                .any(|node| node.id == *id && node.kind == entry.kind)
-        });
-        {
-            let Control {
-                scope_readers,
-                state_entries,
-                ..
-            } = &mut *control;
-            scope_readers.retain(|id, _| {
-                state_entries.get(id).is_some_and(|entry| {
-                    rack_scope_kind(&entry.kind)
-                        && patch
-                            .nodes
-                            .iter()
-                            .any(|node| node.id == *id && node.kind == entry.kind)
-                })
-            });
-        }
-        let mut state_used = [false; MAX_NODES];
-        for entry in control.state_entries.values() {
-            state_used[entry.slot] = true;
-        }
-        for node in &patch.nodes {
-            if control.state_entries.contains_key(&node.id) {
-                continue;
-            }
-            let Some(slot) = state_used.iter().position(|used| !used) else {
-                break;
-            };
-            state_used[slot] = true;
-            let token = control.next_token;
-            control.next_token = control.next_token.wrapping_add(1).max(1);
-            control.state_entries.insert(
-                node.id.clone(),
-                StateEntry {
-                    slot,
-                    token,
-                    born_revision: revision,
-                    kind: node.kind.clone(),
-                    initialize_generation: 0,
-                    initialize_revision: revision,
-                    saved_generation: 0,
-                    saved_revision: revision,
-                    desired_state: SavedModuleState::from_node(node),
-                    stock_field_generations: [0; 10],
-                },
-            );
-        }
-        control.entries.retain(|id, entry| {
-            let retained = patch.version == 2
-                && patch.nodes.iter().any(|node| {
-                    node.id == *id && ModuleKind::from_name(&node.kind) == Some(entry.kind)
-                });
-            if !retained {
-                self.shared.desired[entry.slot].store(0, Ordering::Release);
-            }
-            retained
-        });
-        let mut used = [false; MAX_NODES];
-        for entry in control.entries.values() {
-            used[entry.slot] = true;
-        }
-        let cancel_through_serial = control.next_learn_serial.saturating_sub(1);
-        if patch.version == 2 {
-            for (node, kind) in patch
-                .nodes
-                .iter()
-                .filter_map(|node| ModuleKind::from_name(&node.kind).map(|kind| (node, kind)))
-            {
-                if let Some(entry) = control.entries.get_mut(&node.id) {
-                    if node.bypassed && !entry.bypassed {
-                        // Cancel pending actions without replacing DSP identity.
-                        // This survives a bypass/resume coalesced before audio.
-                        entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
-                        self.shared.action_epochs[entry.slot]
-                            .store(entry.action_epoch, Ordering::Release);
-                        if entry.kind.has_safety_release() {
-                            self.shared.emergency_learn_cutoffs[entry.slot]
-                                .store(cancel_through_serial, Ordering::Release);
-                            self.shared.emergency_release_epochs[entry.slot]
-                                .fetch_add(1, Ordering::Release);
-                            self.shared
-                                .emergency_release_requests
-                                .fetch_add(1, Ordering::Relaxed);
-                        }
-                    }
-                    entry.bypassed = node.bypassed;
-                    continue;
-                }
-                let Some(slot) = used.iter().position(|used| !used) else {
-                    break;
-                };
-                used[slot] = true;
-                let token = control.next_token;
-                control.next_token = control.next_token.wrapping_add(1).max(1);
-                control.entries.insert(
-                    node.id.clone(),
-                    Entry {
-                        slot,
-                        token,
-                        born_revision: revision,
-                        kind,
-                        bypassed: node.bypassed,
-                        action_epoch: 1,
-                    },
-                );
-                self.shared.emergency_release_epochs[slot].store(0, Ordering::Release);
-                self.shared.emergency_learn_cutoffs[slot].store(0, Ordering::Release);
-                self.shared.action_epochs[slot].store(1, Ordering::Release);
-                self.shared.desired[slot].store(token, Ordering::Release);
-            }
-        }
-        let Control {
-            entries,
-            stock_click_releases,
-            ..
-        } = &mut *control;
-        stock_click_releases.retain(|id, release| {
-            entries
-                .get(id)
-                .is_some_and(|entry| entry.token == release.token)
-        });
-        self.sync_midi_learns(&mut control, patch, revision);
-        control.revision = revision;
+        self.sync_patch_parameters(patch, revision, &BTreeMap::new());
+    }
+    fn sync_patch_with_parameters(
+        &self,
+        patch: &Patch,
+        revision: u64,
+        assignments: &BTreeMap<String, BTreeMap<String, f32>>,
+    ) {
+        self.sync_patch_parameters(patch, revision, assignments);
     }
     fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String> {
         self.enqueue_guarded(id, action, None)
@@ -2354,6 +2500,77 @@ mod tests {
     }
 
     #[test]
+    fn parameter_intent_epochs_survive_same_revision_sync_and_stale_plans_are_rejected() {
+        let mut patch = effective_parameter_patch();
+        patch
+            .nodes
+            .iter_mut()
+            .find(|node| node.id == "vca1")
+            .unwrap()
+            .params
+            .insert("level".into(), 1.0);
+        let engine = patch.compile().unwrap();
+        let (performance, _, _) = Performance::new(48_000);
+        performance.sync_patch(&patch, 1);
+        let original = performance.plan(&patch, &engine, 1).unwrap();
+        let assignments = BTreeMap::from([(
+            "vca1".into(),
+            BTreeMap::from([(
+                "level".into(),
+                patch
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == "vca1")
+                    .unwrap()
+                    .params["level"],
+            )]),
+        )]);
+        performance.sync_patch_with_parameters(&patch, 2, &assignments);
+        let assigned = performance.plan(&patch, &engine, 2).unwrap();
+        performance.sync_patch(&patch, 2);
+        performance.sync_patch_with_parameters(&patch, 2, &assignments);
+        let repeated = performance.plan(&patch, &engine, 2).unwrap();
+        assert_eq!(assigned.parameter_epochs, repeated.parameter_epochs);
+        assert_ne!(original.parameter_epochs, assigned.parameter_epochs);
+        assert_eq!(
+            performance.plan(&patch, &engine, 1).err().as_deref(),
+            Some("Stale live parameter plan revision")
+        );
+        performance.sync_patch(&patch, 3);
+        let unrelated = performance.plan(&patch, &engine, 3).unwrap();
+        assert_eq!(assigned.parameter_epochs, unrelated.parameter_epochs);
+        // Rejection applies only to capability-bearing snapshots; existing
+        // stale identity/state rules for other models remain unchanged.
+        let plain: Patch = serde_json::from_value(json!({"version":2,
+            "nodes":[{"id":"zero","kind":"poly_constant","params":{"v1":0}}]}))
+        .unwrap();
+        let engine = plain.compile().unwrap();
+        performance.sync_patch(&plain, 4);
+        assert!(performance.plan(&plain, &engine, 1).is_ok());
+    }
+
+    #[test]
+    fn invalid_parameter_assignment_contract_fails_before_registry_mutation() {
+        for (id, key, value) in [
+            ("missing", "level", 1.0),
+            ("vca1", "unknown", 1.0),
+            ("vca1", "level", 0.125),
+            ("vca1", "level", f32::NAN),
+        ] {
+            let patch = effective_parameter_patch();
+            let (performance, _, _) = Performance::new(48_000);
+            performance.sync_patch(&patch, 1);
+            let before = performance.snapshot();
+            let assignments = BTreeMap::from([(id.into(), BTreeMap::from([(key.into(), value)]))]);
+            assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                performance.sync_patch_with_parameters(&patch, 2, &assignments);
+            }))
+            .is_err());
+            assert_eq!(performance.snapshot(), before);
+        }
+    }
+
+    #[test]
     fn untargeted_effective_parameters_publish_actual_values_with_the_module_frame() {
         let patch = effective_parameter_patch();
         let mut engine = patch.compile().unwrap();
@@ -2459,8 +2676,9 @@ mod tests {
             assert_eq!(stale["modules"][id]["parameters"], json!({}));
         }
         assert_ne!(stale["modules"]["vca1"]["instance"], old_instance);
-        let stale_compilation = performance.plan(&patch, &engine, 1).unwrap();
-        reader.publish(&engine, &stale_compilation, 2, 128);
+        // A late compiler cannot reconstruct the old parameter epoch. Reject
+        // it; already-prepared old graphs above still exercise token fencing.
+        assert!(performance.plan(&patch, &engine, 1).is_err());
         assert_eq!(
             performance.snapshot()["modules"]["vca1"]["available"],
             false
@@ -2497,6 +2715,7 @@ mod tests {
             kind: ModuleKind::Merge,
             bypassed: false,
             action_epoch: 1,
+            parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
         };
         let options = [Some(0), Some(16), None, Some(1), Some(17), Some(u8::MAX)];
         for output in options {
@@ -2579,6 +2798,7 @@ mod tests {
             kind: ModuleKind::Merge,
             bypassed: false,
             action_epoch: 1,
+            parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
         };
         let counts = |frame: u64| match frame % 6 {
             0 => (Some(0), Some(16)),
@@ -2657,6 +2877,7 @@ mod tests {
                         kind: ModuleKind::Merge,
                         bypassed: false,
                         action_epoch: 1,
+                        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
                     },
                 );
             }
@@ -2734,6 +2955,7 @@ mod tests {
             kind: ModuleKind::WavetableVco,
             bypassed: false,
             action_epoch: 1,
+            parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
         };
         let writer_meter = meter.clone();
         let writer = std::thread::spawn(move || {
@@ -2856,6 +3078,7 @@ mod tests {
                         },
                         bypassed: false,
                         action_epoch: 1,
+                        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
                     },
                 );
             }
@@ -2956,6 +3179,7 @@ mod tests {
                         kind: ModuleKind::RandomValues,
                         bypassed: false,
                         action_epoch: 1,
+                        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
                     },
                 );
             }
@@ -3030,6 +3254,7 @@ mod tests {
                         kind: ModuleKind::ShiftRegister,
                         bypassed: false,
                         action_epoch: 1,
+                        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
                     },
                 );
             }

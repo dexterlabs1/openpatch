@@ -106,11 +106,21 @@ effective-value capture; it is the next implementation boundary.
 write the real VCA/filter controls, with an explicit bounded inheritance API
 covering assignment/fresh-instance/rate rules. Desktop publication and project
 save share one coherent observation; saved copies retain the actual values and
-fresh reopen reproduces rendered gain. No automatic adoption or undo intent is
-enabled yet. Next carry explicit parameter assignment intent through shared
-transactions/history and prepared callback plans, then activate inheritance and
-the sequencer target writes. No new catalog kind, import mapping or installation
-is included in this checkpoint.
+fresh reopen reproduces rendered gain. The assignment/history checkpoint below
+now activates this API in prepared callback plans. Source sequencer target
+writes remain next. No new catalog kind, import mapping or installation is
+included in these checkpoints.
+
+**Assignment/history checkpoint:** shared transactions and undo/redo now carry
+explicit per-field parameter intent, including equal values and lifecycle loads.
+Prepared callback plans freeze assignment epochs; unrelated graph edits inherit
+effective values, including across rate changes. Real shared-session edit/history/
+save/reopen, removal undo and suspended execution/resume pass without callback
+heap activity. All 280 control tests and the 26 performance tests pass. Late stale
+parameter plans are refused; already-prepared plans keep their original meaning.
+Next add the dedicated typed RackMCP state/adapter and source-provenance target
+bindings, then source-style lane dispatch/ownership and the musical excerpt.
+The installed app and catalog remain unchanged.
 
 Close one imported musical workflow using the actual RackMCP 2.0.0 sequencers
 and supported voice chain. The reference checkout is pinned at

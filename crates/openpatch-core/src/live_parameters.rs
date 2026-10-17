@@ -29,6 +29,7 @@ impl ParameterId {
         match self {
             Self::StockVcaLevel => ParameterDescriptor {
                 name: "level",
+                default: 1.0,
                 min: 0.0,
                 max: 1.0,
                 snap: false,
@@ -37,6 +38,7 @@ impl ParameterId {
                 let (min, max) = crate::rack264_vcf::frequency_bounds();
                 ParameterDescriptor {
                     name: "frequency",
+                    default: 0.5,
                     min,
                     max,
                     snap: false,
@@ -80,6 +82,7 @@ pub struct ParameterHandle {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ParameterDescriptor {
     pub name: &'static str,
+    pub default: f32,
     pub min: f32,
     pub max: f32,
     pub snap: bool,

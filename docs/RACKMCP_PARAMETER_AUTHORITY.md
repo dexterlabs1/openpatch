@@ -2,8 +2,9 @@
 
 Concrete follow-on to the [sequence contract](RACKMCP_SEQUENCE_CONTRACT.md).
 The source engine primitives are qualified. Core target capabilities, coherent
-publication and project-save overlays are implemented; automatic assignment/
-adoption, history, ownership and sequencer scheduling below remain open. Preserve
+publication, project-save overlays and explicit parameter history/adoption are
+implemented for the two current capabilities. Source lane ownership and sequencer
+scheduling below remain open. Preserve
 the [shared document authority](COMPATIBILITY_DECISION.md).
 
 The control document records authored intent. The active engine owns effective
@@ -82,9 +83,9 @@ Core resolves generation-bound handles and native raw descriptors for VCA level
 and the older VCF's frequency. Direct writes change actual DSP fields. Explicit
 effective-value inheritance supports receiving assignments, fresh exclusions and
 rate changes independently of DSP history; callers must still supply assignment
-intent. Existing general graph adoption retains its old behavior until the
-desktop intent path is integrated. The callback does not automatically call the
-new inheritance method yet.
+intent. The desktop now invokes effective-value inheritance after DSP handoff.
+Core's ordinary DSP-only adoption API retains its existing receiving-parameter
+policy; the desktop supplies the separate assignment-aware step.
 
 Desktop parameter values share the module meter's serial, incarnation, revision
 and callback frame. Capability bindings are prepared for untargeted modules too.
@@ -97,5 +98,25 @@ only a cloned document. Legacy backends retain their explicit authored-value
 behavior. Lightweight dirty observation remains unchanged. A real headless
 callback→shared Session→file→fresh reopen test preserves the effective values and
 rendered gain without changing live revision/history. Callback publication and
-saturated graph retirement use no heap activity. This does not establish source
-target scheduling, edit/undo authority or a registered RackMCP workflow.
+saturated graph retirement use no heap activity.
+
+Shared transactions now capture only the effective fields they intentionally
+assign. Equal values, presets, initialization, creation, full loads and removals
+carry explicit intent; previews and rejected edits change no backend authority.
+Undo restores the affected fields while unrelated parameters continue. Grouped
+gestures retain their original effective undo value and final authored redo.
+Coherent current-revision publication is required when capturing live history;
+unavailable values are never guessed from stale authored parameters.
+
+Patch/assignment synchronization shares one backend registry lock. Per-field
+epochs persist across ordinary synchronization and are frozen into each prepared
+plan. Adoption compares receiver/donor epochs, so skipped plans and equal-value
+assignments retain their meaning. An old plan already prepared remains valid;
+late preparation after newer parameter metadata is explicitly rejected. The
+callback uses graph-sized scratch allocated on the control thread.
+
+Actual headless callback checks cover manual/equal assignments, unrelated
+recompiles, frozen/skipped plans, rate changes, deletion/recreation, host resets,
+shared Session edit/undo/redo/save/reopen and suspension/resume, with no callback
+heap activity. These are native parameter authority checks. Source target
+scheduling, lane-cache ownership and a registered RackMCP workflow remain open.

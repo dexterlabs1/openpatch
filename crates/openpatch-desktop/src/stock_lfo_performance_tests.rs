@@ -9,7 +9,7 @@ fn stock_lfo_clock_transport_clears_absent_invalid_foreign_and_reused_packets() 
     assert!(!ModuleKind::StockLfo.manual() && !ModuleKind::StockLfo.sequential());
     assert!(!ModuleKind::StockLfo.accepts(ModuleAction::BPress));
     let meter = Meter::new();
-    let entry = Entry { slot: 0, token: 41, born_revision: 1, kind: ModuleKind::StockLfo, bypassed: false, action_epoch: 1 };
+    let entry = Entry { slot: 0, token: 41, born_revision: 1, kind: ModuleKind::StockLfo, bypassed: false, action_epoch: 1, parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS] };
     for clock in [Some(2.0), Some(1.0), None, Some(0.0), Some(-1.0), Some(f32::NAN), Some(f32::INFINITY), Some(f32::MAX)] {
         for present in [true, false] {
             meter.write(entry.token, stock_lfo_packet(7, clock, present));
@@ -30,7 +30,7 @@ fn stock_lfo_clock_transport_clears_absent_invalid_foreign_and_reused_packets() 
 #[test]
 fn stock_lfo_clock_and_five_lamps_are_one_coherent_frame_and_generation() {
     let meter = Arc::new(Meter::new());
-    let entry = Entry { slot: 0, token: 41, born_revision: 1, kind: ModuleKind::StockLfo, bypassed: false, action_epoch: 1 };
+    let entry = Entry { slot: 0, token: 41, born_revision: 1, kind: ModuleKind::StockLfo, bypassed: false, action_epoch: 1, parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS] };
     let writer_meter = meter.clone();
     let writer = std::thread::spawn(move || {
         for frame in 1..=1500_u64 {

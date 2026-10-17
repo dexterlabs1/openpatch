@@ -18,6 +18,7 @@ fn stock_octave_entry(token: u64) -> Entry {
         kind: ModuleKind::StockOctave,
         bypassed: false,
         action_epoch: 1,
+        parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS],
     }
 }
 

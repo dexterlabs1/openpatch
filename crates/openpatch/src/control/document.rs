@@ -563,6 +563,11 @@ impl Session {
                     if let Some(state) = SavedModuleState::from_node(current) {
                         state.write_params(&mut node.params);
                     }
+                    for &key in openpatch_core::runtime_parameter_names(&current.kind) {
+                        if let Some(value) = current.params.get(key) {
+                            node.params.insert(key.to_owned(), *value);
+                        }
+                    }
                 }
             }
             if let Some(assignment) = target.restore_saved.get(&node.id) {

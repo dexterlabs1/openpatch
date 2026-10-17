@@ -1251,6 +1251,12 @@ impl Callback {
                     &mut previous.engine,
                     &active.host_lifecycle.resets,
                 );
+                active.modules.inherit_parameters_with_host_exclusions(
+                    &mut active.engine,
+                    &previous.modules,
+                    &previous.engine,
+                    &active.host_lifecycle.resets,
+                );
                 for (slot, binding) in active.modules.bindings.iter_mut().enumerate() {
                     if let Some(binding) = binding {
                         let same_instance = previous.modules.bindings[slot]

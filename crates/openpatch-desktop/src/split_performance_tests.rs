@@ -14,7 +14,7 @@ fn split_is_passive_and_optional_count_packets_respect_revision_and_slot_identit
     assert!(!ModuleKind::Split.accepts(ModuleAction::BPress));
     assert!(!ModuleKind::Split.has_safety_release());
     let meter = Meter::new();
-    let entry = Entry { slot: 0, token: 17, born_revision: 2, kind: ModuleKind::Split, bypassed: false, action_epoch: 1 };
+    let entry = Entry { slot: 0, token: 17, born_revision: 2, kind: ModuleKind::Split, bypassed: false, action_epoch: 1, parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS] };
     assert!(meter.read(entry, 2).is_none());
     for count in [Some(16), Some(0), None, Some(1), Some(17), Some(255)] {
         for present in [true, false] {
@@ -45,7 +45,7 @@ fn split_is_passive_and_optional_count_packets_respect_revision_and_slot_identit
 #[test]
 fn split_count_packets_never_mix_frame_revision_or_instance_generation() {
     let meter = Arc::new(Meter::new());
-    let entry = Entry { slot: 0, token: 17, born_revision: 1, kind: ModuleKind::Split, bypassed: false, action_epoch: 1 };
+    let entry = Entry { slot: 0, token: 17, born_revision: 1, kind: ModuleKind::Split, bypassed: false, action_epoch: 1, parameter_epochs: [0; MAX_PUBLISHED_PARAMETERS] };
     let writer_meter = meter.clone();
     let writer = std::thread::spawn(move || {
         for frame in 1..=1500_u64 {

@@ -52,6 +52,7 @@ mod cable_order_tests;
 mod duplicate_tests;
 #[cfg(test)]
 mod parameter_action_tests;
+mod parameters;
 #[cfg(test)]
 mod preset_tests;
 #[cfg(test)]
@@ -241,6 +242,17 @@ pub trait LiveModuleEvents: Send + Sync {
         Err("live Scope inspection is unsupported by this backend".into())
     }
     fn sync_patch(&self, _patch: &Patch, _revision: u64) {}
+    /// Atomically publish authored parameters and explicit assignment intent.
+    /// Equal-value assignments still count. Prepared graphs freeze these
+    /// intents; later revisions must not change an earlier graph's meaning.
+    fn sync_patch_with_parameters(
+        &self,
+        patch: &Patch,
+        revision: u64,
+        _assignments: &BTreeMap<String, BTreeMap<String, f32>>,
+    ) {
+        self.sync_patch(patch, revision);
+    }
     /// Imported documents need a fenced execution gate, independent of mute.
     fn supports_document_execution(&self) -> bool {
         false
@@ -365,6 +377,8 @@ impl Drop for Session {
 
 #[derive(Clone)]
 struct HistoryEntry {
+    restore_parameters: parameters::ParameterValues,
+    return_parameters: parameters::ParameterValues,
     document: ProjectDocument,
     layout_origin: Option<LayoutOrigin>,
     playback_mode: PlaybackMode,
@@ -585,12 +599,12 @@ impl Session {
         Ok(())
     }
 
-    fn sync_live_module_events(&self) {
+    fn sync_live_parameters(&self, assignments: &parameters::ParameterValues) {
         if let Some(backend) = &self.live_module_events {
             if self.document_execution {
                 backend.request_document_execution(self.revision, self.execution_disposition());
             }
-            backend.sync_patch(&self.patch, self.revision);
+            backend.sync_patch_with_parameters(&self.patch, self.revision, assignments);
         }
     }
 
@@ -733,6 +747,7 @@ impl Session {
         self.intern_candidate_assets(&mut candidate)?;
         let prepared = candidate.prepare_wave_banks(&self.wave_preparation_cache)?;
         candidate.compile_with_wave_banks(&prepared)?;
+        let parameter_effects = parameters::for_commit(self, &mut candidate, effects)?;
         let document = self.document_after_edit(&candidate, effects)?;
         let needs_layout = self.layout_host_attached
             && !prepared_layout
@@ -787,6 +802,11 @@ impl Session {
             && self.undo.back().is_some_and(|entry| {
                 saved_state_coverage_matches(&entry.restore_saved, &effects.before_saved)
                     && saved_state_coverage_matches(&entry.return_saved, &effects.after_saved)
+                    && parameters::same_coverage(
+                        &entry.restore_parameters,
+                        &parameter_effects.before,
+                    )
+                    && parameters::same_coverage(&entry.return_parameters, &parameter_effects.after)
                     && entry
                         .release_controls
                         .iter()
@@ -798,6 +818,9 @@ impl Session {
             self.playback_mode = playback_mode;
             if let Some(entry) = self.undo.back_mut() {
                 entry.return_saved.extend(effects.after_saved.clone());
+                entry
+                    .return_parameters
+                    .extend(parameter_effects.after.clone());
                 entry.return_lifecycle.append(&forward_lifecycle);
                 entry.restore_lifecycle = reverse_lifecycle
                     .clone()
@@ -808,6 +831,8 @@ impl Session {
                 self.undo.pop_front();
             }
             self.undo.push_back(HistoryEntry {
+                restore_parameters: parameter_effects.before.clone(),
+                return_parameters: parameter_effects.after.clone(),
                 document: std::mem::replace(&mut self.document, document),
                 layout_origin: self.layout_origin,
                 playback_mode: std::mem::replace(&mut self.playback_mode, playback_mode),
@@ -852,7 +877,7 @@ impl Session {
                 backend.retire_cables(&effects.retired_cables);
             }
         }
-        self.sync_live_module_events();
+        self.sync_live_parameters(&parameter_effects.after);
         if let Some(backend) = &self.live_module_events {
             if !effects.initialized.is_empty() {
                 backend
@@ -981,6 +1006,12 @@ impl Session {
             self.undo.back().unwrap().clone()
         };
         let outgoing_capture = self.prepare_history_suspension(&mut target)?;
+        if !target.restore_parameters.is_empty() {
+            parameters::overlay(&mut target.patch, &target.restore_parameters);
+            target.document = target
+                .document
+                .with_native_patch(target.patch.clone(), &BTreeMap::new())?;
+        }
         target.document.layout.zoom = self.document.layout.zoom;
         target.document.layout.pan = self.document.layout.pan;
         let needs_layout = self.layout_host_attached
@@ -1016,6 +1047,8 @@ impl Session {
         }
         let entry = target;
         let mut opposite = HistoryEntry {
+            restore_parameters: entry.return_parameters.clone(),
+            return_parameters: entry.restore_parameters.clone(),
             document: std::mem::replace(&mut self.document, entry.document),
             layout_origin: self.layout_origin,
             playback_mode: std::mem::replace(&mut self.playback_mode, entry.playback_mode),
@@ -1068,7 +1101,7 @@ impl Session {
                 backend.retire_cables(&entry.retired_cables);
             }
         }
-        self.sync_live_module_events();
+        self.sync_live_parameters(&entry.restore_parameters);
         if let Some(backend) = &self.live_module_events {
             let releases: Vec<_> = entry
                 .release_controls
