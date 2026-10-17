@@ -35,6 +35,245 @@ fn tar_patch(patch: &Value, assets: &[(&str, &[u8])]) -> Vec<u8> {
     encoder.finish().unwrap()
 }
 
+fn notes_module() -> Value {
+    json!({"id":77,"plugin":"Core","model":"Notes","version":"2.6.6","params":[],"pos":[16,1]})
+}
+
+#[test]
+fn notes_import_preserves_unicode_whitespace_archive_and_mapping_provenance() {
+    let text = "  Patch\n\t日本語 · café · 🎛️\r\n\ntrailing  ";
+    let mut source = notes_module();
+    source["data"] = json!({"text":text});
+    source["future"] = json!({"retained":true});
+    let patch = json!({"version":"2.6.6","modules":[source],"cables":[]});
+    let bytes = serde_json::to_vec_pretty(&patch).unwrap();
+    let result = import(&bytes).unwrap();
+    assert_eq!(
+        (result.report.mapped_count, result.report.unresolved_count),
+        (1, 0)
+    );
+    let node = native(&result.document, 0);
+    assert_eq!(node.kind, "notes");
+    assert!(node.params.is_empty() && !node.bypassed);
+    assert_eq!(node.effective_notes_text(), Some(text));
+    assert_eq!(result.document.layout.positions["vcv_m_77"], [240.0, 420.0]);
+    let provenance = result.document.graph.nodes[0].source().unwrap();
+    let mapping = provenance.mapping.as_ref().unwrap();
+    assert_eq!(mapping.id, "vcv/Core/Notes/2.6.6");
+    assert_eq!(mapping.fidelity, MappingFidelity::MusicalRole);
+    assert!(source_automation_parameter(&patch["modules"][0], mapping, "notes", 0).is_none());
+    assert!(result
+        .report
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("Notes")
+            && warning.contains("8192")
+            && warning.contains("MusicalRole")));
+    let package = &result.document.sources[&result.report.package_id];
+    assert_eq!(package.patch.as_ref(), &patch);
+    assert_eq!(
+        result.document.source_blobs[&package.assets["patch.json"]].bytes(),
+        bytes
+    );
+    let encoded = result.document.encode().unwrap();
+    let reopened = ProjectDocument::decode(&encoded).unwrap();
+    assert_eq!(reopened.encode().unwrap(), encoded);
+    assert_eq!(native(&reopened, 0).effective_notes_text(), Some(text));
+    reopened
+        .project(crate::project_document::PlaybackMode::Exact)
+        .unwrap()
+        .patch
+        .compile()
+        .unwrap();
+}
+
+#[test]
+fn notes_import_defaults_legacy_precedence_bypass_and_utf8_limit() {
+    for (fields, expected, bypassed) in [
+        (json!({}), "".to_owned(), false),
+        (json!({"data":{}}), "".to_owned(), false),
+        (json!({"data":{"text":""}}), "".to_owned(), false),
+        (
+            json!({"text":"legacy\n日本語","disabled":true}),
+            "legacy\n日本語".to_owned(),
+            true,
+        ),
+        (
+            json!({"data":{"text":"newer"},"text":"legacy wins","bypass":false,"disabled":true}),
+            "legacy wins".to_owned(),
+            false,
+        ),
+        (
+            json!({"data":{"text":"preserved"},"text":"","bypass":true,"disabled":false}),
+            "".to_owned(),
+            true,
+        ),
+        (
+            json!({"data":{"text":"𝄞".repeat(2048)}}),
+            "𝄞".repeat(2048),
+            false,
+        ),
+    ] {
+        let mut source = notes_module();
+        source.as_object_mut().unwrap().remove("params");
+        source
+            .as_object_mut()
+            .unwrap()
+            .extend(fields.as_object().unwrap().clone());
+        let result = run(json!({"modules":[source],"cables":[]})).unwrap();
+        assert_eq!(result.report.mapped_count, 1);
+        let node = native(&result.document, 0);
+        assert_eq!(node.effective_notes_text(), Some(expected.as_str()));
+        assert_eq!(node.bypassed, bypassed);
+    }
+}
+
+#[test]
+fn notes_import_retains_unsupported_text_state_params_and_versions_unresolved() {
+    for (key, value) in [
+        ("version", json!("2.6.5")),
+        ("version", Value::Null),
+        ("plugin", json!("core")),
+        ("model", json!("notes")),
+        ("params", json!([{"id":0,"value":0}])),
+        ("data", Value::Null),
+        ("data", json!([])),
+        ("data", json!(false)),
+        ("data", json!({"text":null})),
+        ("data", json!({"text":3})),
+        ("data", json!({"text":"valid","future":true})),
+        ("data", json!({"text":"before\u{0}after"})),
+        ("data", json!({"text":"𝄞".repeat(2048) + "é"})),
+        ("text", Value::Null),
+        ("text", json!(false)),
+        ("text", json!("\u{0}")),
+        ("text", json!("x".repeat(8193))),
+        ("disabled", Value::Null),
+        ("disabled", json!(1)),
+    ] {
+        let mut source = notes_module();
+        source[key] = value;
+        let patch = json!({"modules":[source],"cables":[]});
+        let result = run(patch.clone()).unwrap();
+        assert_eq!(
+            (result.report.mapped_count, result.report.unresolved_count),
+            (0, 1),
+            "{key}"
+        );
+        assert!(result.document.graph.nodes[0]
+            .source()
+            .unwrap()
+            .mapping
+            .is_none());
+        let reopened = ProjectDocument::decode(&result.document.encode().unwrap()).unwrap();
+        assert!(matches!(
+            reopened.graph.nodes[0],
+            DocumentNode::Unresolved { .. }
+        ));
+        assert_eq!(
+            reopened.sources[&result.report.package_id].patch.as_ref(),
+            &patch
+        );
+    }
+    // Strict text validation also applies to data shadowed by legacy root text.
+    let mut source = notes_module();
+    source["data"] = json!({"text":null});
+    source["text"] = json!("legacy");
+    assert_eq!(
+        run(json!({"modules":[source],"cables":[]}))
+            .unwrap()
+            .report
+            .unresolved_count,
+        1
+    );
+}
+
+#[test]
+fn notes_import_malformed_params_bypass_and_impossible_ports_remain_hard_errors() {
+    for (key, value) in [
+        ("params", json!({})),
+        ("params", json!([{"id":0,"value":"0"}])),
+        ("bypass", json!(1)),
+    ] {
+        let mut source = notes_module();
+        source[key] = value;
+        assert!(run(json!({"modules":[source],"cables":[]})).is_err());
+    }
+    for route in [cable(1, 77, 0, 1, 0), cable(1, 1, 0, 77, 0)] {
+        let error = run(json!({"modules":[notes_module(),module(1,"VCA-1")],"cables":[route]}))
+            .unwrap_err();
+        assert!(error.contains("invalid source port"));
+    }
+}
+
+#[test]
+fn notes_import_edit_initialize_history_and_saved_reopen_keep_original_source() {
+    let mut source = notes_module();
+    source["data"] = json!({"text":"source\n日本語"});
+    let patch = json!({"modules":[source],"cables":[]});
+    let bytes = serde_json::to_vec_pretty(&patch).unwrap();
+    let imported = import(&bytes).unwrap();
+    let package_id = imported.report.package_id;
+    let mut session = crate::control::Session::new(&std::env::temp_dir()).unwrap();
+    session
+        .replace_project_document(imported.document, None)
+        .unwrap();
+    session
+        .execute(
+            "set_module_content",
+            json!({"id":"vcv_m_77","content":{"type":"notes","text":"edited\n🎛️"}}),
+        )
+        .unwrap();
+    let edited = session.project_document().encode().unwrap();
+    session
+        .execute("initialize_modules", json!({"ids":["vcv_m_77"]}))
+        .unwrap();
+    assert_eq!(
+        native(session.project_document(), 0).effective_notes_text(),
+        Some("")
+    );
+    session.execute("undo", json!({})).unwrap();
+    assert_eq!(session.project_document().encode().unwrap(), edited);
+    session.execute("undo", json!({})).unwrap();
+    assert_eq!(
+        native(session.project_document(), 0).effective_notes_text(),
+        Some("source\n日本語")
+    );
+    session.execute("redo", json!({})).unwrap();
+    assert_eq!(session.project_document().encode().unwrap(), edited);
+    let saved = session
+        .capture_project_document(None)
+        .unwrap()
+        .document
+        .encode()
+        .unwrap();
+    let mut reopened = crate::control::Session::new(&std::env::temp_dir()).unwrap();
+    reopened
+        .replace_project_document(ProjectDocument::decode(&saved).unwrap(), None)
+        .unwrap();
+    assert_eq!(
+        native(reopened.project_document(), 0).effective_notes_text(),
+        Some("edited\n🎛️")
+    );
+    let document = reopened.project_document();
+    let package = &document.sources[&package_id];
+    assert_eq!(package.patch.as_ref(), &patch);
+    assert_eq!(
+        document.source_blobs[&package.assets["patch.json"]].bytes(),
+        bytes
+    );
+    assert_eq!(
+        document.graph.nodes[0]
+            .source()
+            .unwrap()
+            .mapping
+            .as_ref()
+            .unwrap()
+            .fidelity,
+        MappingFidelity::MusicalRole
+    );
+}
+
 #[test]
 fn imports_source_controls_routing_provenance_and_layout_without_changing_original() {
     let mut vca = module(42, "VCA-1");
@@ -879,10 +1118,20 @@ fn actual_so_there_i_was_patch_preserves_complete_collection() {
         })
         .count();
     assert_eq!(source_bridges, 1);
+    let source_notes = source_patch["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|module| {
+            module["plugin"] == "Core" && module["model"] == "Notes" && module["version"] == "2.6.6"
+        })
+        .count();
+    assert_eq!(source_notes, 4);
     let new_mappings: usize = voice_counts.into_iter().sum::<usize>()
         + source_sequences
         + source_listens
-        + source_bridges;
+        + source_bridges
+        + source_notes;
     let result = import(&bytes).unwrap();
     assert_eq!(
         (result.report.module_count, result.report.cable_count),
@@ -896,6 +1145,20 @@ fn actual_so_there_i_was_patch_preserves_complete_collection() {
     let doc = result.document;
     assert_eq!(doc.graph.nodes.len(), 55);
     assert_eq!(doc.graph.cables.len(), 83);
+    for entry in &doc.graph.nodes {
+        if let DocumentNode::Native {
+            node,
+            source: Some(source),
+        } = entry
+        {
+            if node.kind == "notes" {
+                assert_eq!(
+                    node.effective_notes_text(),
+                    doc.source_module(source).unwrap()["data"]["text"].as_str()
+                );
+            }
+        }
+    }
     let sequences: Vec<_> = doc
         .graph
         .nodes
@@ -1128,5 +1391,67 @@ fn bridge_import_preserves_unsupported_holds_versions_and_custom_state_unresolve
         let mut malformed = patch.clone();
         malformed["cables"] = json!([route]);
         assert!(run(malformed).unwrap_err().contains("invalid source port"));
+    }
+}
+
+#[test]
+fn core_audio_boundary_keeps_saved_mute_device_and_routes_unresolved_and_validates_source_ports() {
+    let audio = json!({"id":80,"plugin":"Core","model":"AudioInterface2","version":"2.6.6",
+        "params":[{"id":0,"value":0}],"data":{"dcFilter":true,"audio":{
+            "driver":5,"deviceName":"Reference speakers","sampleRate":24000,"blockSize":256,
+            "inputOffset":0,"outputOffset":0}}});
+    let source = json!({"version":"2.6.6","modules":[module(1,"Noise"),audio.clone()],
+        "cables":[cable(7,1,0,80,0)]});
+    let bytes = serde_json::to_vec(&source).unwrap();
+    let result = import(&bytes).unwrap();
+    assert_eq!(
+        (result.report.mapped_count, result.report.unresolved_count),
+        (1, 1)
+    );
+    assert!(result
+        .report
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("zero (muted)")));
+    assert!(result
+        .report
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("hardware boundary")));
+    assert!(matches!(
+        &result.document.graph.nodes[1],
+        DocumentNode::Unresolved { .. }
+    ));
+    assert!(result.document.graph.output.is_none());
+    assert_eq!(result.document.graph.cables[0].route.input, "vcv_in_0");
+    let package = &result.document.sources[&result.report.package_id];
+    assert_eq!(package.patch.as_ref(), &source);
+    assert_eq!(
+        result.document.source_blobs[&package.assets["patch.json"]].bytes(),
+        bytes
+    );
+    let reopened = ProjectDocument::decode(&result.document.encode().unwrap()).unwrap();
+    assert_eq!(reopened.reference_view(), result.document.reference_view());
+    let mut valid_routes = source.clone();
+    valid_routes["cables"] = json!([cable(7, 1, 0, 80, 0), cable(8, 80, 1, 80, 1)]);
+    assert_eq!(run(valid_routes).unwrap().report.cable_count, 2);
+    for (output, input) in [(2, 0), (0, 2)] {
+        let mut broken = source.clone();
+        broken["cables"] = if output == 2 {
+            json!([cable(7, 80, output, 80, input)])
+        } else {
+            json!([cable(7, 1, output, 80, input)])
+        };
+        assert!(run(broken).unwrap_err().contains("invalid source port"));
+    }
+    for value in [None, Some(1.0)] {
+        let mut active = source.clone();
+        active["modules"][1]["params"] =
+            value.map_or(json!([]), |value| json!([{"id":0,"value":value}]));
+        let report = run(active).unwrap().report;
+        assert!(!report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("zero (muted)")));
     }
 }
