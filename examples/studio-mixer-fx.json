@@ -103,7 +103,7 @@
       "kind": "notes",
       "content": {
         "type": "notes",
-        "text": "STUDIO MIXER · FX SENDS\n\n+ / − adds or hides strips.\nHidden wiring is retained.\n\nA → stereo delay → RET A\nB → reverb → RET B\nReturns never feed sends.\n\nRight-click a strip header:\ntrim · HPF · shelves · pre/post\nM mutes · S solos to cue\n\nScope X / Y: master L / R\n\nFind this OpenPatch original\nin Custom and Mixing."
+        "text": "STUDIO MIXER · FX SENDS\n+ / − adds or hides strips.\nHidden wiring is retained.\nA → stereo delay → RET A\nB → reverb → RET B\nReturns never feed sends.\nRight-click a strip header:\ntrim · HPF · shelves · pre/post\nM mutes · S solos to cue\nScope X / Y: master L / R\nFind this OpenPatch original\nin Custom and Mixing."
       }
     }
   ],

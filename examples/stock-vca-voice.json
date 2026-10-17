@@ -67,7 +67,7 @@
       "kind": "notes",
       "content": {
         "type": "notes",
-        "text": "VCA VOICE\n\nSaw \u2192 VCF \u2192 VCA \u2192 out\nClock \u2192 ADSR \u2192 VCA CV\n\nLevel: click to type %\nLIN: proportional CV\nEXP: fourth-power CV\n\nColumns show gain,\nincluding silent voices.\nScope X: before VCA\nScope Y: after VCA"
+        "text": "VCA VOICE\n\nSaw \u2192 VCF \u2192 VCA \u2192 out\nClock \u2192 ADSR \u2192 VCA CV\n\nLevel: click to type %\nLIN: proportional CV\nEXP: fourth-power CV\nColumns show gain,\nincluding silent voices.\nScope X: before VCA\nScope Y: after VCA"
       }
     }
   ],

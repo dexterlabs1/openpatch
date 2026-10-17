@@ -64,7 +64,7 @@
       "kind": "notes",
       "content": {
         "type": "notes",
-        "text": "NOISE INTO MATTER\n\nPink noise excites a body.\nClock → ADSR → VCA CV\nPink → VCA → EXCITE\n\nThe resonator models 16\ndamped mechanical modes.\nNo sampled sound.\nNo hardware calibration.\n\nScope X: white noise\nScope Y: body velocity\n\nSeven noise colors,\nseven different processes.\nGray: 1024-sample FFT."
+        "text": "NOISE INTO MATTER\nPink noise excites a body.\nClock → ADSR → VCA CV\nPink → VCA → EXCITE\n16 damped mechanical modes.\nNo sampled sound.\nNo hardware calibration.\nScope X: white noise\nScope Y: body velocity\nSeven noise colors,\nseven different processes.\nGray: 1024-sample FFT."
       }
     }
   ],

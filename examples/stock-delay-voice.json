@@ -9,7 +9,7 @@
     {"id":"clock","kind":"gate","params":{"frequency":2,"duty":0.12}},
     {"id":"scope","kind":"scope","params":{"time":0.15,"trigger_enabled":0}},
     {"id":"out","kind":"audio_stereo","params":{"gain":0.15}},
-    {"id":"guide","kind":"notes","content":{"type":"notes","text":"CLOCKED ECHO\n\nSaw → VCA → Delay → audio\nClock → envelope + CLK\n\nTIME: 1 ms–10 seconds\nType 250 ms or 0.25 s\nFour bipolar CV depths\nMIX: dry to wet\nWET: independent output\n\nScope X: mixed output\nScope Y: wet repeats\nCLK shows actual DSP state."}}
+    {"id":"guide","kind":"notes","content":{"type":"notes","text":"CLOCKED ECHO\n\nSaw → VCA → Delay → audio\nClock → envelope + CLK\nTIME: 1 ms–10 seconds\nType 250 ms or 0.25 s\nFour bipolar CV depths\nMIX: dry to wet\nWET: independent output\nScope X: mixed output\nScope Y: wet repeats\nCLK shows actual DSP state."}}
   ],
   "cables": [
     {"from":"voice","output":"saw","to":"amplifier","input":"signal"},

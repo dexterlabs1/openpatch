@@ -26,7 +26,7 @@
 
 - **An instrument you can patch.** Set values with rotary knobs, faders, visible mode choices and precise numeric entry, connect cables, and arrange modules on rack rails. Held cable drags pan at the rack edges to reach offscreen jacks. Live edits preserve oscillator phase and circuit memory.
 - **A reference analog voice.** Explore a nonlinear transistor ladder, OTA VCA, and switched RC envelope alongside an idealized ramp VCO, gate clock, and voltage/audio interface. Each model has [documented assumptions and validation](docs/ANALOG_MODELS.md).
-- **Strike a physical body.** Explore a stiff string / beam with sixteen resonant modes, force excitation, damping, and movable strike and pickup positions. Shape it with sliders and precise values. [Physical model and limits →](docs/MODAL_RESONATOR.md)
+- **Strike a physical body.** Explore a stiff string / beam with sixteen resonant modes, force excitation, damping, and movable strike and pickup positions. Shape it with tactile controls and precise values. [Physical model and limits →](docs/MODAL_RESONATOR.md)
 - **Build a richer voice.** Blend four simultaneous oscillator waveforms, drive FM and PWM, and choose hard or soft sync. [Audio oscillator and validation →](docs/AUDIO_OSCILLATOR.md)
 - **Play your own waves.** Wavetable VCO and LFO add immutable custom banks, position CV, polyphonic modulation and guarded workspace import/export. [Controls, portable files and checked digital scope →](docs/WAVETABLES.md)
 - **Shape random motion.** Clock probabilistic voltage changes, control their spread, and move between targets with stepped, linear, smooth and exponential outputs. Patch external polyphonic CV to interpolate your own values. [Random controls and numerical scope →](docs/RANDOM.md)
@@ -59,7 +59,7 @@ open dist/OpenPatch.app
 The bundle includes the desktop app and the CLI used for MCP attachment.
 The app opens a connected reference voice with playback paused. Press **Play** or **Space** to hear it. To run directly from source, use `cargo run --locked --release -p openpatch-desktop`.
 
-This is a **v0.2 development preview**, built from source. The local `.app` is ad-hoc signed; it is not notarized. CI also builds Linux and Windows targets; platform notes are below.
+This is a **v0.2 development preview**, built from source. The local `.app` is ad-hoc signed; it is not notarized. Daily CI targets macOS ARM; Linux and Windows validation is available through the manual full-platform workflow. Platform notes are below.
 
 ## Play the rack
 
@@ -414,15 +414,20 @@ passes; combined application, UI and release qualification merged in [PR20](http
 
 The separate [Stock Process](docs/STOCK_PROCESS.md) adds six sample/hold, slew and glide outputs with a frozen source/host comparison. Its bounded source/host, local release, platform CI and native render checks passed before [PR22](https://github.com/dexterlabs1/openpatch/pull/22) merged. The macOS ARM app includes all four visualizers, including Ferrofluid.
 
-The [Signal Atlas panel redesign](docs/MODULE_DESIGN.md) brings back prominent black
-knobs on warm ivory, with the same artwork in the rack and library. The first ten
-voice/utility conversions passed platform and native-render checks in
-[PR23](https://github.com/dexterlabs1/openpatch/pull/23). The six-panel oscillator,
-filter and amplifier extension passed the same gates in
-[PR24](https://github.com/dexterlabs1/openpatch/pull/24), producing the qualified
-0.2.4 build 6 macOS candidate. The next development build enlarges sockets on
-all sixteen panels and improves crowded-jack menu picking. Remaining catalog
-conversion and native device qualification are still open.
+The [Signal Atlas panel redesign](docs/MODULE_DESIGN.md) uses prominent black
+knobs, warm ivory, clear titles and source-backed markings, with identical panels
+in the rack and library. The current development candidate accounts for all
+**77 non-MIDI panels**: 76 detailed conversions plus the existing Studio Mixer.
+The three MIDI panels remain deferred. Exact values, grouped undo and visible
+MCP edits remain part of the controls; LED and screen glow is now more restrained.
+
+[Review the panels and audit](design/reviews/signal-atlas-two-modules-v1/README.md#non-midi-design-candidate-audit) · [Current development PR](https://github.com/dexterlabs1/openpatch/pull/28)
+
+The installed Mac checkpoint is **0.2.6 build 8**, with the earlier 34-panel pass
+and stronger glow. The redesign is [merged](https://github.com/dexterlabs1/openpatch/pull/28), with
+[full Mac workspace/MCP CI](https://github.com/dexterlabs1/openpatch/actions/runs/39007243527)
+and the internal app artifact verified. It has not replaced that installed app.
+Native-window and physical audio-device qualification remain separate.
 
 The library also includes [Stock VCA Mix](docs/STOCK_VCA_MIX.md), [Stock Mix](docs/STOCK_MIX.md), [Stock Mid/Side](docs/STOCK_MID_SIDE.md), [Stock VCO](docs/STOCK_VCO.md), [Stock LFO](docs/STOCK_LFO.md), [Stock Delay](docs/STOCK_DELAY.md), [Stock Quantizer](docs/STOCK_QUANTIZER.md), and [Stock SEQ3](docs/STOCK_SEQ3.md), alongside voices, modulation, scores, effects and utilities. Search controls and ports, filter by musical role, and save favorites in the docked library. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; the number of OpenPatch kinds is not a count of completed equivalents.
 

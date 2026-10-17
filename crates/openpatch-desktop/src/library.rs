@@ -320,6 +320,7 @@ impl ModuleLibrary {
             module["kind"].as_str(),
             module["title"].as_str(),
             Some(crate::rack::title(kind)),
+            (kind == "gain").then_some("VCA"), // preserve the former panel-name search
             module["description"].as_str(),
             module["model"].as_str(),
         ]
@@ -1459,6 +1460,18 @@ mod tests {
 
     #[test]
     fn search_categories_and_favorites_use_catalog_meaning_not_model_provenance() {
+        let full = openpatch_core::catalog();
+        let gain = full["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["kind"] == "gain")
+            .unwrap();
+        assert!(ModuleLibrary::default().matches(gain, "gain"));
+        assert!(
+            ModuleLibrary::default().matches(gain, "vca"),
+            "former VCA name remains searchable"
+        );
         let catalog = fixture();
         let mut library = ModuleLibrary {
             search: "cutoff".into(),
@@ -2333,19 +2346,22 @@ mod tests {
         };
         render(); // egui measures a newly opened window before painting it.
         let output = render();
-        fn tempo_rect(shape: &egui::Shape) -> Option<Rect> {
+        fn tempo_rect(shape: &egui::Shape, expected: &str) -> Option<Rect> {
             match shape {
-                egui::Shape::Text(text) if text.galley.text().ends_with(" BPM") => {
+                egui::Shape::Text(text) if text.galley.text() == expected => {
                     Some(Rect::from_min_size(text.pos, text.galley.size()))
                 }
-                egui::Shape::Vec(children) => children.iter().find_map(tempo_rect),
+                egui::Shape::Vec(children) => children.iter().find_map(|s| tempo_rect(s, expected)),
                 _ => None,
             }
         }
+        let spec = &seq3["params"]["tempo"];
+        let expected =
+            crate::rack::parameter_value("tempo", spec["default"].as_f64().unwrap() as f32, spec);
         let tempo = output
             .shapes
             .iter()
-            .find_map(|shape| tempo_rect(&shape.shape))
+            .find_map(|shape| tempo_rect(&shape.shape, &expected))
             .expect("inspection paints the actual native tempo field");
         assert!(viewport.contains_rect(tempo));
         assert!(

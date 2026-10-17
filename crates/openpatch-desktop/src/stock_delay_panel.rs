@@ -1,4 +1,4 @@
-// Original shared rack/browser faceplate. CLK uses a coherent DSP snapshot.
+// Shared rack/browser faceplate. CLK uses a coherent DSP snapshot.
 const STOCK_DELAY_PARAMS: [&str; 8] = [
     "time",
     "feedback",
@@ -24,27 +24,125 @@ fn stock_delay_time_edit(edit: &ParameterEdit) -> bool {
 fn stock_delay_column(index: usize) -> f32 {
     46.0 + (index % 4) as f32 * 86.0
 }
-fn stock_delay_slider_rect(index: usize) -> Rect {
+fn stock_delay_knob_rect(index: usize) -> Rect {
     Rect::from_center_size(
         pos2(
             stock_delay_column(index),
-            if index < 4 { 177.0 } else { 286.0 },
+            if index < 4 { 120.0 } else { 220.0 },
         ),
-        if index < 4 {
-            vec2(22.0, 126.0)
-        } else {
-            vec2(60.0, 18.0)
-        },
+        Vec2::splat(if index < 4 { 64.0 } else { 48.0 }),
     )
 }
 fn stock_delay_value_rect(index: usize) -> Rect {
     Rect::from_center_size(
         pos2(
             stock_delay_column(index),
-            if index < 4 { 255.0 } else { 308.0 },
+            if index < 4 { 164.0 } else { 255.0 },
         ),
         vec2(72.0, 18.0),
     )
+}
+fn paint_stock_delay_flow(
+    ui: &mut egui::Ui,
+    painter: &egui::Painter,
+    node: &Node,
+    rect: Rect,
+    zoom: f32,
+    lighting: &crate::lighting::RoomLighting,
+) {
+    let point = |x: f32, y: f32| rect.min + vec2(x, y) * zoom;
+    let draw = AtlasVoicePaint {
+        painter,
+        origin: rect.min,
+        layout: AtlasVoiceLayout { width: 360.0 },
+        zoom,
+    };
+    let bounds = Rect::from_min_max(point(19.0, 278.0), point(341.0, 313.0));
+    let lighting_start = crate::lighting::next(painter);
+    draw.screen(bounds, lighting);
+    let ink = Color32::from_rgb(195, 200, 180);
+    let amber = Color32::from_rgb(229, 183, 103);
+    let text = |x, y, label: &str, size| {
+        painter.text(
+            point(x, y),
+            Align2::CENTER_CENTER,
+            label,
+            crate::panel_skin::print_font(painter.ctx(), size * zoom),
+            ink,
+        );
+    };
+    let line = |points: &[(f32, f32)]| {
+        painter.add(egui::Shape::line(
+            points.iter().map(|&(x, y)| point(x, y)).collect(),
+            Stroke::new(zoom, amber),
+        ));
+        let n = points.len();
+        let from = point(points[n - 2].0, points[n - 2].1);
+        let end = point(points[n - 1].0, points[n - 1].1);
+        let direction = (end - from).normalized();
+        let side = vec2(-direction.y, direction.x);
+        painter.add(egui::Shape::convex_polygon(
+            vec![
+                end,
+                end - direction * 3.0 * zoom + side * 1.8 * zoom,
+                end - direction * 3.0 * zoom - side * 1.8 * zoom,
+            ],
+            amber,
+            Stroke::NONE,
+        ));
+    };
+    text(31.0, 292.0, "IN", 7.5);
+    painter.circle_stroke(point(58.0, 292.0), 5.0 * zoom, Stroke::new(zoom, ink));
+    text(58.0, 292.0, "+", 7.5);
+    for (left, right, label) in [
+        (73.0, 130.0, "DELAY / SRC"),
+        (145.0, 193.0, "TONE"),
+        (248.0, 285.0, "MIX"),
+    ] {
+        painter.rect_stroke(
+            Rect::from_min_max(point(left, 286.0), point(right, 298.0)),
+            1.5 * zoom,
+            Stroke::new(0.8 * zoom, Color32::from_rgb(133, 143, 123)),
+            egui::StrokeKind::Inside,
+        );
+        text((left + right) * 0.5, 292.0, label, 6.5);
+    }
+    text(222.0, 292.0, "WET", 7.0);
+    text(321.0, 292.0, "MIX", 7.0);
+    for points in [
+        &[(39.0, 292.0), (53.0, 292.0)][..],
+        &[(63.0, 292.0), (73.0, 292.0)],
+        &[(130.0, 292.0), (145.0, 292.0)],
+        &[(193.0, 292.0), (212.0, 292.0)],
+        &[(232.0, 292.0), (248.0, 292.0)],
+        &[(285.0, 292.0), (314.0, 292.0)],
+    ] {
+        line(points);
+    }
+    // Feedback returns the filtered wet sample to the input sum. Dry input
+    // also reaches MIX; the independent WET output remains available.
+    line(&[(178.0, 298.0), (178.0, 306.0), (58.0, 306.0), (58.0, 297.0)]);
+    painter.rect_filled(
+        Rect::from_center_size(point(120.0, 306.0), vec2(53.0, 8.0) * zoom),
+        0,
+        Color32::from_rgb(15, 24, 18),
+    );
+    text(120.0, 306.0, "FEEDBACK", 6.0);
+    line(&[(31.0, 298.0), (31.0, 309.0), (248.0, 309.0), (248.0, 298.0)]);
+    painter.rect_filled(
+        Rect::from_center_size(point(214.0, 306.0), vec2(51.0, 8.0) * zoom),
+        0,
+        Color32::from_rgb(15, 24, 18),
+    );
+    text(214.0, 306.0, "DRY + WET", 6.0);
+    text(320.0, 306.0, "CLK → TIME", 6.0);
+    lighting.preserve(painter, lighting_start);
+    ui.interact(
+        bounds,
+        ui.id().with(("stock-delay-flow", &node.id)),
+        Sense::hover(),
+    )
+    .on_hover_text("Configured signal-flow guide, not a live waveform or delay measurement. Audio inputs sum to mono; feedback uses the preceding filtered wet sample. Tone filters the wet path. MIX blends dry and wet, while WET remains an independent output. CLK reports the engine light state.");
 }
 fn stock_delay_readout(index: usize, raw: f32) -> String {
     if index == 0 {
@@ -130,130 +228,128 @@ impl Rack {
         let mut action = None;
         for (index, label) in ["TIME", "FEEDBACK", "TONE", "MIX"].iter().enumerate() {
             let x = stock_delay_column(index);
-            painter.text(p(x, 85.0), Align2::CENTER_CENTER, label, font(9.0), INK);
+            painter.text(p(x, 67.0), Align2::CENTER_CENTER, label, font(9.0), INK);
             painter.text(
-                p(x, 101.0),
-                Align2::CENTER_CENTER,
-                if index == 0 {
-                    "1 ms – 10 s"
-                } else if index == 2 {
-                    "DARK / BRIGHT"
-                } else if index == 3 {
-                    "DRY / WET"
-                } else {
-                    "REPEATS"
-                },
-                font(7.5),
-                MUTED,
-            );
-            painter.text(
-                p(x, 270.0),
+                p(x, 188.0),
                 Align2::CENTER_CENTER,
                 "CV DEPTH",
                 font(7.5),
                 MUTED,
             );
-            if index < 3 {
-                painter.line_segment(
-                    [p(x + 43.0, 79.0), p(x + 43.0, 323.0)],
-                    Stroke::new(0.5 * z, Color32::from_rgb(175, 173, 165)),
-                );
-            }
+            painter.text(
+                p(x, 177.0),
+                Align2::CENTER_CENTER,
+                match index {
+                    0 => "1  100  10k ms",
+                    2 => "−100  0  +100%",
+                    _ => "0  50  100%",
+                },
+                font(7.0),
+                MUTED,
+            );
+            painter.text(
+                p(x, 268.0),
+                Align2::CENTER_CENTER,
+                "−100  0  +100%",
+                font(7.0),
+                MUTED,
+            );
         }
         for (index, name) in STOCK_DELAY_PARAMS.iter().enumerate() {
             let min = if index >= 4 { -1.0 } else { 0.0 };
-            let mut raw = node
+            let raw = node
                 .params
                 .get(*name)
                 .copied()
                 .unwrap_or(stock_delay_default(index))
                 .clamp(min, 1.0);
-            let slider_rect = screen(stock_delay_slider_rect(index));
+            let normalized = if index >= 4 { (raw + 1.0) * 0.5 } else { raw };
+            let knob_rect = screen(stock_delay_knob_rect(index));
             // Node/parameter identity survives graph edits and viewport culling.
-            let slider_id = ui.id().with(("stock-delay-slider", &node.id, name));
-            let response = ui
-                .scope_builder(egui::UiBuilder::new().id(slider_id), |ui| {
-                    crate::panel_skin::control_style(ui, z);
-                    ui.spacing_mut().slider_width = if index < 4 {
-                        slider_rect.height()
-                    } else {
-                        slider_rect.width()
-                    };
-                    ui.spacing_mut().interact_size = vec2(18.0, 18.0) * z;
-                    let slider = egui::Slider::new(&mut raw, min..=1.0).show_value(false);
-                    ui.put(
-                        slider_rect,
-                        if index < 4 { slider.vertical() } else { slider },
-                    )
-                })
-                .inner;
-            response.widget_info(|| {
+            let knob = ui.interact(
+                knob_rect,
+                ui.id().with(("stock-delay-knob", &node.id, name)),
+                Sense::click_and_drag(),
+            );
+            knob.widget_info(|| {
                 egui::WidgetInfo::slider(
                     ui.is_enabled(),
                     f64::from(raw),
                     format!("{} {}", node.id, name),
                 )
             });
-            if response.drag_started()
-                || (response.is_pointer_button_down_on()
-                    && ui.input(|input| input.pointer.button_pressed(PointerButton::Primary)))
+            let input_enabled = ui.is_enabled()
+                && self.shortcuts_enabled
+                && self.editing.is_none()
+                && self.annotation_edit.is_none()
+                && !egui::Popup::is_any_open(ui.ctx());
+            let input = self.parameter_knob_input(
+                ui,
+                &knob,
+                normalized,
+                input_enabled,
+                &stock_delay_readout(index, raw),
+            );
+            if input_enabled
+                && (knob.is_pointer_button_down_on()
+                    || knob.clicked_by(PointerButton::Primary)
+                    || knob.drag_started_by(PointerButton::Primary))
             {
                 self.select_primary(node.id.clone());
-                response.request_focus();
-                if ui
-                    .data(|data| data.get_temp::<String>(response.id))
-                    .is_none()
-                {
-                    self.gesture = self.gesture.wrapping_add(1);
-                    ui.data_mut(|data| {
-                        data.insert_temp(
-                            response.id,
-                            format!("rack-stock-delay-slider-{}", self.gesture),
-                        )
-                    });
-                }
             }
-            if response.changed() || response.double_clicked() {
-                self.select_primary(node.id.clone());
-                if response.double_clicked() {
-                    raw = stock_delay_default(index);
-                }
-                let mut args =
-                    json!({"id":node.id,"parameter":name,"value":raw,"expected_revision":revision});
-                if (response.dragged() || response.is_pointer_button_down_on())
-                    && !response.double_clicked()
-                {
-                    if let Some(group) = ui.data(|data| data.get_temp::<String>(response.id)) {
-                        args["history_group"] = json!(group);
+            let keyboard_step = ui.input(|i| {
+                if i.modifiers.command || i.modifiers.ctrl {
+                    if i.modifiers.shift {
+                        0.0001
+                    } else {
+                        0.001
                     }
+                } else if i.modifiers.shift {
+                    0.1
+                } else {
+                    0.01
+                }
+            });
+            let next = if input.reset {
+                Some(stock_delay_default(index))
+            } else if let Some(high) = input.boundary {
+                Some(if high { 1.0 } else { min })
+            } else if input.nudge != 0 {
+                let n = (normalized + input.nudge as f32 * keyboard_step).clamp(0.0, 1.0);
+                Some(if index >= 4 { n * 2.0 - 1.0 } else { n })
+            } else {
+                input
+                    .normalized
+                    .map(|n| if index >= 4 { n * 2.0 - 1.0 } else { n })
+            };
+            if let Some(next) = next.filter(|next| *next != raw) {
+                let mut args = json!({"id":node.id,"parameter":name,"value":next,"expected_revision":revision});
+                if let Some(group) = input.history_group {
+                    args["history_group"] = json!(group);
                 }
                 action = Some(RackAction::Command("set_parameter", args));
             }
-            if response.drag_stopped()
-                || ui.input(|input| input.pointer.button_released(PointerButton::Primary))
-            {
-                ui.data_mut(|data| data.remove::<String>(response.id));
-            }
             let value_rect = screen(stock_delay_value_rect(index));
-            if response.secondary_clicked() {
+            if input_enabled && knob.secondary_clicked() {
                 self.open_precision_editor(stock_delay_edit(node, index, revision), value_rect);
             }
-            let slider_response_id = response.id;
-            response.on_hover_text(match index {
+            knob.clone().on_hover_cursor(egui::CursorIcon::ResizeVertical).on_hover_text(match index {
                 0 => "Delay time from 1 ms to 10 s. Click the readout for milliseconds, seconds or expressions. Clock input sets the time from incoming edges.",
                 1 => "Feedback 0–100%. Higher feedback produces more repeats.",
                 2 => "Tone −100% to +100%, dark to bright. Center is neutral.",
                 3 => "Mix 0–100%, dry to wet. WET output is independent of this control.",
                 _ => "Signed CV depth −100% to +100%. Negative depth inverts modulation.",
             });
-            let label = stock_delay_readout(index, raw);
-            crate::panel_skin::readout(
+            paint_atlas_voice_rotary(
                 &painter,
-                value_rect.center(),
-                &label,
-                value_rect.width(),
+                knob_rect.center(),
+                normalized,
+                knob.hovered() || knob.dragged() || knob.has_focus(),
+                if index < 4 { 29.0 } else { 21.0 },
                 z,
             );
+            let label = stock_delay_readout(index, raw);
+            paint_atlas_voice_readout(&painter, value_rect.center(), &label, value_rect.width(), z);
             let value = ui.interact(
                 value_rect,
                 ui.id().with((&node.id, "stock-delay-value", index)),
@@ -286,34 +382,28 @@ impl Rack {
                 .cloned()
             {
                 let normalized = |value: f32| ((value - min) / (1.0 - min)).clamp(0.0, 1.0);
-                let marker = if index < 4 {
-                    crate::construction_motion::Marker::VerticalSlider {
-                        rect: slider_rect,
-                        old: normalized(cue.old),
-                        new: normalized(cue.new),
-                    }
-                } else {
-                    crate::construction_motion::Marker::Slider {
-                        rect: slider_rect,
-                        old: normalized(cue.old),
-                        new: normalized(cue.new),
-                    }
+                let marker = crate::construction_motion::Marker::Rotary {
+                    center: knob_rect.center(),
+                    radius: if index < 4 { 30.0 } else { 22.0 } * z,
+                    old: normalized(cue.old),
+                    new: normalized(cue.new),
                 };
                 self.register_construction_anchor(
                     ui,
                     node,
                     name,
                     crate::construction_motion::Anchor {
-                        rect: slider_rect.union(value_rect),
+                        rect: knob_rect.union(value_rect),
                         old_text: stock_delay_readout(index, cue.old),
                         new_text: stock_delay_readout(index, cue.new),
                         marker: Some(marker),
                     },
-                    &[slider_response_id, value.id],
+                    &[knob.id, value.id],
                 );
             }
             value.on_hover_text("Click for exact values or expressions. Tab applies and moves through all eight controls.");
         }
+        paint_stock_delay_flow(ui, &painter, node, rect, z, &self.lighting);
         let brightness = self
             .module_lights
             .get(&node.id)

@@ -329,7 +329,7 @@ fn auto_toggle_is_a_native_revision_guarded_parameter_and_preset_setting() {
     let output = frame_revision_state(&ctx, &mut rack, &patch, 1.2, vec![], true, true, revision).1;
     fn find_off(shape: &egui::Shape, below: f32) -> Option<Pos2> {
         match shape {
-            egui::Shape::Text(text) if text.galley.text() == "OFF" && text.pos.y > below => {
+            egui::Shape::Text(text) if text.galley.text() == "MANUAL" && text.pos.y > below => {
                 Some(text.pos + text.galley.size() * 0.5)
             }
             egui::Shape::Vec(children) => children.iter().find_map(|shape| find_off(shape, below)),

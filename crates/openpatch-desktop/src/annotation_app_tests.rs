@@ -395,7 +395,7 @@ fn real_notes_editor_blocks_global_and_performance_shortcuts_and_escape_discards
     ));
     let output = frame(&ctx, &mut app, 0.0, vec![]);
     let edit =
-        text_position(&output, "Edit notes…").expect("real Notes panel renders its editor button");
+        text_position(&output, "EDIT NOTES").expect("real Notes panel renders its editor button");
     frame(
         &ctx,
         &mut app,
@@ -511,7 +511,7 @@ fn real_notes_apply_race_rejects_stale_host_command_and_keeps_the_draft_with_app
     let mut app = annotation_host(dir.path());
     let ctx = egui::Context::default();
     let output = rack_frame(&ctx, &mut app, 0.0, vec![]).1;
-    let edit = text_position(&output, "Edit notes…").unwrap();
+    let edit = text_position(&output, "EDIT NOTES").unwrap();
     assert!(rack_frame(
         &ctx,
         &mut app,

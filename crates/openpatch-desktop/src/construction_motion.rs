@@ -594,11 +594,6 @@ pub(crate) enum Marker {
         old: f32,
         new: f32,
     },
-    Slider {
-        rect: eframe::egui::Rect,
-        old: f32,
-        new: f32,
-    },
 }
 
 /// The stock rotary faces share a 270-degree saved-parameter travel.

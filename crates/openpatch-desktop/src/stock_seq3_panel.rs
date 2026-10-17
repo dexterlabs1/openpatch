@@ -73,15 +73,19 @@ impl Rack {
             && ui.input(|i| i.focused);
         let mut action = None;
         painter.line_segment(
-            [point(207.0, 74.0), point(207.0, 388.0)],
-            Stroke::new(zoom, Color32::from_gray(174)),
+            [point(207.0, 64.0), point(207.0, 388.0)],
+            Stroke::new(0.8 * zoom, Color32::from_rgb(172, 163, 143)),
+        );
+        painter.line_segment(
+            [point(208.0, 64.0), point(208.0, 388.0)],
+            Stroke::new(0.6 * zoom, Color32::from_rgb(245, 241, 227)),
         );
         for row in 0..3 {
             painter.text(
-                point(203.0, 123.0 + row as f32 * 71.5),
+                point(206.0, 112.0 + row as f32 * 72.0),
                 Align2::RIGHT_CENTER,
-                format!("{}", row + 1),
-                crate::panel_skin::print_font(ui.ctx(), 9.0 * zoom),
+                format!("CV{}", row + 1),
+                crate::panel_skin::print_font(ui.ctx(), 8.0 * zoom),
                 MUTED,
             );
         }
@@ -98,8 +102,8 @@ impl Rack {
                 });
                 self.lighting.circle(
                     &painter,
-                    point(x + dx, 306.0),
-                    2.4 * zoom,
+                    point(x + dx, 54.0),
+                    3.2 * zoom,
                     if packet.is_some() {
                         color.gamma_multiply(0.12 + strength * 0.88)
                     } else {
@@ -109,6 +113,8 @@ impl Rack {
                     0.12,
                 );
             }
+            ui.interact(Rect::from_center_size(point(x,54.0),vec2(31.0,15.0)*zoom),ui.id().with((&node.id,"seq-step-status",column)),Sense::hover())
+                .on_hover_text("Observed step status: yellow is selected step; red is outside the engine's current length. No packet means unavailable; knob voltages never substitute for these lights.");
         }
         for index in 0..11 {
             let (label, parameter, press, release, button_rect) = if index < 3 {
@@ -135,8 +141,8 @@ impl Rack {
                     STOCK_SEQ3_GATE_PRESS[column],
                     STOCK_SEQ3_GATE_RELEASE[column],
                     Rect::from_center_size(
-                        point(238.0 + column as f32 * 67.0, 83.0),
-                        vec2(48.0, 23.0) * zoom,
+                        point(238.0 + column as f32 * 67.0, 73.0),
+                        vec2(48.0, 18.0) * zoom,
                     ),
                 )
             };
@@ -154,21 +160,40 @@ impl Rack {
             });
             let held = controls.is_some_and(|s| s.pressed_mask & (1 << index) != 0);
             painter.rect_filled(
+                button_rect.translate(vec2(0.0, 1.0) * zoom),
+                2.0 * zoom,
+                Color32::from_rgb(150, 141, 122),
+            );
+            painter.rect_filled(
                 button_rect,
                 2.0 * zoom,
                 if held {
-                    Color32::from_rgb(226, 197, 143)
+                    Color32::from_rgb(218, 190, 138)
                 } else if enabled && response.hovered() {
                     Color32::from_rgb(246, 241, 227)
                 } else {
-                    Color32::from_rgb(228, 224, 211)
+                    Color32::from_rgb(233, 226, 207)
                 },
             );
             painter.rect_stroke(
                 button_rect,
                 2.0 * zoom,
-                Stroke::new(0.7 * zoom, Color32::from_rgb(139, 134, 122)),
+                Stroke::new(0.7 * zoom, Color32::from_rgb(142, 131, 108)),
                 egui::StrokeKind::Inside,
+            );
+            painter.line_segment(
+                [
+                    button_rect.left_top() + vec2(2.0, 1.5) * zoom,
+                    button_rect.right_top() + vec2(-2.0, 1.5) * zoom,
+                ],
+                Stroke::new(
+                    0.6 * zoom,
+                    if held {
+                        Color32::from_rgb(185, 158, 109)
+                    } else {
+                        Color32::from_rgb(255, 251, 235)
+                    },
+                ),
             );
             painter.text(
                 button_rect.center() - vec2(6.0, 0.0) * zoom,
@@ -181,7 +206,7 @@ impl Rack {
             self.lighting.circle(
                 &painter,
                 button_rect.right_center() - vec2(8.0, 0.0) * zoom,
-                2.4 * zoom,
+                3.0 * zoom,
                 if packet.is_some() {
                     Color32::from_rgb(86, 201, 119).gamma_multiply(0.12 + strength * 0.88)
                 } else {
@@ -262,13 +287,27 @@ impl Rack {
                     ports.len(),
                     panel_width("stock_seq3"),
                 );
-                crate::panel_skin::port_label(
-                    &painter,
-                    point(position.x, position.y - 20.0),
-                    &port_label(port).to_uppercase(),
-                    !input,
-                    zoom,
+                let lower = !input && (4..12).contains(&index);
+                let center = point(position.x, position.y - if lower { 20.5 } else { 25.0 });
+                let label = port_label(port).to_uppercase();
+                let color = if input {
+                    INK
+                } else {
+                    Color32::from_rgb(245, 242, 233)
+                };
+                let galley = painter.layout_no_wrap(
+                    label,
+                    crate::panel_skin::print_font(ui.ctx(), if lower { 9.5 } else { 10.5 } * zoom),
+                    color,
                 );
+                if !input {
+                    painter.rect_filled(
+                        Rect::from_center_size(center, galley.size() + vec2(6.0, 1.0) * zoom),
+                        1.5 * zoom,
+                        INK,
+                    );
+                }
+                painter.galley(center - galley.size() * 0.5, galley, color);
             }
         }
         let display = actual.as_ref().and_then(|s| s["passthrough"].as_bool());
@@ -378,7 +417,7 @@ impl Rack {
             }
         }
         painter.text(
-            point(107.0, 256.0),
+            point(107.0, 266.0),
             Align2::CENTER_CENTER,
             if node.bypassed {
                 "BYPASSED / FROZEN"

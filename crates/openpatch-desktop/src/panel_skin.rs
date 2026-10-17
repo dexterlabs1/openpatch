@@ -132,24 +132,7 @@ pub(crate) fn heading_font(ctx: &egui::Context, size: f32) -> FontId {
     }
 }
 
-pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
-    // Warm, matte metal: a simple face and a crisp edge keep the controls clear.
-    // Room illumination belongs to the caller, including bespoke panel layouts.
-    painter.rect_filled(
-        rect.translate(vec2(1.0, 1.5) * zoom),
-        1.0,
-        Color32::from_black_alpha(38),
-    );
-    painter.rect_filled(rect, 1.0, Color32::from_rgb(139, 140, 133));
-    let face = rect.shrink(1.0 * zoom);
-    painter.rect_filled(face, 0.0, Color32::from_rgb(223, 220, 210));
-    painter.line_segment(
-        [face.left_top(), face.right_top()],
-        Stroke::new(0.6 * zoom, Color32::from_rgb(237, 234, 223)),
-    );
-}
-
-/// Unprinted warm-ivory stock used by the Signal Atlas VCA mixer faceplate.
+/// Warm-ivory stock shared by every rack panel and browser thumbnail.
 /// This intentionally has no family-color enamel band.
 pub(crate) fn signal_atlas_face(painter: &egui::Painter, rect: Rect, zoom: f32) {
     painter.rect_filled(
@@ -194,7 +177,29 @@ pub(crate) fn signal_atlas_rotary(
     );
     painter.circle_filled(center, radius + 1.0 * zoom, Color32::from_rgb(28, 30, 29));
     painter.circle_filled(center, radius - 1.2 * zoom, shell);
+    // Fluted grip, contained inside the established control silhouette. Omit
+    // subpixel detail in thumbnails; it must not compete with the value marker.
+    if radius >= 14.0 {
+        for flute in 0..40 {
+            let angle = std::f32::consts::TAU * flute as f32 / 40.0;
+            let direction = vec2(angle.cos(), angle.sin());
+            let light = (-direction.x * 0.6 - direction.y * 0.8).max(0.0);
+            let shade = (32.0 + light * 43.0) as u8;
+            painter.line_segment(
+                [
+                    center + direction * (radius - 3.5 * zoom),
+                    center + direction * (radius + 0.3 * zoom),
+                ],
+                Stroke::new(0.9 * zoom, Color32::from_gray(shade)),
+            );
+        }
+    }
     painter.circle_filled(center, radius - 4.1 * zoom, face);
+    painter.circle_stroke(
+        center,
+        radius - 4.1 * zoom,
+        Stroke::new(0.6 * zoom, Color32::from_rgb(77, 81, 78)),
+    );
     // Ten-percent marks describe normalized travel, including logarithmic
     // controls; the adjacent readout supplies each control's physical units.
     for index in 0..=10 {
@@ -212,11 +217,12 @@ pub(crate) fn signal_atlas_rotary(
         );
     }
     let angle = std::f32::consts::PI * (0.75 + 1.5 * value);
-    let tip = center + vec2(angle.cos(), angle.sin()) * (radius - 9.0 * zoom);
+    let direction = vec2(angle.cos(), angle.sin());
+    let tip = center + direction * (radius - 6.0 * zoom);
     painter.line_segment(
-        [center, tip],
+        [center + direction * radius * 0.12, tip],
         Stroke::new(
-            2.4 * zoom,
+            2.7 * zoom,
             if active {
                 Color32::from_rgb(244, 235, 211)
             } else {
@@ -224,7 +230,6 @@ pub(crate) fn signal_atlas_rotary(
             },
         ),
     );
-    painter.circle_filled(center, 2.2 * zoom, Color32::from_rgb(220, 214, 199));
 }
 
 /// The normalized parameter's travel in screen points. `radius` is a logical,
@@ -382,8 +387,14 @@ pub(crate) fn parameter_rotary(
             center + vec2(b.cos(), b.sin()) * ring,
         ];
         if t <= value {
-            painter.line_segment(points, Stroke::new(4.8 * zoom, accent.gamma_multiply(0.09)));
-            painter.line_segment(points, Stroke::new(2.6 * zoom, accent.gamma_multiply(0.32)));
+            painter.line_segment(
+                points,
+                Stroke::new(9.0 * zoom, lighting.setting_glow(accent, 0.07)),
+            );
+            painter.line_segment(
+                points,
+                Stroke::new(5.0 * zoom, lighting.setting_glow(accent, 0.22)),
+            );
             painter.line_segment(points, Stroke::new(1.35 * zoom, accent));
         } else {
             painter.line_segment(points, Stroke::new(1.1 * zoom, muted));
@@ -415,9 +426,8 @@ pub(crate) fn socket(
     zoom: f32,
     scale: f32,
 ) {
-    // Flat concentric marks keep the connection target legible without a
-    // decorative nut, offset shadow or reflected-metal stack. Output surrounds
-    // and actual signal emission are painted separately by the caller.
+    // A restrained hex nut and inner bevel share the existing socket bounds.
+    // Actual signal emission remains a separate layer owned by the caller.
     painter.circle_filled(
         center,
         10.3 * zoom * scale,
@@ -427,6 +437,24 @@ pub(crate) fn socket(
         center,
         10.3 * zoom * scale,
         Stroke::new(0.8 * zoom, Color32::from_rgb(106, 109, 103)),
+    );
+    if zoom * scale >= 0.5 {
+        let nut: Vec<_> = (0..6)
+            .map(|corner| {
+                let angle = std::f32::consts::TAU * corner as f32 / 6.0;
+                center + vec2(angle.cos(), angle.sin()) * (9.7 * zoom * scale)
+            })
+            .collect();
+        painter.add(egui::Shape::convex_polygon(
+            nut,
+            Color32::from_rgb(171, 173, 162),
+            Stroke::new(0.65 * zoom, Color32::from_rgb(228, 227, 208)),
+        ));
+    }
+    painter.circle_stroke(
+        center,
+        7.1 * zoom * scale,
+        Stroke::new(1.1 * zoom, Color32::from_rgb(109, 113, 106)),
     );
     painter.circle_filled(center, 5.9 * zoom * scale, Color32::from_rgb(12, 17, 16));
     if connected {

@@ -223,7 +223,7 @@ fn merge_rack_and_browser_share_geometry_with_separate_jacks_and_readable_channe
             fn measured_screens(shape: &egui::Shape, screens: &mut Vec<Rect>) {
                 match shape {
                     egui::Shape::Vec(shapes) => for shape in shapes { measured_screens(shape, screens); },
-                    egui::Shape::Rect(rect) if rect.fill == Color32::from_rgb(20, 31, 31) => screens.push(rect.rect),
+                    egui::Shape::Rect(rect) if rect.fill == Color32::from_rgb(15, 24, 18) => screens.push(rect.rect),
                     _ => {}
                 }
             }

@@ -409,7 +409,7 @@ fn appended_zoom_and_small_label_scenes_use_actual_panels_and_request_five_new_r
         ["multi_vco", "multi_lfo", "mix6", "audio_stereo"]
     );
     let small_labels = frame(&ctx, &mut app, 0.6, vec![], true);
-    for label in ["LFM", "SOFT", "Average", "Invert"] {
+    for label in ["Linear FM", "Soft sync", "Average", "Invert"] {
         text(&small_labels, label, false);
     }
     for logical in [1978, 1994, 2010, 2026, 2042] {

@@ -11,7 +11,7 @@
     {"id":"amplifier","kind":"stock_vca","params":{"level":0.3,"response":1}},
     {"id":"out","kind":"audio_stereo","params":{"gain":0.12,"dc_block":1}},
     {"id":"scope","kind":"scope","params":{"time":0.25,"trigger_enabled":0,"x_scale":1,"y_scale":1}},
-    {"id":"guide","kind":"notes","content":{"type":"notes","text":"STOCK OCTAVE VOICE\n\nThree pitch lanes feed\nthe octave shifter.\nLFO adds quantized shifts.\n\nChoose one of nine shifts.\nClick SHIFT VALUE to type.\n\nGreen readout shows\nthe first voice's offset.\nIt holds during bypass.\n\nClock → ADSR → VCA.\nScope: pitch before/after."}}
+    {"id":"guide","kind":"notes","content":{"type":"notes","text":"STOCK OCTAVE VOICE\n\nThree pitch lanes feed\nthe octave shifter.\nLFO adds quantized shifts.\nChoose one of nine shifts.\nClick SHIFT VALUE to type.\nGreen readout shows\nthe first voice's offset.\nIt holds during bypass.\nClock → ADSR → VCA.\nScope: pitch before/after."}}
   ],
   "cables": [
     {"from":"chord","to":"octave","input":"pitch"},

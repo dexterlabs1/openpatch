@@ -604,3 +604,78 @@ fn annotation_notes_disabled_by_modal_retains_draft_and_resumes_editing() {
         assert_eq!(serde_json::to_value(&scene.patch).unwrap(), saved);
     }
 }
+
+#[test]
+fn shipped_factory_notes_fit_the_selected_display_face_without_clipped_guidance() {
+    fn find(shape: &egui::Shape, expected: &str) -> Option<Rect> {
+        match shape {
+            egui::Shape::Text(text) if text.galley.text() == expected => {
+                Some(text.galley.rect.translate(text.pos.to_vec2()))
+            }
+            egui::Shape::Vec(shapes) => shapes.iter().find_map(|shape| find(shape, expected)),
+            _ => None,
+        }
+    }
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+    let mut count = 0;
+    let mut clipped_guides = Vec::new();
+    for entry in std::fs::read_dir(directory).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_none_or(|extension| extension != "json") {
+            continue;
+        }
+        let Ok(value) = serde_json::from_slice::<Value>(&std::fs::read(&path).unwrap()) else {
+            continue;
+        };
+        let Some(nodes) = value["nodes"].as_array() else {
+            continue;
+        };
+        for node in nodes.iter().filter(|node| node["kind"] == "notes") {
+            let expected = node["content"]["text"].as_str().unwrap();
+            assert!(!expected.is_empty());
+            for zoom in [0.25, 0.35, 0.42, 0.8, 1.0] {
+                let mut scene = Scene::blank(zoom, Vec2::ZERO, Pos2::ZERO);
+                crate::panel_skin::install_fonts(&scene.ctx);
+                let mut node = node.clone();
+                node["id"] = json!("blank");
+                scene.patch = serde_json::from_value(json!({"version":2,"nodes":[node]})).unwrap();
+                let output = scene.frame(vec![]).1;
+                if zoom == 1.0 {
+                    if let Some(directory) = std::env::var_os("OPENPATCH_FACTORY_NOTES_PREVIEW_DIR")
+                    {
+                        let directory = std::path::PathBuf::from(directory);
+                        std::fs::create_dir_all(&directory).unwrap();
+                        let mut capture = crate::headless_review::CpuCapture::default();
+                        capture.observe(&output);
+                        let mut target = directory.join(path.file_name().unwrap());
+                        target.set_extension("png");
+                        capture.save(&scene.ctx, output.clone(), vec2(260.0, 430.0), target);
+                    }
+                }
+                let (clip, bounds) = output
+                    .shapes
+                    .iter()
+                    .find_map(|shape| {
+                        find(&shape.shape, expected).map(|bounds| (shape.clip_rect, bounds))
+                    })
+                    .expect("factory guide is painted as authored");
+                if !clip.expand(0.5).contains_rect(bounds) {
+                    clipped_guides.push(format!(
+                        "{} zoom={zoom}: {bounds:?} outside {clip:?}",
+                        path.display()
+                    ));
+                }
+            }
+            count += 1;
+        }
+    }
+    assert!(
+        count >= 14,
+        "all shipped annotated guides must be exercised"
+    );
+    assert!(
+        clipped_guides.is_empty(),
+        "Factory guidance clipped:\n{}",
+        clipped_guides.join("\n")
+    );
+}

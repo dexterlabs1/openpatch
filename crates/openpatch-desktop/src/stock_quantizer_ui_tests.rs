@@ -538,10 +538,10 @@ fn stock_quantizer_shared_panel_preserves_keyboard_text_and_jack_geometry_at_all
             );
             for required in [
                 "STOCK QUANTIZER",
-                "SCALE",
+                "ENABLED NOTES",
                 "PLAYED —",
-                "COLORED: ENABLED  ·  CYAN: PLAYED",
-                "OFFSET (SEMITONES)",
+                "AMBER: ENABLED  ·  CYAN: PLAYED",
+                "OFFSET",
                 "−1 semitone",
                 "+1 semitone",
                 "Presets",

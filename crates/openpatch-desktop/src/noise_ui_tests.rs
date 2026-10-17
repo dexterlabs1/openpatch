@@ -81,11 +81,7 @@ fn noise_level_drag_and_keyboard_use_normal_history_commands() {
     let mut rack = Rack::default();
     let mut patch = noise_patch();
     frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-    let rail = noise_control_rects(0).0.translate(vec2(24.0, 12.0));
-    let start = pos2(
-        rail.left() + 5.0 + (rail.width() - 10.0) * 0.65,
-        rail.center().y,
-    );
+    let start = noise_control_rects(0).0.center() + vec2(24.0, 12.0);
     let grouped = |action| match action {
         Some(RackAction::Command("set_parameter", args)) => {
             assert_eq!(args["id"], "noise");
@@ -100,20 +96,20 @@ fn noise_level_drag_and_keyboard_use_normal_history_commands() {
         }
         _ => panic!("expected level parameter command"),
     };
-    let (first_group, pressed) = grouped(frame(
+    assert!(frame(
         &ctx,
         &mut rack,
         &patch,
         1.0,
         vec![egui::Event::PointerMoved(start), button(start, true)],
-    ));
-    patch.nodes[0].params.insert("level".into(), pressed);
+    )
+    .is_none());
     let (group, first) = grouped(frame(
         &ctx,
         &mut rack,
         &patch,
         1.1,
-        vec![egui::Event::PointerMoved(start + vec2(5.0, 0.0))],
+        vec![egui::Event::PointerMoved(start - vec2(0.0, 15.0))],
     ));
     patch.nodes[0].params.insert("level".into(), first);
     let (same, second) = grouped(frame(
@@ -121,25 +117,24 @@ fn noise_level_drag_and_keyboard_use_normal_history_commands() {
         &mut rack,
         &patch,
         1.2,
-        vec![egui::Event::PointerMoved(start + vec2(10.0, 0.0))],
+        vec![egui::Event::PointerMoved(start - vec2(0.0, 30.0))],
     ));
-    assert_eq!(first_group, group);
     assert_eq!(group, same);
-    assert!(second > first && first > pressed);
+    assert!(second > first && first > 1.0);
     patch.nodes[0].params.insert("level".into(), second);
     frame(
         &ctx,
         &mut rack,
         &patch,
         1.3,
-        vec![button(start + vec2(10.0, 0.0), false)],
+        vec![button(start - vec2(0.0, 30.0), false)],
     );
     let action = frame(
         &ctx,
         &mut rack,
         &patch,
         1.4,
-        vec![key(egui::Key::ArrowLeft)],
+        vec![key(egui::Key::ArrowDown)],
     );
     assert!(
         matches!(action, Some(RackAction::Command("set_parameter", args))
@@ -183,7 +178,10 @@ fn noise_seven_named_mono_outputs_are_separate_and_patchable_at_all_scales() {
         }
         for port in NOISE_OUTPUTS {
             let ctx = egui::Context::default();
-            let mut rack = Rack { zoom: scale, ..Rack::default() };
+            let mut rack = Rack {
+                zoom: scale,
+                ..Rack::default()
+            };
             let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
                 {"id":"noise","kind":"colored_noise"},{"id":"sink","kind":"audio_out"}
             ]}))
@@ -257,4 +255,127 @@ fn noise_static_spectra_have_no_runtime_seed_or_level_animation() {
     );
     assert!(noise_parameter_help("seed").contains("sample rate"));
     assert!(noise_parameter_help("seed").contains("Changing the seed"));
+}
+
+#[test]
+fn noise_level_fine_rotary_gesture_uses_one_session_undo() {
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let workspace = tempfile::tempdir().unwrap();
+    let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+    session.replace_patch(noise_patch(), None).unwrap();
+    frame_revision_state(
+        &ctx,
+        &mut rack,
+        session.patch(),
+        0.0,
+        vec![],
+        true,
+        true,
+        session.revision(),
+    );
+    let start = noise_control_rects(0).0.center() + vec2(24.0, 12.0);
+    let fine = egui::Modifiers {
+        ctrl: true,
+        ..Default::default()
+    };
+    let press = egui::Event::PointerButton {
+        pos: start,
+        button: PointerButton::Primary,
+        pressed: true,
+        modifiers: fine,
+    };
+    let baseline = session.snapshot()["history"]["undo_steps"]
+        .as_u64()
+        .unwrap();
+    assert!(frame_revision_state(
+        &ctx,
+        &mut rack,
+        session.patch(),
+        1.0,
+        vec![egui::Event::PointerMoved(start), press],
+        true,
+        true,
+        session.revision()
+    )
+    .0
+    .is_none());
+    let carrier = || egui::Event::Key {
+        key: egui::Key::F12,
+        physical_key: None,
+        pressed: false,
+        repeat: false,
+        modifiers: fine,
+    };
+    let moved = start - vec2(0.0, 15.0);
+    let revision = session.revision();
+    let action = frame_revision_state(
+        &ctx,
+        &mut rack,
+        session.patch(),
+        1.1,
+        vec![egui::Event::PointerMoved(moved), carrier()],
+        true,
+        true,
+        revision,
+    )
+    .0;
+    let Some(RackAction::Command("set_parameter", first)) = action else {
+        panic!("fine rotary drag must edit level")
+    };
+    assert_eq!(first["parameter"], "level");
+    assert_eq!(first["expected_revision"], revision);
+    assert!((first["value"].as_f64().unwrap() - 1.02).abs() < 1e-6);
+    assert!(first["history_group"].is_string());
+    session.execute("set_parameter", first.clone()).unwrap();
+    let next = start - vec2(0.0, 30.0);
+    let revision = session.revision();
+    let action = frame_revision_state(
+        &ctx,
+        &mut rack,
+        session.patch(),
+        1.2,
+        vec![egui::Event::PointerMoved(next), carrier()],
+        true,
+        true,
+        revision,
+    )
+    .0;
+    let Some(RackAction::Command("set_parameter", second)) = action else {
+        panic!("second fine rotary move must edit level")
+    };
+    assert_eq!(second["expected_revision"], revision);
+    assert_eq!(second["history_group"], first["history_group"]);
+    assert!((second["value"].as_f64().unwrap() - 1.04).abs() < 1e-6);
+    session.execute("set_parameter", second.clone()).unwrap();
+    let saved = session.patch().nodes[0].params["level"];
+    assert!(frame_revision_state(
+        &ctx,
+        &mut rack,
+        session.patch(),
+        1.3,
+        vec![button(next, false)],
+        true,
+        true,
+        session.revision()
+    )
+    .0
+    .is_none());
+    assert_eq!(
+        session.snapshot()["history"]["undo_steps"]
+            .as_u64()
+            .unwrap(),
+        baseline + 1
+    );
+    session.execute("undo", json!({})).unwrap();
+    assert_eq!(
+        session.patch().nodes[0]
+            .params
+            .get("level")
+            .copied()
+            .unwrap_or(1.0),
+        1.0
+    );
+    session.execute("redo", json!({})).unwrap();
+    assert_eq!(session.patch().nodes[0].params["level"], saved);
 }

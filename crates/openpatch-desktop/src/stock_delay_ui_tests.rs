@@ -103,9 +103,9 @@ fn stock_delay_all_eight_controls_drag_with_revision_and_shared_undo_gesture() {
     for (index, name) in STOCK_DELAY_PARAMS.iter().enumerate() {
         let ctx = egui::Context::default();
         let mut rack = Rack::default();
-        let patch = patch();
+        let mut patch = patch();
         frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
-        let start = at(stock_delay_slider_rect(index).center());
+        let start = at(stock_delay_knob_rect(index).center());
         frame_revision_state(
             &ctx,
             &mut rack,
@@ -116,12 +116,7 @@ fn stock_delay_all_eight_controls_drag_with_revision_and_shared_undo_gesture() {
             true,
             29,
         );
-        let end = start
-            + if index < 4 {
-                vec2(0.0, -25.0)
-            } else {
-                vec2(-20.0, 0.0)
-            };
+        let end = start + vec2(0.0, if index < 4 { -25.0 } else { 25.0 });
         let Some(RackAction::Command("set_parameter", first)) = frame_revision_state(
             &ctx,
             &mut rack,
@@ -136,12 +131,10 @@ fn stock_delay_all_eight_controls_drag_with_revision_and_shared_undo_gesture() {
         else {
             panic!("no drag for {name}")
         };
-        let next = end
-            + if index < 4 {
-                vec2(0.0, -8.0)
-            } else {
-                vec2(5.0, 0.0)
-            };
+        patch.nodes[0]
+            .params
+            .insert((*name).into(), first["value"].as_f64().unwrap() as f32);
+        let next = end + vec2(0.0, if index < 4 { -8.0 } else { 8.0 });
         let Some(RackAction::Command("set_parameter", second)) = frame_revision_state(
             &ctx,
             &mut rack,
@@ -160,11 +153,23 @@ fn stock_delay_all_eight_controls_drag_with_revision_and_shared_undo_gesture() {
         assert_eq!(first["id"], "echo");
         assert_eq!(first["expected_revision"], 29);
         assert_eq!(second["expected_revision"], 30);
-        assert!(first["history_group"]
-            .as_str()
-            .unwrap()
-            .starts_with("rack-stock-delay-slider-"));
+        assert!(first["history_group"].as_str().is_some());
         assert_eq!(first["history_group"], second["history_group"]);
+        patch.nodes[0]
+            .params
+            .insert((*name).into(), second["value"].as_f64().unwrap() as f32);
+        assert!(frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.3,
+            vec![button(next, false)],
+            true,
+            true,
+            31,
+        )
+        .0
+        .is_none());
         let value = first["value"].as_f64().unwrap();
         assert!(
             if index < 4 { value > 0.5 } else { value < 0.0 },
@@ -251,12 +256,7 @@ fn stock_delay_controls_and_eight_jacks_fit_without_overlapping_targets() {
     let bounds = Rect::from_min_size(Pos2::ZERO, vec2(panel_width("stock_delay"), PANEL_HEIGHT));
     assert_eq!(bounds.width(), 360.0);
     let controls = (0..8)
-        .flat_map(|index| {
-            [
-                stock_delay_slider_rect(index),
-                stock_delay_value_rect(index),
-            ]
-        })
+        .flat_map(|index| [stock_delay_knob_rect(index), stock_delay_value_rect(index)])
         .collect::<Vec<_>>();
     for (index, control) in controls.iter().enumerate() {
         assert!(bounds.contains_rect(*control));
@@ -268,6 +268,8 @@ fn stock_delay_controls_and_eight_jacks_fit_without_overlapping_targets() {
         .map(|index| port_position("stock_delay", true, index, 6, bounds.width()))
         .chain((0..2).map(|index| port_position("stock_delay", false, index, 2, bounds.width())))
         .collect::<Vec<_>>();
+    assert!(ports[..4].iter().all(|port| port.y == 344.0));
+    assert!(ports[4..].iter().all(|port| port.y == 380.0));
     for (index, port) in ports.iter().enumerate() {
         assert!(bounds.shrink(14.0).contains(*port));
         for control in &controls {
@@ -353,6 +355,10 @@ fn stock_delay_shared_browser_and_rack_labels_fit_at_zoom_and_200_percent_previe
                 "500.0 ms",
                 "50%",
                 "+0%",
+                "DELAY / SRC",
+                "DELAY / SRC",
+                "DRY + WET",
+                "CLK → TIME",
             ] {
                 assert!(
                     drawn.iter().any(|(label, _)| label == required),
@@ -388,7 +394,7 @@ fn stock_delay_shared_browser_and_rack_labels_fit_at_zoom_and_200_percent_previe
 }
 
 #[test]
-fn stock_delay_held_slider_keeps_node_and_history_identity_across_graph_edits() {
+fn stock_delay_held_rotary_keeps_node_and_history_identity_across_graph_edits() {
     for change in ["remove", "insert", "reorder"] {
         let ctx = egui::Context::default();
         let mut rack = Rack::default();
@@ -400,7 +406,7 @@ fn stock_delay_held_slider_keeps_node_and_history_identity_across_graph_edits() 
         rack.positions.insert("earlier".into(), pos2(0.0, 0.0));
         rack.positions.insert("held".into(), pos2(390.0, 0.0));
         frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
-        let start = at(stock_delay_slider_rect(0).center() + vec2(390.0, 0.0));
+        let start = at(stock_delay_knob_rect(0).center() + vec2(390.0, 0.0));
         frame_revision_state(
             &ctx,
             &mut rack,
@@ -454,11 +460,11 @@ fn stock_delay_held_slider_keeps_node_and_history_identity_across_graph_edits() 
         )
         .0;
         let Some(RackAction::Command("set_parameter", after)) = after else {
-            panic!("held slider lost after {change}")
+            panic!("held rotary lost after {change}")
         };
         assert_eq!(
             after["id"], "held",
-            "active slider transferred after {change}"
+            "active rotary transferred after {change}"
         );
         assert_eq!(after["parameter"], "time", "wrong parameter after {change}");
         assert_eq!(after["expected_revision"], 30);
@@ -471,7 +477,7 @@ fn stock_delay_held_slider_keeps_node_and_history_identity_across_graph_edits() 
 }
 
 #[test]
-fn stock_delay_deleted_held_slider_never_transfers_drag_to_remaining_filter() {
+fn stock_delay_deleted_held_rotary_never_transfers_drag_to_remaining_delay() {
     let ctx = egui::Context::default();
     let mut rack = Rack::default();
     let mut patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
@@ -482,7 +488,7 @@ fn stock_delay_deleted_held_slider_never_transfers_drag_to_remaining_filter() {
     rack.positions.insert("held".into(), pos2(0.0, 0.0));
     rack.positions.insert("remaining".into(), pos2(390.0, 0.0));
     frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
-    let start = at(stock_delay_slider_rect(0).center());
+    let start = at(stock_delay_knob_rect(0).center());
     frame_revision_state(
         &ctx,
         &mut rack,
@@ -521,7 +527,7 @@ fn stock_delay_deleted_held_slider_never_transfers_drag_to_remaining_filter() {
     .0;
     assert!(
         after.is_none(),
-        "a deleted slider's drag must not edit the remaining node"
+        "a deleted rotary's drag must not edit the remaining node"
     );
     let released = frame_revision_state(
         &ctx,

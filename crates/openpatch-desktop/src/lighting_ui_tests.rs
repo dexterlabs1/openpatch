@@ -9,6 +9,16 @@ fn normalized(shapes: &[egui::epaint::ClippedShape]) -> Vec<String> {
         .iter()
         .map(|clipped| {
             let mut clipped = clipped.clone();
+            // Emitted halos spread farther as the room darkens. Preserve their
+            // topology/order/clip, while comparing all physical geometry exactly.
+            if let egui::Shape::Mesh(mesh) = &mut clipped.shape {
+                if mesh.vertices.len() == 120 && mesh.vertices.iter().all(|v| v.color.a() == 0) {
+                    let mesh = std::sync::Arc::make_mut(mesh);
+                    for vertex in &mut mesh.vertices {
+                        vertex.pos = Pos2::ZERO;
+                    }
+                }
+            }
             egui::epaint::shape_transform::adjust_colors(&mut clipped.shape, |color| {
                 // Retain alpha while discarding ambient RGB. This compares the
                 // complete geometry, text meshes, order and clips of every shape.
@@ -78,7 +88,7 @@ fn darkroom_live_lamps_survive_while_inactive_and_missing_lamps_dim() {
     for (kind, x, y, radius, count, index, color) in [
         (
             "poly_viz",
-            55.0,
+            53.0,
             120.0,
             3.0,
             16,
@@ -106,7 +116,7 @@ fn darkroom_live_lamps_survive_while_inactive_and_missing_lamps_dim() {
         (
             "rescale",
             176.5,
-            294.0,
+            299.0,
             2.2,
             2,
             0,
@@ -128,7 +138,8 @@ fn darkroom_live_lamps_survive_while_inactive_and_missing_lamps_dim() {
                 .find_map(|shape| match &shape.shape {
                     egui::Shape::Circle(circle)
                         if circle.center.distance(pos2(24.0 + x, 12.0 + y)) < 0.01
-                            && (circle.radius - crate::lighting::lamp_radius(radius)).abs() < 0.01 =>
+                            && (circle.radius - crate::lighting::lamp_radius(radius)).abs()
+                                < 0.01 =>
                     {
                         Some(circle.fill)
                     }
@@ -291,7 +302,7 @@ fn darkroom_numeric_editor_and_selection_remain_readable_and_controls_keep_targe
         let mut rack = Rack::default();
         rack.set_room_brightness(amount);
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-        let field = pos2(99.0, 169.0);
+        let field = pos2(24.0, 12.0) + atlas_multi_value_center("frequency").to_vec2();
         frame(
             &ctx,
             &mut rack,
@@ -369,11 +380,11 @@ fn darkroom_hovered_connected_jack_keeps_patching_guidance_visible() {
 fn darkroom_active_inline_editors_keep_text_background_caret_and_typed_actions() {
     for (kind, parameter, local, typed, expected) in [
         (
-            "seq3",
-            "tempo",
-            Rect::from_min_size(pos2(20.0, 99.0), vec2(175.0, 24.0)),
-            "144",
-            144.0,
+            "poly_constant",
+            "channels",
+            Rect::from_min_size(pos2(260.0,62.0),vec2(75.0,24.0)),
+            "4",
+            4.0,
         ),
         ("scope", "time", scope_control_rect(2), "0.125", 0.125),
     ] {

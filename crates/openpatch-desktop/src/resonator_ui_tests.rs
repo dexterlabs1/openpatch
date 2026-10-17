@@ -105,100 +105,258 @@ fn every_resonator_value_opens_guarded_exact_entry_with_correct_units() {
 }
 
 #[test]
-fn resonator_slider_drag_groups_one_gesture_and_is_keyboard_adjustable() {
+fn resonator_rotary_drag_groups_one_gesture_and_is_keyboard_adjustable() {
     let ctx = egui::Context::default();
     let mut rack = Rack::default();
     let mut patch = patch();
-    frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-    // Click away from the thumb before dragging; the initial jump must join
-    // the same undo group as the rest of this gesture.
-    let rail = resonator_control_rects(1).0.translate(vec2(24.0, 12.0));
-    let start = pos2(
-        rail.left() + 5.0 + (rail.width() - 10.0) * 0.4,
-        rail.center().y,
-    );
+    frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 7);
+    let start = resonator_control_rects(1).0.center() + vec2(24.0, 12.0);
     let grouped = |action| match action {
         Some(RackAction::Command("set_parameter", args)) => {
             assert_eq!(args["parameter"], "stiffness");
             (
                 args["history_group"]
                     .as_str()
-                    .expect("one grouped slider gesture")
+                    .expect("one grouped rotary gesture")
                     .to_owned(),
                 args["value"].as_f64().unwrap() as f32,
+                args["expected_revision"].as_u64().unwrap(),
             )
         }
-        _ => panic!("expected slider edit"),
+        _ => panic!("expected rotary edit"),
     };
-    let (press_group, pressed_value) = grouped(frame(
+    assert!(frame_revision_state(
         &ctx,
         &mut rack,
         &patch,
         1.0,
         vec![egui::Event::PointerMoved(start), button(start, true)],
-    ));
-    patch.nodes[0]
-        .params
-        .insert("stiffness".into(), pressed_value);
-    let (group, first) = grouped(frame(
-        &ctx,
-        &mut rack,
-        &patch,
-        1.1,
-        vec![egui::Event::PointerMoved(start + vec2(15.0, 0.0))],
-    ));
+        true,
+        true,
+        7,
+    )
+    .0
+    .is_none());
+    let (group, first, revision) = grouped(
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.1,
+            vec![egui::Event::PointerMoved(start - vec2(0.0, 15.0))],
+            true,
+            true,
+            7,
+        )
+        .0,
+    );
+    assert_eq!(revision, 7);
     patch.nodes[0].params.insert("stiffness".into(), first);
-    let (same, second) = grouped(frame(
-        &ctx,
-        &mut rack,
-        &patch,
-        1.2,
-        vec![egui::Event::PointerMoved(start + vec2(30.0, 0.0))],
-    ));
+    let (same, second, revision) = grouped(
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.2,
+            vec![egui::Event::PointerMoved(start - vec2(0.0, 30.0))],
+            true,
+            true,
+            8,
+        )
+        .0,
+    );
     assert_eq!(group, same);
-    assert_eq!(press_group, group);
+    assert_eq!(revision, 8);
     assert!(second > first && first > 0.2);
     patch.nodes[0].params.insert("stiffness".into(), second);
-    frame(
+    assert!(frame_revision_state(
         &ctx,
         &mut rack,
         &patch,
         1.3,
-        vec![button(start + vec2(30.0, 0.0), false)],
-    );
-    let keyboard = frame(
+        vec![button(start - vec2(0.0, 30.0), false)],
+        true,
+        true,
+        9,
+    )
+    .0
+    .is_none());
+    let keyboard = frame_revision_state(
         &ctx,
         &mut rack,
         &patch,
         1.4,
         vec![egui::Event::Key {
-            key: egui::Key::ArrowRight,
+            key: egui::Key::ArrowUp,
             physical_key: None,
             pressed: true,
             repeat: false,
             modifiers: egui::Modifiers::NONE,
         }],
+        true,
+        true,
+        9,
+    )
+    .0;
+    let Some(RackAction::Command("set_parameter", keyboard)) = keyboard else {
+        panic!("focused rotary must accept ArrowUp")
+    };
+    assert_eq!(keyboard["parameter"], "stiffness");
+    assert!(keyboard["value"].as_f64().unwrap() > f64::from(second));
+    assert_eq!(keyboard["expected_revision"], 9);
+    assert!(keyboard.get("history_group").is_none());
+    patch.nodes[0].params.insert(
+        "stiffness".into(),
+        keyboard["value"].as_f64().unwrap() as f32,
     );
-    assert!(
-        matches!(keyboard, Some(RackAction::Command("set_parameter", args))
-        if args["parameter"] == "stiffness" && args["value"].as_f64().unwrap() > f64::from(second)
-        && args.get("history_group").is_none())
-    );
-    frame(
+    frame_revision_state(
         &ctx,
         &mut rack,
         &patch,
         2.0,
         vec![egui::Event::PointerMoved(start), button(start, true)],
+        true,
+        true,
+        10,
     );
-    let (other, _) = grouped(frame(
+    let (other, _, revision) = grouped(
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            2.1,
+            vec![egui::Event::PointerMoved(start - vec2(0.0, 15.0))],
+            true,
+            true,
+            10,
+        )
+        .0,
+    );
+    assert_ne!(other, group);
+    assert_eq!(revision, 10);
+}
+
+#[test]
+fn resonator_rotary_ctrl_drag_uses_fine_increment() {
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let workspace = tempfile::tempdir().unwrap();
+    let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+    session.replace_patch(patch(), None).unwrap();
+    frame_revision_state(
         &ctx,
         &mut rack,
-        &patch,
-        2.1,
-        vec![egui::Event::PointerMoved(start + vec2(15.0, 0.0))],
-    ));
-    assert_ne!(other, group);
+        session.patch(),
+        0.0,
+        vec![],
+        true,
+        true,
+        session.revision(),
+    );
+    let start = resonator_control_rects(1).0.center() + vec2(24.0, 12.0);
+    let fine = egui::Modifiers {
+        ctrl: true,
+        ..Default::default()
+    };
+    let press = egui::Event::PointerButton {
+        pos: start,
+        button: PointerButton::Primary,
+        pressed: true,
+        modifiers: fine,
+    };
+    let baseline = session.snapshot()["history"]["undo_steps"]
+        .as_u64()
+        .unwrap();
+    assert!(frame_revision_state(
+        &ctx,
+        &mut rack,
+        session.patch(),
+        1.0,
+        vec![egui::Event::PointerMoved(start), press],
+        true,
+        true,
+        session.revision()
+    )
+    .0
+    .is_none());
+    let carrier = || egui::Event::Key {
+        key: egui::Key::F12,
+        physical_key: None,
+        pressed: false,
+        repeat: false,
+        modifiers: fine,
+    };
+    let moved = start - vec2(0.0, 15.0);
+    let revision = session.revision();
+    let action = frame_revision_state(
+        &ctx,
+        &mut rack,
+        session.patch(),
+        1.1,
+        vec![egui::Event::PointerMoved(moved), carrier()],
+        true,
+        true,
+        revision,
+    )
+    .0;
+    let Some(RackAction::Command("set_parameter", first)) = action else {
+        panic!("fine rotary drag must edit stiffness")
+    };
+    assert_eq!(first["parameter"], "stiffness");
+    assert_eq!(first["expected_revision"], revision);
+    assert!((first["value"].as_f64().unwrap() - 0.21).abs() < 1e-6);
+    assert!(first["history_group"].is_string());
+    session.execute("set_parameter", first.clone()).unwrap();
+    let next = start - vec2(0.0, 30.0);
+    let revision = session.revision();
+    let action = frame_revision_state(
+        &ctx,
+        &mut rack,
+        session.patch(),
+        1.2,
+        vec![egui::Event::PointerMoved(next), carrier()],
+        true,
+        true,
+        revision,
+    )
+    .0;
+    let Some(RackAction::Command("set_parameter", second)) = action else {
+        panic!("second fine rotary move must edit stiffness")
+    };
+    assert_eq!(second["expected_revision"], revision);
+    assert_eq!(second["history_group"], first["history_group"]);
+    assert!((second["value"].as_f64().unwrap() - 0.22).abs() < 1e-6);
+    session.execute("set_parameter", second.clone()).unwrap();
+    let saved = session.patch().nodes[0].params["stiffness"];
+    assert!(frame_revision_state(
+        &ctx,
+        &mut rack,
+        session.patch(),
+        1.3,
+        vec![button(next, false)],
+        true,
+        true,
+        session.revision()
+    )
+    .0
+    .is_none());
+    assert_eq!(
+        session.snapshot()["history"]["undo_steps"]
+            .as_u64()
+            .unwrap(),
+        baseline + 1
+    );
+    session.execute("undo", json!({})).unwrap();
+    assert_eq!(
+        session.patch().nodes[0]
+            .params
+            .get("stiffness")
+            .copied()
+            .unwrap_or(0.2),
+        0.2
+    );
+    session.execute("redo", json!({})).unwrap();
+    assert_eq!(session.patch().nodes[0].params["stiffness"], saved);
 }
 
 #[test]
@@ -309,11 +467,95 @@ fn resonator_plot_is_static_configuration_and_reacts_to_model_parameters() {
         stems(&later),
         "configuration must not animate as if audio were live"
     );
-    patch.nodes[0].params.insert("pickup_position".into(), 0.5);
-    let changed = frame_output(&ctx, &mut rack, &patch, 31.0, vec![]).1;
+    for (parameter, value) in [
+        ("pickup_position", 0.5),
+        ("strike_position", 0.5),
+        ("stiffness", 0.8),
+    ] {
+        let mut configured = patch.clone();
+        configured.nodes[0].params.insert(parameter.into(), value);
+        let changed = frame_output(&ctx, &mut rack, &configured, 31.0, vec![]).1;
+        assert_ne!(
+            before,
+            stems(&changed),
+            "{parameter} must alter the configured modal stems"
+        );
+    }
+    let profile = |output: &egui::FullOutput| {
+        output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Rect(rect)
+                    if rect.rect.width() == 5.0 && rect.rect.bottom() == 300.0 =>
+                {
+                    Some(format!("{:?}", rect.rect))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let decay_before = profile(&first);
+    assert!(!decay_before.is_empty());
+    patch.nodes[0].params.insert("damping".into(), 0.9);
+    let damped = frame_output(&ctx, &mut rack, &patch, 32.0, vec![]).1;
     assert_ne!(
-        before,
-        stems(&changed),
-        "pickup mode shapes must alter signed modal stems"
+        decay_before,
+        profile(&damped),
+        "loss changes the decay profile"
     );
+    let modes = openpatch_core::modal_resonator_modes(&patch.nodes[0], 48000).unwrap();
+    let expected = format!(
+        "RT60  {:.2} → {:.2} s",
+        modes[0].decay_seconds,
+        modes[modes.len() - 1].decay_seconds
+    );
+    let mut damped_text = Vec::new();
+    for shape in &damped.shapes {
+        labels(&shape.shape, &mut damped_text);
+    }
+    assert!(damped_text.contains(&expected));
+    for label in ["EXCITER / FORCE", "MODES / LOSS", "VELOCITY → OUT"] {
+        assert!(damped_text.iter().any(|text| text == label));
+    }
+}
+
+#[test]
+fn resonator_printed_frequency_range_matches_effective_precision_limits() {
+    for (rate, label, limit) in [(8000, "20–3600 Hz", 3600.0), (48000, "20–4000 Hz", 4000.0)] {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let mut patch = patch();
+        patch.sample_rate = rate;
+        let (_, output) = frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 9);
+        assert!(
+            output.shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Text(text) if text.galley.text() == label)),
+            "{rate}: truthful range print"
+        );
+        let at = pos2(24.0, 12.0) + resonator_control_rects(0).1.center().to_vec2();
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            vec![egui::Event::PointerMoved(at), button(at, true)],
+            true,
+            true,
+            9,
+        );
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.1,
+            vec![button(at, false)],
+            true,
+            true,
+            9,
+        );
+        let edit = rack.editing.as_ref().expect("frequency exact entry");
+        assert_eq!(edit.max, limit);
+        assert_eq!(edit.raw_max, limit);
+    }
 }
