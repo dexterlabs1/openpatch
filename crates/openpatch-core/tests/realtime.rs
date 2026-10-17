@@ -44,6 +44,71 @@ unsafe impl GlobalAlloc for TrackingAllocator {
 static ALLOCATOR: TrackingAllocator = TrackingAllocator;
 
 #[test]
+fn rackmcp_sequence_transport_data_adoption_and_lanes_use_no_heap() {
+    use openpatch_core::rackmcp_sequence::{Player, SequenceData};
+    let first: SequenceData = serde_json::from_value(serde_json::json!({
+        "patterns":[{"name":"A","length":2,"tracks":[{"voices":4,"steps":[
+            {"step":0,"notes":[0,4,7,12],"ratchet":8,"slide":true,"accent":true},
+            {"step":1,"notes":[12,7,4,0],"ratchet":4}]}]},
+            {"name":"B","length":1,"tracks":[{"steps":[{"step":0}]}]}],
+        "lanes":[{"moduleId":"123","paramId":0,"mode":"raw","points":[
+            {"bar":0,"value":-5},{"bar":1,"value":5,"curve":"easeInOut"}]}]
+    }))
+    .unwrap();
+    let mut second = first.clone();
+    second.selected_pattern = Some("B".into());
+    let a = first.compile().unwrap();
+    let b = second.compile().unwrap();
+    let mut player = Player::default();
+    let mut sum = 0.0;
+    ALLOCATIONS.with(|count| count.set(0));
+    DEALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    player.adopt_data(&a);
+    for frame in 0..4096 {
+        if frame == 128 {
+            player.adopt_data(&b);
+        }
+        if frame == 512 {
+            player.reset();
+        }
+        if frame == 1024 {
+            player.seek(2.25);
+        }
+        if frame == 2048 {
+            player.request_pattern(&a, 0, true);
+        }
+        let data = if frame < 128 { &a } else { &b };
+        let out = player.process(
+            data,
+            48000.0,
+            120.0,
+            62.5,
+            frame % 127 != 0,
+            true,
+            frame % 97 == 0,
+        );
+        sum += out.pitch[0][0]
+            + data.lanes()[0]
+                .as_ref()
+                .unwrap()
+                .value_at(player.position().4 / 4.0);
+    }
+    TRACKING.with(|enabled| enabled.set(false));
+    assert!(sum.is_finite());
+    assert_eq!(
+        ALLOCATIONS.with(Cell::get),
+        0,
+        "sequencer primitives allocated"
+    );
+    assert_eq!(
+        DEALLOCATIONS.with(Cell::get),
+        0,
+        "sequencer primitives deallocated"
+    );
+}
+
+#[test]
 fn process_block_allocates_nothing_even_on_first_callback() {
     let mut engine = openpatch_core::demo_patch().compile().unwrap();
     let mut samples = [0.0; 1025];

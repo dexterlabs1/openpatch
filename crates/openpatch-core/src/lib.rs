@@ -30,6 +30,8 @@ mod score;
 pub use score::{ScoreCurve, ScoreData, ScoreLane, ScorePoint, ScoreStep, ScoreTrack};
 mod rack264_vcf;
 #[doc(hidden)]
+pub mod rackmcp_sequence;
+#[doc(hidden)]
 pub use rack264_vcf::{Rack264VcfProbe, Rack264VcfSnapshot};
 mod rack264_vco;
 mod stereo_output;

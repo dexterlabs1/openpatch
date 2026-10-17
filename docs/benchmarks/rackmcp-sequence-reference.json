@@ -1,0 +1,49 @@
+{
+  "status": "primitives qualified; no registered module/import mapping",
+  "source_commit": "285e84c5ff2d3ecef25890da07f578af6a0c5ca6",
+  "source_manifest_sha256": "03c185ad73f9b9c0d29eb57a1407bdceb959bb4a70fbb44d827dc3cc1fd9a829",
+  "platform": "arm64",
+  "cpp_version": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+  "rust_version": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "rates": [
+    44100,
+    48000,
+    96000
+  ],
+  "case_count": 18,
+  "frames": 620730,
+  "all_compared_bits_equal": true,
+  "compared": [
+    "18-output logical values/channel counts",
+    "active/pending pattern, step, loop",
+    "double beat position",
+    "automation curve values"
+  ],
+  "production_sources": {
+    "crates/openpatch-core/src/rackmcp_sequence/mod.rs": "388dcdcee74e81de24499b0e6f09ef0e857cb1c54ecd56aa9fea7941a3b0d9ae",
+    "crates/openpatch-core/src/rackmcp_sequence/engine.rs": "adcabcc0c58b392751cbb435de4039d36ecda90b9f6a91fd2eb1e81aaea2265c"
+  },
+  "rust_library_sha256": "ef38ef3c28138420b0d7e2e655ecfcc3df8a6fef69febf83626528b02d3abdc0",
+  "actual_user_saved_data": {
+    "sequencers": 2,
+    "lanes": 13,
+    "genuine_source_validation_parse_passed": true,
+    "native_compile_passed": true,
+    "supported_target_modules": 10,
+    "unresolved_surge_targets": 3
+  },
+  "focused_validation": {
+    "unit_tests_passed": 9,
+    "allocation_test_passed": true,
+    "allocations": 0,
+    "deallocations": 0,
+    "core_clippy_warnings_denied": "passed"
+  },
+  "limits": [
+    "No host parameter writes or graph scheduling proof",
+    "No native document/import/UI registration",
+    "No Bridge/Listen live capture integration",
+    "Not binary compatibility, hardware accuracy or whole-patch equivalence"
+  ],
+  "local_evidence": "native-test-output/rack-control-import/sequence-reference-002/report.json"
+}

@@ -87,6 +87,21 @@ than copying or regenerating it for a later module family.
 
 ## Active next: imported sequencing and control
 
+**Primitives checkpoint:** the separate RackMCP engine and bounded typed pattern/
+target-lane compilation are implemented, preserving existing Score. The genuine
+pinned C++ comparison passes 18 cases / 620,730 frames at 44.1/48/96 kHz with
+all compared output/position/curve bits equal. Both actual saved sequencers and
+their 13 lanes compile; ten targets are supported VCAs/filters and three are
+unresolved Surge modules. Nine focused unit tests, a zero-allocation/deallocation
+playback/adoption check and strict Core Clippy pass. Source contracts cover [sequencing](RACKMCP_SEQUENCE_CONTRACT.md)
+and [Bridge/Listen](RACKMCP_CONTROL_CONTRACT.md). This is not yet a catalog model,
+import mapping or usable imported musical workflow. Next implement native target
+parameter authority/scheduling, typed document adoption and actual live capture;
+then shared panels/import and the end-to-end excerpt. Installed app is unchanged.
+The concrete [parameter authority decision](RACKMCP_PARAMETER_AUTHORITY.md) covers
+typed target handles, native scheduling, explicit assignment intent and coherent
+effective-value capture; it is the next implementation boundary.
+
 Close one imported musical workflow using the actual RackMCP 2.0.0 sequencers
 and supported voice chain. The reference checkout is pinned at
 `285e84c5ff2d3ecef25890da07f578af6a0c5ca6`; its plugin source is clean.
