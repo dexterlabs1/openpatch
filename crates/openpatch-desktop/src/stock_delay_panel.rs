@@ -28,19 +28,121 @@ fn stock_delay_knob_rect(index: usize) -> Rect {
     Rect::from_center_size(
         pos2(
             stock_delay_column(index),
-            if index < 4 { 148.0 } else { 257.0 },
+            if index < 4 { 120.0 } else { 220.0 },
         ),
-        Vec2::splat(if index < 4 { 62.0 } else { 46.0 }),
+        Vec2::splat(if index < 4 { 64.0 } else { 48.0 }),
     )
 }
 fn stock_delay_value_rect(index: usize) -> Rect {
     Rect::from_center_size(
         pos2(
             stock_delay_column(index),
-            if index < 4 { 210.0 } else { 302.0 },
+            if index < 4 { 164.0 } else { 255.0 },
         ),
         vec2(72.0, 18.0),
     )
+}
+fn paint_stock_delay_flow(
+    ui: &mut egui::Ui,
+    painter: &egui::Painter,
+    node: &Node,
+    rect: Rect,
+    zoom: f32,
+    lighting: &crate::lighting::RoomLighting,
+) {
+    let point = |x: f32, y: f32| rect.min + vec2(x, y) * zoom;
+    let draw = AtlasVoicePaint {
+        painter,
+        origin: rect.min,
+        layout: AtlasVoiceLayout { width: 360.0 },
+        zoom,
+    };
+    let bounds = Rect::from_min_max(point(19.0, 278.0), point(341.0, 313.0));
+    let lighting_start = crate::lighting::next(painter);
+    draw.screen(bounds);
+    let ink = Color32::from_rgb(195, 200, 180);
+    let amber = Color32::from_rgb(229, 183, 103);
+    let text = |x, y, label: &str, size| {
+        painter.text(
+            point(x, y),
+            Align2::CENTER_CENTER,
+            label,
+            crate::panel_skin::print_font(painter.ctx(), size * zoom),
+            ink,
+        );
+    };
+    let line = |points: &[(f32, f32)]| {
+        painter.add(egui::Shape::line(
+            points.iter().map(|&(x, y)| point(x, y)).collect(),
+            Stroke::new(zoom, amber),
+        ));
+        let n = points.len();
+        let from = point(points[n - 2].0, points[n - 2].1);
+        let end = point(points[n - 1].0, points[n - 1].1);
+        let direction = (end - from).normalized();
+        let side = vec2(-direction.y, direction.x);
+        painter.add(egui::Shape::convex_polygon(
+            vec![
+                end,
+                end - direction * 3.0 * zoom + side * 1.8 * zoom,
+                end - direction * 3.0 * zoom - side * 1.8 * zoom,
+            ],
+            amber,
+            Stroke::NONE,
+        ));
+    };
+    text(31.0, 292.0, "IN", 7.5);
+    painter.circle_stroke(point(58.0, 292.0), 5.0 * zoom, Stroke::new(zoom, ink));
+    text(58.0, 292.0, "+", 7.5);
+    for (left, right, label) in [
+        (73.0, 130.0, "DELAY / SRC"),
+        (145.0, 193.0, "TONE"),
+        (248.0, 285.0, "MIX"),
+    ] {
+        painter.rect_stroke(
+            Rect::from_min_max(point(left, 286.0), point(right, 298.0)),
+            1.5 * zoom,
+            Stroke::new(0.8 * zoom, Color32::from_rgb(133, 143, 123)),
+            egui::StrokeKind::Inside,
+        );
+        text((left + right) * 0.5, 292.0, label, 6.5);
+    }
+    text(222.0, 292.0, "WET", 7.0);
+    text(321.0, 292.0, "MIX", 7.0);
+    for points in [
+        &[(39.0, 292.0), (53.0, 292.0)][..],
+        &[(63.0, 292.0), (73.0, 292.0)],
+        &[(130.0, 292.0), (145.0, 292.0)],
+        &[(193.0, 292.0), (212.0, 292.0)],
+        &[(232.0, 292.0), (248.0, 292.0)],
+        &[(285.0, 292.0), (314.0, 292.0)],
+    ] {
+        line(points);
+    }
+    // Feedback returns the filtered wet sample to the input sum. Dry input
+    // also reaches MIX; the independent WET output remains available.
+    line(&[(178.0, 298.0), (178.0, 306.0), (58.0, 306.0), (58.0, 297.0)]);
+    painter.rect_filled(
+        Rect::from_center_size(point(120.0, 306.0), vec2(53.0, 8.0) * zoom),
+        0,
+        Color32::from_rgb(15, 24, 18),
+    );
+    text(120.0, 306.0, "FEEDBACK", 6.0);
+    line(&[(31.0, 298.0), (31.0, 309.0), (248.0, 309.0), (248.0, 298.0)]);
+    painter.rect_filled(
+        Rect::from_center_size(point(214.0, 306.0), vec2(51.0, 8.0) * zoom),
+        0,
+        Color32::from_rgb(15, 24, 18),
+    );
+    text(214.0, 306.0, "DRY + WET", 6.0);
+    text(320.0, 306.0, "CLK → TIME", 6.0);
+    lighting.preserve(painter, lighting_start);
+    ui.interact(
+        bounds,
+        ui.id().with(("stock-delay-flow", &node.id)),
+        Sense::hover(),
+    )
+    .on_hover_text("Configured signal-flow guide, not a live waveform or delay measurement. Audio inputs sum to mono; feedback uses the preceding filtered wet sample. Tone filters the wet path. MIX blends dry and wet, while WET remains an independent output. CLK reports the engine light state.");
 }
 fn stock_delay_readout(index: usize, raw: f32) -> String {
     if index == 0 {
@@ -126,31 +228,16 @@ impl Rack {
         let mut action = None;
         for (index, label) in ["TIME", "FEEDBACK", "TONE", "MIX"].iter().enumerate() {
             let x = stock_delay_column(index);
-            painter.text(p(x, 85.0), Align2::CENTER_CENTER, label, font(9.0), INK);
+            painter.text(p(x, 67.0), Align2::CENTER_CENTER, label, font(9.0), INK);
             painter.text(
-                p(x, 101.0),
-                Align2::CENTER_CENTER,
-                if index == 0 {
-                    "1 ms – 10 s"
-                } else if index == 2 {
-                    "DARK / BRIGHT"
-                } else if index == 3 {
-                    "DRY / WET"
-                } else {
-                    "REPEATS"
-                },
-                font(7.5),
-                MUTED,
-            );
-            painter.text(
-                p(x, 228.0),
+                p(x, 188.0),
                 Align2::CENTER_CENTER,
                 "CV DEPTH",
                 font(7.5),
                 MUTED,
             );
             painter.text(
-                p(x, 188.0),
+                p(x, 177.0),
                 Align2::CENTER_CENTER,
                 match index {
                     0 => "1  100  10k ms",
@@ -161,7 +248,7 @@ impl Rack {
                 MUTED,
             );
             painter.text(
-                p(x, 284.0),
+                p(x, 268.0),
                 Align2::CENTER_CENTER,
                 "−100  0  +100%",
                 font(7.0),
@@ -247,22 +334,16 @@ impl Rack {
                 3 => "Mix 0–100%, dry to wet. WET output is independent of this control.",
                 _ => "Signed CV depth −100% to +100%. Negative depth inverts modulation.",
             });
-            crate::panel_skin::signal_atlas_rotary(
+            paint_atlas_voice_rotary(
                 &painter,
                 knob_rect.center(),
                 normalized,
                 knob.hovered() || knob.dragged() || knob.has_focus(),
-                if index < 4 { 28.0 } else { 20.0 },
+                if index < 4 { 29.0 } else { 21.0 },
                 z,
             );
             let label = stock_delay_readout(index, raw);
-            crate::panel_skin::readout(
-                &painter,
-                value_rect.center(),
-                &label,
-                value_rect.width(),
-                z,
-            );
+            paint_atlas_voice_readout(&painter, value_rect.center(), &label, value_rect.width(), z);
             let value = ui.interact(
                 value_rect,
                 ui.id().with((&node.id, "stock-delay-value", index)),
@@ -316,6 +397,7 @@ impl Rack {
             }
             value.on_hover_text("Click for exact values or expressions. Tab applies and moves through all eight controls.");
         }
+        paint_stock_delay_flow(ui, &painter, node, rect, z, &self.lighting);
         let brightness = self
             .module_lights
             .get(&node.id)

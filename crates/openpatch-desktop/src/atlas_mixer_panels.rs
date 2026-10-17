@@ -16,8 +16,8 @@ fn paint_atlas_six_mix_print(painter: &egui::Painter, rect: Rect, node: &Node, z
     let center = width * 0.5;
     text(center, 65.0, "LEVEL", 11.0);
     // Endpoints of the shared 270-degree linear rotary scale.
-    text(center - 43.0, 168.0, "0", 9.0);
-    text(center + 43.0, 168.0, "1", 9.0);
+    text(center - 47.0, 171.0, "0", 9.0);
+    text(center + 47.0, 171.0, "1", 9.0);
     let average = node.params.get("average").copied().unwrap_or(0.0) >= 0.5;
     let invert = node.params.get("invert").copied().unwrap_or(0.0) >= 0.5;
     let y = 233.0;

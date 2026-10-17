@@ -268,6 +268,8 @@ fn stock_delay_controls_and_eight_jacks_fit_without_overlapping_targets() {
         .map(|index| port_position("stock_delay", true, index, 6, bounds.width()))
         .chain((0..2).map(|index| port_position("stock_delay", false, index, 2, bounds.width())))
         .collect::<Vec<_>>();
+    assert!(ports[..4].iter().all(|port| port.y == 344.0));
+    assert!(ports[4..].iter().all(|port| port.y == 380.0));
     for (index, port) in ports.iter().enumerate() {
         assert!(bounds.shrink(14.0).contains(*port));
         for control in &controls {
@@ -337,8 +339,26 @@ fn stock_delay_shared_browser_and_rack_labels_fit_at_zoom_and_200_percent_previe
                 }
             }
             for required in [
-                "DELAY", "TIME", "FEEDBACK", "TONE", "MIX", "CV DEPTH", "TIME CV", "FDBK CV",
-                "TONE CV", "MIX CV", "IN", "CLK", "WET", "500.0 ms", "50%", "+0%",
+                "DELAY",
+                "TIME",
+                "FEEDBACK",
+                "TONE",
+                "MIX",
+                "CV DEPTH",
+                "TIME CV",
+                "FDBK CV",
+                "TONE CV",
+                "MIX CV",
+                "IN",
+                "CLK",
+                "WET",
+                "500.0 ms",
+                "50%",
+                "+0%",
+                "DELAY / SRC",
+                "DELAY / SRC",
+                "DRY + WET",
+                "CLK → TIME",
             ] {
                 assert!(
                     drawn.iter().any(|(label, _)| label == required),

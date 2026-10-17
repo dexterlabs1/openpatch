@@ -30,6 +30,7 @@ include!("atlas_voice_panel.rs");
 include!("atlas_analog_panels.rs");
 include!("atlas_utility_panels.rs");
 include!("atlas_mixer_panels.rs");
+include!("atlas_effect_panels.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
 #[path = "agent_follow.rs"]
@@ -236,7 +237,9 @@ fn generic_parameter_hardware(
 ) -> GenericParameterHardware {
     if has_choices {
         GenericParameterHardware::Choice
-    } else if atlas_voice(kind) || matches!(kind, "stock_vco" | "stock_lfo" | "mix6" | "stock_mix")
+    } else if atlas_voice(kind)
+        || atlas_studio_effect(kind)
+        || matches!(kind, "stock_vco" | "stock_lfo" | "mix6" | "stock_mix")
     {
         GenericParameterHardware::Rotary {
             body_radius: layout_radius,
@@ -3553,6 +3556,9 @@ impl Rack {
                     &self.lighting,
                 );
             }
+            if atlas_studio_effect(&node.kind) {
+                paint_atlas_studio_effect_configuration(ui, rect, node, self.zoom, &self.lighting);
+            }
             if node.kind == "stock_delay" {
                 if let Some(edit) = self.stock_delay_panel(ui, node, rect, revision) {
                     action = Some(edit);
@@ -4119,14 +4125,8 @@ impl Rack {
                         ),
                         27.0,
                     )
-                } else if node.kind == "stereo_delay" {
-                    (
-                        pos2(
-                            width * ((index % 4) as f32 + 0.5) / 4.0,
-                            107.0 + (index / 4) as f32 * 83.0,
-                        ),
-                        25.0,
-                    )
+                } else if atlas_studio_effect(&node.kind) {
+                    atlas_studio_effect_control(&node.kind, name)
                 } else if node.kind == "sidechain_compressor" {
                     (
                         pos2(
@@ -4421,7 +4421,10 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if matches!(node.kind.as_str(), "stock_vco" | "stock_lfo") {
+                let value_center = if atlas_studio_effect(&node.kind) {
+                    let local = atlas_studio_effect_value_center(&node.kind, name);
+                    point(local.x, local.y)
+                } else if matches!(node.kind.as_str(), "stock_vco" | "stock_lfo") {
                     let local = stock_vco_value_center(name);
                     point(local.x, local.y)
                 } else if atlas_voice(&node.kind) {
@@ -4430,7 +4433,9 @@ impl Rack {
                 } else {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
-                let readout_width = if matches!(node.kind.as_str(), "mix6" | "stock_mix") {
+                let readout_width = if atlas_studio_effect(&node.kind) {
+                    72.0
+                } else if matches!(node.kind.as_str(), "mix6" | "stock_mix") {
                     78.0
                 } else if atlas_voice(&node.kind) {
                     AtlasVoiceLayout { width }.value_width(&node.kind, name)
@@ -4713,6 +4718,7 @@ impl Rack {
                     );
                 } else if let GenericParameterHardware::Rotary { body_radius, .. } = hardware {
                     let paint_rotary = if atlas_voice(&node.kind)
+                        || atlas_studio_effect(&node.kind)
                         || matches!(
                             node.kind.as_str(),
                             "stock_vco" | "stock_lfo" | "mix6" | "stock_mix"
@@ -4747,6 +4753,10 @@ impl Rack {
                         name,
                         clock_ratio,
                         self.zoom,
+                    );
+                } else if atlas_studio_effect(&node.kind) {
+                    paint_atlas_studio_effect_control_print(
+                        &painter, rect, &node.kind, name, self.zoom,
                     );
                 } else if matches!(node.kind.as_str(), "mix6" | "stock_mix") {
                     paint_atlas_six_mix_print(&painter, rect, node, self.zoom);
@@ -4794,6 +4804,7 @@ impl Rack {
                     );
                 }
                 let paint_readout = if atlas_voice(&node.kind)
+                    || atlas_studio_effect(&node.kind)
                     || matches!(
                         node.kind.as_str(),
                         "stock_vco" | "stock_lfo" | "mix6" | "stock_mix"
@@ -12529,6 +12540,9 @@ fn paint_panel(
                 | "stock_vca_mix"
                 | "mix6"
                 | "stock_mix"
+                | "stock_delay"
+                | "stereo_delay"
+                | "stereo_reverb"
         )
     {
         paint_atlas_voice_face(painter, rect, node, zoom);
@@ -12603,6 +12617,9 @@ fn paint_panel(
                 | "stock_vca_mix"
                 | "mix6"
                 | "stock_mix"
+                | "stock_delay"
+                | "stereo_delay"
+                | "stereo_reverb"
         )
     {
         if master {
@@ -12868,6 +12885,9 @@ fn paint_jack(
             | "stock_vca_mix"
             | "mix6"
             | "stock_mix"
+            | "stock_delay"
+            | "stereo_delay"
+            | "stereo_reverb"
     ) {
         paint_atlas_socket_hardware(painter, center, 10.3 * zoom * port_scale / 32.0, connected);
     } else {
@@ -20654,6 +20674,10 @@ mod tests {
         include!("large_socket_ui_tests.rs");
     }
 
+    mod atlas_effect_ui_tests {
+        include!("atlas_effect_ui_tests.rs");
+    }
+    #[cfg(test)]
     mod stock_delay_ui_tests {
         include!("stock_delay_ui_tests.rs");
     }

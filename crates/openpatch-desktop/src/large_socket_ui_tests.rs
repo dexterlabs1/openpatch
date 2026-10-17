@@ -345,7 +345,7 @@ fn assert_large_socket_kind(kind: &str) {
                     assert!(center.x - rim >= bounds.left() && center.x + rim <= bounds.right()
                         && center.y - rim >= bounds.top() && center.y + rim <= bounds.bottom(),
                         "{context}.{}: enlarged rim leaves face", socket.name);
-                    let rim_color = if approved_voice || (matches!(kind, "stock_vcf" | "stock_vca" | "mix6" | "stock_mix") && !socket.output) { Color32::from_rgb(130, 127, 108) } else if socket.output { crate::panel_skin::INK }
+                    let rim_color = if approved_voice || (matches!(kind, "stock_vcf" | "stock_vca" | "mix6" | "stock_mix" | "stock_delay" | "stereo_delay" | "stereo_reverb") && !socket.output) { Color32::from_rgb(130, 127, 108) } else if socket.output { crate::panel_skin::INK }
                         else { Color32::from_rgb(190, 191, 182) };
                     assert!(rack.rings.iter().any(|(painted, radius, color)|
                         painted.distance(center) < 0.02

@@ -62,6 +62,13 @@ Mix 6, Stock Mix and Stock VCA Mix now use the detailed native treatment, bringi
 
 [Native mixer panels and matching thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-mixers.png). **24 focused checks passed**, covering real Session edits/undo, precision values, actual factory meters, all seven Stock VCA Mix MCP anchors, six-input flag cues, socket/text clearance, natural browser zoom and shared rack/browser drawing. Strict desktop Clippy and formatting passed; light/dim-room CPU meshes were inspected. The prior `dc9dbe8` CI passed 1,096 desktop checks and exposed two old primitive expectations; those are corrected with size/alignment assertions retained. No DSP/frozen-reference changes or installation. Next: detailed effect panels, preserving truthful configured guides and real telemetry.
 
+
+### Delay and space continuation
+
+Stock Delay, Stereo Delay and Space extend the detailed native treatment to twenty panels. Stock Delay keeps its actual clock lamp, eight controls and signed CV depth, with larger primary knobs and a mono delay/tone/feedback/dry-wet guide. Stereo Delay groups ten controls into two rows and shows the filtered cross-feedback loop. Space shows its four-line feedback delay network and configured nominal RT60, updated with DECAY. Independent dry/wet gains and unfiltered stereo-delay wet taps are explained in the guide tooltips. These are configured diagrams, not measured waveforms or impulse responses.
+
+[Native delay/reverb panels and matching thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-effects.png). **19 focused checks passed**, including real Session successive edits with one undo for all 24 controls, their construction-motion anchors, precision units/navigation, actual clock emission, graph-edit gesture identity, all generic control geometry, socket/text clearance and shared rack/browser drawing. Strict desktop Clippy and formatting passed; light/dim-room CPU meshes were inspected. The prior mixer CI passed 1,099 desktop checks and found one reduced-zoom endpoint label crossing its knob hit target; that actual layout issue is corrected with the target preserved. No DSP/frozen-reference changes or installation. Next: dynamics and macro/drum voices.
+
 The following catalog batches describe existing development source, not an approved final design.
 
 ### First catalog batch in progress
