@@ -120,7 +120,7 @@ native → existing OFFSET binary → native path with shared UI/MCP/history,
 persistent save/reopen and measured delay/failure containment. Its proposed
 128-frame transport contract is not yet implemented or realtime-qualified.
 
-## Current candidate: Core text and host boundary
+## Delivered: Core text and host boundary
 
 Exact Core Notes 2.6.6 now converts into editable native Notes, including legacy
 loading, Unicode/whitespace and original-source retention. The actual full patch
@@ -131,10 +131,14 @@ Core AudioInterface2 stays unresolved, retains saved hardware/mute metadata and
 validates its known source port shape; import reports explain a saved zero level.
 [Source contract and boundaries](CORE_TEXT_IMPORT.md).
 
-This is a development follow-up, not installed in 0.2.7. No version bump, package
-or installation is needed. Finish one follow-up PR. The first actual existing
-ARM plugin load/process/persistent-restore probe now passes as recorded above.
-The application-host gate remains open; it is not a substitute for native Rust
+[PR #33](https://github.com/dexterlabs1/openpatch/pull/33) is merged at `381cefd`.
+Its [full macOS CI](https://github.com/dexterlabs1/openpatch/actions/runs/39041688024)
+passed **2,623 Rust tests** (17 intentionally ignored), **124 Python/MCP tests**,
+strict lint/formatting, optimized build, packaging and visualizer integration.
+This source follow-up is not installed in 0.2.7. No version bump, new package or
+installation is needed. The first actual existing ARM plugin
+load/process/persistent-restore probe now passes as recorded above. The
+application-host gate remains open; it is not a substitute for native Rust
 module development.
 
 ## Delivered: native sequencing/control workflow
