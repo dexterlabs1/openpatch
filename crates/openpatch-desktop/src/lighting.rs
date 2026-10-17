@@ -119,12 +119,12 @@ impl Default for RoomLighting {
 
 impl RoomLighting {
     fn bloom_amount(&self) -> f32 {
-        // Keep daytime lamps restrained; a dark room reveals their light spill.
-        0.38 + 2.62 * (1.0 - self.amount).powf(1.5)
+        // Darkness reveals a little spill; the lens remains the brightest part.
+        0.20 + 0.45 * (1.0 - self.amount).powf(1.5)
     }
 
     fn bloom_diffusion(&self) -> f32 {
-        1.0 + 1.15 * (1.0 - self.amount).powf(1.5)
+        0.24 + 0.12 * (1.0 - self.amount).powf(1.5)
     }
 
     /// Static display illumination, distinct from signal-driven lamps. The
@@ -137,8 +137,8 @@ impl RoomLighting {
             painter,
             rect,
             Color32::from_rgb(104, 155, 119),
-            0.035 + 0.30 * dark,
-            (1.5 + 3.5 * dark) * zoom / corner,
+            0.012 + 0.048 * dark,
+            (0.8 + 0.8 * dark) * zoom / corner,
         );
         self.preserve(painter, start);
     }
@@ -249,7 +249,7 @@ impl RoomLighting {
         );
         painter.circle_filled(center, radius, self.lens_color(original, strength, floor));
         if strength > 0.001 {
-            painter.circle_filled(center, radius * 0.58, additive(emitter, glow * 0.5));
+            painter.circle_filled(center, radius * 0.58, additive(emitter, glow * 0.25));
         }
         self.preserve(painter, start);
     }
@@ -272,7 +272,7 @@ impl RoomLighting {
         painter.circle_filled(
             center,
             radius * 0.58,
-            additive(color, self.bloom_amount() * 0.5),
+            additive(color, self.bloom_amount() * 0.25),
         );
         self.preserve(painter, start);
     }
@@ -457,8 +457,8 @@ mod tests {
                 assert_eq!(mesh.vertices.len(), 120);
                 assert!(mesh.vertices.iter().all(|v| v.color.a() == 0));
                 let bounds = mesh.calc_bounds();
-                assert!(bounds.width() <= size.x + 52.1);
-                assert!(bounds.height() <= size.y + 52.1);
+                assert!(bounds.width() <= size.x + 16.7);
+                assert!(bounds.height() <= size.y + 16.7);
                 energy.push(
                     mesh.vertices
                         .iter()
@@ -471,6 +471,38 @@ mod tests {
                 "room-off screen spill must stay visible"
             );
         }
+    }
+
+    #[test]
+    fn dark_room_led_spill_stays_local_and_keeps_additive_headroom() {
+        let ctx = egui::Context::default();
+        let mut lighting = RoomLighting::default();
+        lighting.set(0.0);
+        let output = ctx.run(egui::RawInput::default(), |ctx| {
+            let painter = ctx.layer_painter(egui::LayerId::background());
+            lighting.circle(&painter, Pos2::ZERO, 3.2, Color32::GREEN, 1.0, 0.12);
+        });
+        let mesh = output
+            .shapes
+            .iter()
+            .find_map(|s| {
+                if let egui::Shape::Mesh(m) = &s.shape {
+                    Some(m)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        assert!(
+            mesh.calc_bounds().width() <= 40.0,
+            "spill must stay local on a dense 40-point lamp grid"
+        );
+        assert!(
+            mesh.vertices
+                .iter()
+                .all(|v| v.color.r().max(v.color.g()).max(v.color.b()) <= 85),
+            "halo must leave headroom instead of clipping into a neon cloud"
+        );
     }
 
     #[test]

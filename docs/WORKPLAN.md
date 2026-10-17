@@ -14,9 +14,9 @@ Now use one milestone branch, focused local checks, one PR CI run and one approp
 
 ### Lights-off refinement
 
-Active LEDs, ports and meters now cast wider, stronger additive halos as ambient light falls; the daytime lamp profile stays restrained. Detailed-panel displays gain a bounded soft green spill, and Studio Mixer position rings have broader additive glow. Static display illumination remains separate from engine-driven lamps; zero or unavailable signal does not create activity.
+The user rejected the broad, bright glow as unnatural. Lamp, port and meter halos now stay close to the emitter, with much lower additive energy and a softer center highlight. Screen spill is smaller and faint; mixer setting-ring spill uses the same restrained gain. Readable lens sizes, signal-dependent brightness, zero/missing-state darkness and cable occlusion remain intact.
 
-[Updated dim-room preview](../design/reviews/signal-atlas-two-modules-v1/native-ux-dark-room.png). **32 focused checks passed**, covering lighting, unchanged rack/browser geometry and cable targets, port signals, Studio Mixer behavior and eight oscillator acceptance fixtures corrected after the preceding CI run. Strict desktop Clippy and formatting passed. Actual-engine CPU captures were inspected at full, dim and zero ambient light; no native window/device or installed-release claim. The noise/stochastic design family resumes next.
+[Updated dim-room preview](../design/reviews/signal-atlas-two-modules-v1/native-sequencers-dark.png). **22 focused checks passed**, including actual lamp/port/meter emission, local spill/headroom bounds, zero/missing state, editor contrast, shared preview geometry and Studio Mixer behavior. Strict desktop Clippy and formatting passed. Light/dim CPU meshes from offline Core state were reviewed; no native window/device or new installation. The preceding sequencer checkpoint passed 1,148 headless desktop tests locally; full Mac CI remains separate.
 
 ### Noise and stochastic controls
 
