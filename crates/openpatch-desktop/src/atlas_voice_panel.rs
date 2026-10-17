@@ -199,7 +199,12 @@ fn paint_atlas_voice_face(painter: &egui::Painter, rect: Rect, node: &Node, zoom
     }
     for x in [20.0, 400.0] {
         for y in [21.0, 699.0] {
-            let center = draw.p(x, y);
+            let mut center = draw.p(x, y);
+            if node.kind == "blank" && draw.layout.width < 120.0 {
+                center.x = center
+                    .x
+                    .clamp(rect.left() + 7.5 * zoom, rect.right() - 7.5 * zoom);
+            }
             painter.circle_filled(
                 center + vec2(0.6, 1.0) * zoom,
                 11.0 * draw.unit(),
@@ -222,13 +227,23 @@ fn paint_atlas_voice_face(painter: &egui::Painter, rect: Rect, node: &Node, zoom
             }
         }
     }
-    painter.text(
-        draw.p(42.0, 44.0),
-        Align2::LEFT_CENTER,
-        title(&node.kind),
-        crate::panel_skin::print_font(painter.ctx(), 49.0 * draw.unit()),
-        INK,
-    );
+    if node.kind == "blank" && draw.layout.width < 120.0 {
+        painter.text(
+            rect.min + vec2(draw.layout.width * 0.5, 27.0) * zoom,
+            Align2::CENTER_CENTER,
+            panel_heading(&node.kind, draw.layout.width),
+            crate::panel_skin::print_font(painter.ctx(), 14.0 * zoom),
+            INK,
+        );
+    } else {
+        painter.text(
+            draw.p(42.0, 44.0),
+            Align2::LEFT_CENTER,
+            title(&node.kind),
+            crate::panel_skin::print_font(painter.ctx(), 49.0 * draw.unit()),
+            INK,
+        );
+    }
     draw.line(&[(23.0, 77.0), (397.0, 77.0)], 1.0, false);
     if node.bypassed {
         draw.text(328.0, 51.0, "BYPASSED", 12.0, MUTED);

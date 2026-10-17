@@ -50,6 +50,16 @@ fn export_panel_design_preview() {
                     .module_lights
                     .insert(node.id.clone(), lights);
             }
+            if let Some(scope) = engine
+                .resolve_module_scope(&node.id)
+                .ok()
+                .and_then(|h| engine.module_scope(h))
+            {
+                preview
+                    .renderer
+                    .scope_states
+                    .insert(node.id.clone(), scope.clone().into());
+            }
             if let Some(state) = engine
                 .resolve_module_telemetry(&node.id)
                 .ok()

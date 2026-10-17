@@ -317,7 +317,7 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
         ("stock_mid_side", 0, 2, &[][..]),
         ("mix6", 0, 1, &[][..]),
         ("stock_mix", 0, 1, &[][..]),
-        ("audio_stereo", 1, 0, &["dc_block"][..]),
+        ("audio_stereo", 0, 1, &["dc_block"][..]),
         ("score_sequencer", 0, 2, &["running"][..]),
         ("drum_voice", 0, 5, &["mode"][..]),
     ] {

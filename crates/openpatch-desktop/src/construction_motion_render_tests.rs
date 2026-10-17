@@ -1063,6 +1063,11 @@ fn committed_rotary_edits_have_a_moving_angular_cursor_without_delaying_values()
     for (kind, parameter, old, new) in [
         ("stock_vco", "frequency", -12.0, 24.0),
         ("stock_lfo", "rate", 0.0, 2.0),
+        ("audio_stereo", "gain", 0.25, 1.25),
+        ("scope", "time", 0.01, 1.0),
+        ("scope", "x_offset", -2.0, 3.0),
+        ("scope", "y_offset", -2.0, 3.0),
+        ("scope", "threshold", -2.0, 3.0),
         ("stock_vca_mix", "level1", 0.25, 1.0),
         ("vca_mix", "level1", 0.5, 1.0),
         ("vca_mix", "level4", 0.5, 1.0),
@@ -1317,4 +1322,82 @@ fn mutes_saved_switch_cue_tracks_its_actual_cap_and_yields_to_human_press() {
         10,
     );
     assert!(rack.construction_animation.parameters.is_empty());
+}
+
+
+#[test]
+fn scope_rotary_cues_yield_to_knob_and_precision_field_presses() {
+    for (name, index, old, new) in [
+        ("time", 2, 0.01, 1.0),
+        ("x_offset", 4, -2.0, 3.0),
+        ("y_offset", 5, -2.0, 3.0),
+        ("threshold", 6, -2.0, 3.0),
+    ] {
+        for precision in [false, true] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let before = patch("scope", name, old);
+            let after = patch("scope", name, new);
+            frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+            let now = Instant::now();
+            rack.observe_construction_transition_at(
+                &before,
+                &after,
+                9,
+                10,
+                &snapshot(9, 10, "scope", name, old, new),
+                MotionMode::Full,
+                now,
+            );
+            rack.set_construction_clock_override(Some(now + Duration::from_millis(140)));
+            frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10);
+            assert!(rack
+                .construction_anchors
+                .contains_key(&("target".into(), name.into())));
+            let local = if precision {
+                scope_control_rect(index).center()
+            } else {
+                scope_knob_center(index)
+            };
+            let target = rack.viewport.unwrap().min
+                + rack.pan
+                + (rack.positions["target"].to_vec2() + local.to_vec2()) * rack.zoom;
+            let (action, _) = frame_revision_state(
+                &ctx,
+                &mut rack,
+                &after,
+                0.2,
+                vec![egui::Event::PointerMoved(target), button(target, true)],
+                true,
+                true,
+                10,
+            );
+            assert!(
+                action.is_none(),
+                "press cannot change accepted value: {name}"
+            );
+            assert!(
+                rack.construction_animation.parameters.is_empty(),
+                "human press takes over: {name}, precision={precision}"
+            );
+            frame_revision_state(
+                &ctx,
+                &mut rack,
+                &after,
+                0.3,
+                vec![button(target, false)],
+                true,
+                true,
+                10,
+            );
+            if precision {
+                assert!(
+                    ctx.wants_keyboard_input(),
+                    "inline exact entry owns keyboard: {name}"
+                );
+            } else {
+                assert!(rack.selection.contains("target"));
+            }
+        }
+    }
 }

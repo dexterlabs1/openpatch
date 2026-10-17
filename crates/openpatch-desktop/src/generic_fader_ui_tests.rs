@@ -81,7 +81,7 @@ impl FaderFixture {
         let (local, radius) = match node.kind.as_str() {
             "constant" => atlas_legacy_utility_control("constant", "value"),
             "octave" => atlas_legacy_utility_control("octave", "octaves"),
-            "audio_stereo" => (pos2(width * 0.5, 130.0), 30.0),
+            "white_noise" => (pos2(90.0, 245.0), 32.0),
             _ => parameter_position(1, 0, width),
         };
         let center = self.rack.viewport.unwrap().min
@@ -329,16 +329,16 @@ fn near(actual: f32, expected: f32) {
 #[test]
 fn generic_fader_absolute_track_clicks_reach_limits_at_rack_scales() {
     for zoom in [0.5, 1.0, 2.0] {
-        let mut f = FaderFixture::new("audio_stereo", "gain", 1.25, zoom);
+        let mut f = FaderFixture::new("white_noise", "seed", 4000.0, zoom);
         let baseline = f.undo_steps();
         let track = f.track("target");
         f.time = 1.0;
         f.click(pos2(track.center().x, track.top()));
-        assert_eq!(f.value("target", "gain"), 2.0);
+        assert_eq!(f.value("target", "seed"), 16_777_215.0);
         assert_eq!(f.value("other", "value"), 9.0);
         f.time = 2.0; // independent click, not a double-click reset
         f.click(pos2(track.center().x, track.bottom()));
-        assert_eq!(f.value("target", "gain"), 0.0);
+        assert_eq!(f.value("target", "seed"), 0.0);
         assert_eq!(f.undo_steps(), baseline + 2);
     }
 }
@@ -789,6 +789,7 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
     for (kind, parameter, initial, local) in [
         ("attenuverter8", "gain1", 0.0, pos2(88.0, 107.0)),
         ("attenuverter8", "gain8", 0.0, pos2(88.0, 352.0)),
+        ("audio_stereo", "gain", 1.0, pos2(90.0, 120.0)),
         ("vca_mix", "level1", 1.0, pos2(37.5, 126.0)),
         ("vca_mix", "level4", 1.0, pos2(262.5, 126.0)),
         ("vca_mix", "mix_level", 1.0, pos2(345.0, 126.0)),
@@ -1004,6 +1005,7 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
 #[test]
 fn approved_voice_numeric_fields_commit_physical_units_and_undo() {
     for (kind, parameter, initial, local, text, expected) in [
+        ("audio_stereo", "gain", 1.0, pos2(90.0, 166.0), "0.75", 0.75),
         (
             "attenuverter8",
             "gain8",

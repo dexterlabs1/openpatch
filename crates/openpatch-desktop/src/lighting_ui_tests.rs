@@ -88,7 +88,7 @@ fn darkroom_live_lamps_survive_while_inactive_and_missing_lamps_dim() {
     for (kind, x, y, radius, count, index, color) in [
         (
             "poly_viz",
-            55.0,
+            53.0,
             120.0,
             3.0,
             16,

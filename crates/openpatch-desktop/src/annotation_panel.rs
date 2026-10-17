@@ -132,19 +132,21 @@ impl Rack {
         if node.kind == "notes" {
             let area = Rect::from_min_max(p(14.0, 81.0), p(width-14.0, 340.0));
             let emission = crate::lighting::next(&painter);
-            painter.rect_filled(area, 2.0*z, Color32::from_rgb(17, 28, 30));
+            AtlasVoicePaint { painter:&painter,origin:rect.min,layout:AtlasVoiceLayout {width},zoom:z }.screen(area,&self.lighting);
             let text = node.effective_notes_text().unwrap_or("");
             let (text, color) = if text.is_empty() {
                 ("Patch notes\n\nDescribe the signal flow,\nperformance controls or\nhow this instrument works.", Color32::from_rgb(102, 136, 135))
             } else { (text, Color32::from_rgb(175, 214, 202)) };
             let clipped = painter.with_clip_rect(area.shrink(10.0*z));
-            let mut job = egui::text::LayoutJob::simple(text.to_owned(), FontId::proportional(13.0*z), color, area.width()-20.0*z);
+            let mut job = egui::text::LayoutJob::simple(text.to_owned(), crate::panel_skin::print_font(painter.ctx(),14.0*z), color, area.width()-20.0*z);
             job.wrap.break_anywhere = true;
             let galley = painter.layout_job(job);
             clipped.galley(area.min+vec2(10.0, 10.0)*z, galley, color);
             self.lighting.preserve(&painter, emission);
             let button = Rect::from_min_max(p(14.0, 351.0), p(width-14.0, 375.0));
-            if ui.put(button, egui::Button::new(egui::RichText::new("Edit notes…").size(12.0*z))).clicked() {
+            let response=ui.interact(button,ui.id().with(("notes-edit",&node.id)),Sense::click());
+            paint_atlas_manual_button(&painter,button,z,false,response.hovered(),true,("EDIT NOTES",11.0));
+            if response.clicked() {
                 self.open_annotation_editor(node, revision);
             }
         } else {
@@ -154,10 +156,12 @@ impl Rack {
                 let button = Rect::from_center_size(p(width*0.5, 210.0), vec2((width-30.0).min(170.0), 25.0)*z);
                 let hp = self.blank_resize.as_ref().filter(|d| d.proposal.id==node.id)
                     .map_or_else(|| node.effective_blank_width_hp().unwrap_or(10), |d|d.proposal.width_hp);
-                if ui.put(button, egui::Button::new(egui::RichText::new(format!("{hp} HP · Set width…")).size(11.0*z))).clicked() {
+                let response=ui.interact(button,ui.id().with(("blank-width",&node.id)),Sense::click());
+                paint_atlas_manual_button(&painter,button,z,false,response.hovered(),true,(&format!("{hp} HP · SET WIDTH"),10.0));
+                if response.clicked() {
                     self.open_annotation_editor(node, revision);
                 }
-                painter.text(p(width*0.5, 245.0), Align2::CENTER_CENTER, "Drag either edge", FontId::proportional(10.0*z), MUTED);
+                painter.text(p(width*0.5, 245.0), Align2::CENTER_CENTER, "Drag either edge", crate::panel_skin::print_font(painter.ctx(),10.0*z), MUTED);
             }
             for right in [false, true] {
                 let x = if right { rect.right()-8.0*z } else { rect.left() };

@@ -32,6 +32,8 @@ include!("atlas_manual_panels.rs");
 include!("atlas_bank_panels.rs");
 include!("atlas_vca_mix_panel.rs");
 include!("atlas_endpoint_panels.rs");
+include!("atlas_view_panels.rs");
+include!("atlas_scope_panel.rs");
 include!("atlas_legacy_utility_panels.rs");
 include!("atlas_poly_constant_panel.rs");
 include!("stock_quantizer_panel.rs");
@@ -103,9 +105,8 @@ fn port_material_scale(kind: &str) -> f32 {
         "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "crossfade"
         | "quantizer" | "stock_quantizer" | "poly_sum" | "mid_side" | "stock_mid_side" | "mix6"
         | "stock_mix" => REDESIGNED_PORT_SCALE,
-        "constant" | "octave" | "vca_mix" | "mixer" | "output" | "audio_out" => {
-            REDESIGNED_PORT_SCALE
-        }
+        "audio_stereo" | "poly_viz" | "scope" | "constant" | "octave" | "vca_mix" | "mixer"
+        | "output" | "audio_out" => REDESIGNED_PORT_SCALE,
         "attenuverter8" => 1.10,
         "cv_mix" => REDESIGNED_PORT_SCALE,
         "logic"
@@ -150,6 +151,9 @@ enum JackCaptionPlacement {
 fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPlacement {
     use JackCaptionPlacement::*;
     match (kind, port, output) {
+        ("scope" | "poly_viz", _, _) => Right(40.0),
+        ("audio_stereo", _, false) => Right(32.0),
+        ("audio_stereo", _, true) => Right(40.0),
         ("mixer" | "output" | "audio_out", _, true) => Right(36.0),
         ("mixer" | "output" | "audio_out" | "vca_mix", _, _) => Above(25.0),
         ("oscillator", _, true) => Right(36.0),
@@ -308,7 +312,7 @@ fn generic_parameter_hardware(
         || atlas_signal_utility_kind(kind)
         || atlas_bank_rotary_kind(kind)
         || atlas_legacy_utility_kind(kind)
-        || kind == "vca_mix"
+        || matches!(kind, "vca_mix" | "audio_stereo")
         || kind == "score_sequencer"
         || atlas_oscillator(kind)
         || kind == "svf_filter"
@@ -3071,7 +3075,11 @@ impl Rack {
                         } else {
                             width - 15.0
                         },
-                        if atlas_voice(&node.kind) { 43.0 } else { 69.0 },
+                        if atlas_voice(&node.kind) || node.kind == "scope" {
+                            43.0
+                        } else {
+                            69.0
+                        },
                     ),
                 );
                 if interactive
@@ -3171,7 +3179,11 @@ impl Rack {
                         } else {
                             width - 15.0
                         },
-                        if atlas_voice(&node.kind) { 43.0 } else { 69.0 },
+                        if atlas_voice(&node.kind) || node.kind == "scope" {
+                            43.0
+                        } else {
+                            69.0
+                        },
                     ),
                 );
                 let header_response = ui.interact(
@@ -4181,7 +4193,9 @@ impl Rack {
                     "macro_voice" => 8.0,
                     _ => 13.0,
                 };
-                let (knob_position, radius) = if node.kind == "vca_mix" {
+                let (knob_position, radius) = if node.kind == "audio_stereo" {
+                    atlas_audio_control(name)
+                } else if node.kind == "vca_mix" {
                     atlas_vca_mix_control(name)
                 } else if atlas_legacy_utility_kind(&node.kind) {
                     atlas_legacy_utility_control(&node.kind, name)
@@ -4191,8 +4205,6 @@ impl Rack {
                     atlas_signal_utility_control(&node.kind, name)
                 } else if atlas_sequence_kind(&node.kind) {
                     atlas_sequence_control(name)
-                } else if node.kind == "audio_stereo" {
-                    (pos2(width * 0.5, 130.0 + index as f32 * 120.0), 30.0)
                 } else if node.kind == "score_sequencer" {
                     atlas_score_control(name)
                 } else if node.kind == "svf_filter" {
@@ -4471,7 +4483,10 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if node.kind == "vca_mix" {
+                let value_center = if node.kind == "audio_stereo" {
+                    let local = atlas_audio_value_center(name);
+                    point(local.x, local.y)
+                } else if node.kind == "vca_mix" {
                     let local = atlas_vca_mix_value_center(name);
                     point(local.x, local.y)
                 } else if atlas_legacy_utility_kind(&node.kind) {
@@ -4536,7 +4551,9 @@ impl Rack {
                 } else {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
-                let readout_width = if node.kind == "vca_mix" {
+                let readout_width = if node.kind == "audio_stereo" {
+                    132.0
+                } else if node.kind == "vca_mix" {
                     if *name == "mix_level" {
                         74.0
                     } else {
@@ -4880,7 +4897,7 @@ impl Rack {
                         || atlas_signal_utility_kind(&node.kind)
                         || atlas_bank_rotary_kind(&node.kind)
                         || atlas_legacy_utility_kind(&node.kind)
-                        || node.kind == "vca_mix"
+                        || matches!(node.kind.as_str(), "vca_mix" | "audio_stereo")
                         || node.kind == "score_sequencer"
                         || atlas_oscillator(&node.kind)
                         || node.kind == "svf_filter"
@@ -4913,7 +4930,9 @@ impl Rack {
                         self.zoom,
                     );
                 }
-                if node.kind == "vca_mix" {
+                if node.kind == "audio_stereo" {
+                    paint_atlas_audio_print(&painter, rect, name, self.zoom);
+                } else if node.kind == "vca_mix" {
                     paint_atlas_vca_mix_print(&painter, rect, name, self.zoom);
                 } else if atlas_legacy_utility_kind(&node.kind) {
                     paint_atlas_legacy_utility_print(&painter, rect, &node.kind, name, self.zoom);
@@ -5027,6 +5046,7 @@ impl Rack {
                     || node.kind == "score_sequencer"
                     || atlas_signal_utility_kind(&node.kind)
                     || atlas_legacy_utility_kind(&node.kind)
+                    || node.kind == "audio_stereo"
                 {
                     paint_atlas_sequence_readout
                 } else if node.kind == "sample_hold"
@@ -5179,6 +5199,9 @@ impl Rack {
                         .on_hover_text("Click to type a value or expression. With multiple type-entry controls, Tab applies and moves to the next one.");
                 }
             }
+            if node.kind == "audio_stereo" {
+                paint_atlas_audio_configuration(&painter, rect, self.zoom);
+            }
             if atlas_endpoint_kind(&node.kind) {
                 paint_atlas_endpoint_configuration(&painter, node, rect, self.zoom, &self.lighting);
             }
@@ -5198,7 +5221,9 @@ impl Rack {
                         location,
                         &node.kind,
                         port,
-                        if node.kind == "stock_noise" {
+                        if node.kind == "audio_stereo" {
+                            atlas_audio_port_label(port)
+                        } else if node.kind == "stock_noise" {
                             stock_noise_port_label(port)
                         } else if node.kind == "studio_mixer" {
                             studio_mixer_port_label(port)
@@ -5244,7 +5269,9 @@ impl Rack {
                     &node.kind,
                     port,
                     ui.id().with(("input", &node.id, port)),
-                    if node.kind == "stock_noise" {
+                    if node.kind == "audio_stereo" {
+                        atlas_audio_port_label(port)
+                    } else if node.kind == "stock_noise" {
                         stock_noise_port_label(port)
                     } else if node.kind == "studio_mixer" {
                         studio_mixer_port_label(port)
@@ -5403,7 +5430,9 @@ impl Rack {
                         output_point,
                         &node.kind,
                         port,
-                        if node.kind == "stock_noise" {
+                        if node.kind == "audio_stereo" {
+                            atlas_audio_port_label(port)
+                        } else if node.kind == "stock_noise" {
                             stock_noise_port_label(port)
                         } else if node.kind == "studio_mixer" {
                             studio_mixer_port_label(port)
@@ -5459,7 +5488,9 @@ impl Rack {
                     &node.kind,
                     port,
                     ui.id().with(("output", &node.id, port)),
-                    if node.kind == "stock_noise" {
+                    if node.kind == "audio_stereo" {
+                        atlas_audio_port_label(port)
+                    } else if node.kind == "stock_noise" {
                         stock_noise_port_label(port)
                     } else if node.kind == "studio_mixer" {
                         studio_mixer_port_label(port)
@@ -5836,7 +5867,13 @@ impl Rack {
             } else {
                 rect.width()
             };
-            let header = Rect::from_min_size(rect.min, vec2(header_width, 65.0 * self.zoom));
+            let header = Rect::from_min_size(
+                rect.min,
+                vec2(
+                    header_width,
+                    if node.kind == "scope" { 43.0 } else { 65.0 } * self.zoom,
+                ),
+            );
             if header_keyboard
                 || ui.input(|i| {
                     i.pointer.any_pressed()
@@ -5998,74 +6035,6 @@ impl Rack {
                 );
             }
         }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
-    fn viz_panel(&self, ui: &mut egui::Ui, node: &Node, rect: Rect) {
-        let zoom = self.zoom;
-        let painter = ui.painter();
-        let point = |x, y| rect.min + vec2(x, y) * zoom;
-        let state = self
-            .module_lights
-            .get(&node.id)
-            .filter(|s| s.count == 16 && s.input_channels.is_some_and(|c| c <= 16));
-        painter.text(
-            point(90.0, 91.0),
-            Align2::CENTER_CENTER,
-            state.map_or_else(
-                || "TELEMETRY UNAVAILABLE".to_owned(),
-                |s| format!("{} / 16 CHANNELS", s.input_channels.unwrap()),
-            ),
-            crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
-            MUTED,
-        );
-        for channel in 0..16 {
-            let x = if channel < 8 { 32.0 } else { 112.0 };
-            let y = 120.0 + (channel % 8) as f32 * 24.0;
-            let active = state.is_some_and(|s| channel < s.input_channels.unwrap() as usize);
-            painter.text(
-                point(x, y),
-                Align2::CENTER_CENTER,
-                format!("{:02}", channel + 1),
-                crate::panel_skin::print_font(painter.ctx(), 12.0 * zoom),
-                if active { INK } else { Color32::from_gray(155) },
-            );
-            for (polarity, color) in [
-                Color32::from_rgb(65, 174, 102),
-                Color32::from_rgb(216, 75, 65),
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                let center = point(x + 28.0 + if polarity == 0 { -5.0 } else { 5.0 }, y);
-                // Retired voices can retain a fading light after their number dims.
-                let value = state.map_or(0.0, |s| s.brightness[channel][polarity].clamp(0.0, 1.0));
-                painter.circle_filled(center, 4.0 * zoom, Color32::from_gray(70));
-                self.lighting.circle(
-                    painter,
-                    center,
-                    3.0 * zoom,
-                    if state.is_none() {
-                        Color32::from_gray(100)
-                    } else {
-                        color.gamma_multiply(0.15 + value * 0.85)
-                    },
-                    value,
-                    0.15,
-                );
-            }
-        }
-        painter.text(
-            point(90.0, 313.0),
-            Align2::CENTER_CENTER,
-            "+ GREEN   − RED",
-            crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
-            MUTED,
-        );
-        ui.interact(Rect::from_min_max(point(20.0, 106.0), point(158.0, 302.0)),
-            ui.id().with((&node.id, "viz-meter")), Sense::hover()).on_hover_text(
-                "Sixteen input voices. Bright numbers identify active channels, including silent voices. Green shows positive voltage; red shows negative voltage. Gray indicators mean telemetry is unavailable.");
     }
 
     /// SUM's telemetry is post-attenuator; absent publication stays visibly unavailable.
@@ -6825,267 +6794,6 @@ impl Rack {
                 json!({"id":node.id,"parameter":parameter,"value":value}),
             )
         })
-    }
-
-    fn scope_panel(
-        &mut self,
-        ui: &mut egui::Ui,
-        node: &Node,
-        module: Option<&Value>,
-        rect: Rect,
-    ) -> Option<RackAction> {
-        let zoom = self.zoom;
-        let painter = ui.painter().clone();
-        let point = |x, y| rect.min + vec2(x, y) * zoom;
-        let display = Rect::from_min_max(point(30.0, 70.0), point(600.0, 250.0));
-        painter.rect_filled(display.expand(3.0 * zoom), 3.0 * zoom, INK);
-        let screen_start = crate::lighting::next(&painter);
-        painter.rect_filled(display, 1.0, Color32::from_rgb(14, 24, 27));
-        let plot = Rect::from_min_max(point(40.0, 101.0), point(590.0, 213.0));
-        for i in 1..10 {
-            let x = plot.left() + plot.width() * i as f32 / 10.0;
-            painter.line_segment(
-                [pos2(x, plot.top()), pos2(x, plot.bottom())],
-                Stroke::new(0.5 * zoom, Color32::from_rgb(36, 50, 53)),
-            );
-        }
-        for i in 1..6 {
-            let y = plot.top() + plot.height() * i as f32 / 6.0;
-            painter.line_segment(
-                [pos2(plot.left(), y), pos2(plot.right(), y)],
-                Stroke::new(0.5 * zoom, Color32::from_rgb(36, 50, 53)),
-            );
-        }
-        let trace = painter.with_clip_rect(plot.shrink(1.0));
-        if let Some(state) = self.scope_states.get(&node.id) {
-            let auto_range = scope_auto_range_enabled(node);
-            let range_id = ui.id().with(("scope-auto-range", &node.id));
-            let previous = ui.data(|data| data.get_temp::<[ScopeDisplayRange; 2]>(range_id));
-            let ranges = scope_display_ranges(state, auto_range, previous);
-            ui.data_mut(|data| {
-                if auto_range {
-                    data.insert_temp(range_id, ranges);
-                } else {
-                    data.remove::<[ScopeDisplayRange; 2]>(range_id);
-                }
-            });
-            let colors = [
-                Color32::from_rgb(86, 215, 222),
-                Color32::from_rgb(250, 185, 80),
-            ];
-            let voltage_y = |v: f32, range: ScopeDisplayRange| {
-                (f64::from(plot.center().y)
-                    - scope_display_fraction(v, range) * f64::from(plot.height()))
-                    as f32
-            };
-            let zero_stroke = |color: Color32| Stroke::new(0.8 * zoom, color.gamma_multiply(0.55));
-            if state.xy {
-                let x_zero = (f64::from(plot.center().x)
-                    + scope_display_fraction(0.0, ranges[0]) * f64::from(plot.width()))
-                    as f32;
-                if plot.x_range().contains(x_zero) {
-                    trace.line_segment(
-                        [pos2(x_zero, plot.top()), pos2(x_zero, plot.bottom())],
-                        zero_stroke(colors[0]),
-                    );
-                    trace.text(
-                        pos2(x_zero + 3.0 * zoom, plot.bottom() - 3.0 * zoom),
-                        Align2::LEFT_BOTTOM,
-                        "X 0 V",
-                        FontId::monospace(8.0 * zoom),
-                        colors[0],
-                    );
-                }
-            }
-            for (range, color, label) in [
-                (ranges[0], colors[0], "X 0 V"),
-                (ranges[1], colors[1], "Y 0 V"),
-            ] {
-                if state.xy && label == "X 0 V" {
-                    continue;
-                }
-                let y_zero = voltage_y(0.0, range);
-                if plot.y_range().contains(y_zero) {
-                    trace.line_segment(
-                        [pos2(plot.left(), y_zero), pos2(plot.right(), y_zero)],
-                        zero_stroke(color),
-                    );
-                    trace.text(
-                        pos2(
-                            plot.right() - 3.0 * zoom,
-                            y_zero + if label == "X 0 V" { -2.0 } else { 10.0 } * zoom,
-                        ),
-                        Align2::RIGHT_BOTTOM,
-                        label,
-                        FontId::monospace(8.0 * zoom),
-                        color,
-                    );
-                }
-            }
-            if scope_x_trigger_guide(state) {
-                let trigger_y = voltage_y(state.threshold, ranges[0]);
-                if plot.y_range().contains(trigger_y) {
-                    trace.line_segment(
-                        [pos2(plot.left(), trigger_y), pos2(plot.right(), trigger_y)],
-                        Stroke::new(0.9 * zoom, SCOPE_TRIGGER_COLOR),
-                    );
-                    trace.text(
-                        pos2(plot.left() + 3.0 * zoom, trigger_y - 2.0 * zoom),
-                        Align2::LEFT_BOTTOM,
-                        "X TRIGGER",
-                        FontId::monospace(8.0 * zoom),
-                        SCOPE_TRIGGER_COLOR,
-                    );
-                } else {
-                    let y = trigger_y.clamp(plot.top() + 5.0 * zoom, plot.bottom() - 5.0 * zoom);
-                    trace.text(
-                        pos2(plot.left() + 3.0 * zoom, y),
-                        Align2::LEFT_CENTER,
-                        if trigger_y < plot.top() {
-                            "↑ X TRIGGER ABOVE RANGE"
-                        } else {
-                            "↓ X TRIGGER BELOW RANGE"
-                        },
-                        FontId::monospace(8.0 * zoom),
-                        SCOPE_TRIGGER_COLOR,
-                    );
-                }
-            }
-            painter.text(
-                point(40.0, 89.0),
-                Align2::LEFT_TOP,
-                scope_range_label(auto_range, ranges),
-                FontId::monospace(9.5 * zoom),
-                Color32::from_gray(180),
-            );
-            let measurements = state.measurements();
-            for (axis, extrema, y, color) in [
-                ("X", measurements.x, 219.0, colors[0]),
-                ("Y", measurements.y, 234.0, colors[1]),
-            ] {
-                painter.text(
-                    point(40.0, y),
-                    Align2::LEFT_TOP,
-                    scope_extrema_label(axis, extrema),
-                    FontId::monospace(9.5 * zoom),
-                    color,
-                );
-            }
-            if state.xy {
-                for voice in 0..usize::from(state.x_channels.min(state.y_channels).min(16)) {
-                    let mut previous = None;
-                    for bin in scope_xy_order(state.buffer_index) {
-                        let x = state.x[voice][bin];
-                        let y = state.y[voice][bin];
-                        if !scope_point_valid(x) || !scope_point_valid(y) {
-                            previous = None;
-                            continue;
-                        }
-                        let p = pos2(
-                            (f64::from(plot.center().x)
-                                + scope_display_fraction(scope_midpoint(x), ranges[0])
-                                    * f64::from(plot.width())) as f32,
-                            voltage_y(scope_midpoint(y), ranges[1]),
-                        );
-                        if !scope_position_finite(p) {
-                            previous = None;
-                            continue;
-                        }
-                        if let Some(prev) = previous {
-                            trace.line_segment(
-                                [prev, p],
-                                Stroke::new(zoom.max(0.6), scope_voice_color(colors[0], voice)),
-                            );
-                        }
-                        previous = Some(p);
-                    }
-                }
-            } else {
-                for (channel, count, range, color) in [
-                    (&state.x, state.x_channels, ranges[0], colors[0]),
-                    (&state.y, state.y_channels, ranges[1], colors[1]),
-                ] {
-                    for (voice, samples) in
-                        channel.iter().enumerate().take(usize::from(count.min(16)))
-                    {
-                        let mut previous = None;
-                        for (bin, sample) in samples.iter().enumerate() {
-                            if !scope_point_valid(*sample) {
-                                previous = None;
-                                continue;
-                            }
-                            let x = plot.left() + plot.width() * bin as f32 / 255.0;
-                            let lo = pos2(x, voltage_y(sample.min, range));
-                            let hi = pos2(x, voltage_y(sample.max, range));
-                            if !scope_position_finite(lo) || !scope_position_finite(hi) {
-                                previous = None;
-                                continue;
-                            }
-                            let stroke =
-                                Stroke::new(zoom.max(0.6), scope_voice_color(color, voice));
-                            trace.line_segment([lo, hi], stroke);
-                            let mid = pos2(x, ((f64::from(lo.y) + f64::from(hi.y)) * 0.5) as f32);
-                            if let Some(prev) = previous {
-                                trace.line_segment([prev, mid], stroke);
-                            }
-                            previous = Some(mid);
-                        }
-                    }
-                }
-            }
-            painter.text(
-                point(40.0, 76.0),
-                Align2::LEFT_TOP,
-                format!(
-                    "X {} ch   Y {} ch   {}  |  {}",
-                    state.x_channels,
-                    state.y_channels,
-                    if state.xy { "XY" } else { "TIME" },
-                    scope_trigger_status(state)
-                ),
-                FontId::monospace(9.5 * zoom),
-                Color32::from_gray(216),
-            );
-        } else {
-            painter.text(
-                plot.center(),
-                Align2::CENTER_CENTER,
-                "NO ENGINE CAPTURE · X / Y VOLTS",
-                FontId::monospace(12.0 * zoom),
-                Color32::from_gray(155),
-            );
-        }
-        if self.scope_states.contains_key(&node.id) {
-            self.lighting.preserve(&painter, screen_start);
-        }
-        let mut action = None;
-        for (index, (name, label, suffix)) in SCOPE_CONTROLS.iter().enumerate() {
-            let local = scope_control_rect(index);
-            let control = Rect::from_min_max(
-                point(local.min.x, local.min.y),
-                point(local.max.x, local.max.y),
-            );
-            painter.text(
-                point(local.min.x, local.min.y - 8.0),
-                Align2::LEFT_CENTER,
-                *label,
-                crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
-                INK,
-            );
-            if let Some(spec) = module.and_then(|m| m["params"].get(*name)) {
-                let edit = if matches!(*name, "x_scale" | "y_scale") {
-                    self.choice_parameter(ui, node, name, spec, control, &SCOPE_SCALE_CHOICES)
-                } else if matches!(*name, "xy" | "trigger_enabled" | "auto_range") {
-                    self.choice_parameter(ui, node, name, spec, control, &["OFF", "ON"])
-                } else {
-                    self.compact_parameter(ui, node, name, spec, control, suffix)
-                };
-                if let Some(edit) = edit {
-                    action = Some(scope_parameter_action(node, edit, self.observed_revision));
-                }
-            }
-        }
-        action
     }
 
     fn compact_parameter(
@@ -10765,6 +10473,7 @@ fn paint_panel(
         || is_voltage_utility(&node.kind)
         || atlas_legacy_utility_kind(&node.kind)
         || atlas_endpoint_kind(&node.kind)
+        || atlas_view_kind(&node.kind)
         || node.kind == "vca_mix"
         || node.kind == "score_sequencer"
         || matches!(
@@ -10864,6 +10573,7 @@ fn paint_panel(
         || is_voltage_utility(&node.kind)
         || atlas_legacy_utility_kind(&node.kind)
         || atlas_endpoint_kind(&node.kind)
+        || atlas_view_kind(&node.kind)
         || node.kind == "vca_mix"
         || node.kind == "score_sequencer"
         || matches!(
@@ -11108,6 +10818,7 @@ fn paint_jack(
         || is_voltage_utility(kind)
         || atlas_legacy_utility_kind(kind)
         || atlas_endpoint_kind(kind)
+        || atlas_view_kind(kind)
         || kind == "vca_mix"
         || kind == "score_sequencer"
         || matches!(
@@ -11810,17 +11521,7 @@ fn scope_trigger_status(state: &openpatch_core::ScopeSnapshot) -> String {
         )
     }
 }
-const SCOPE_SCALE_CHOICES: [&str; 9] = [
-    "20 V/screen",
-    "10 V/screen",
-    "5 V/screen",
-    "2.5 V/screen",
-    "1.25 V/screen",
-    "0.625 V/screen",
-    "0.3125 V/screen",
-    "0.15625 V/screen",
-    "0.078125 V/screen",
-];
+
 fn scope_volts_per_screen(scale: u8) -> f32 {
     20.0 / 2.0_f32.powi(i32::from(scale))
 }
@@ -11857,18 +11558,6 @@ const SCOPE_CONTROLS: [(&str, &str, &str); 9] = [
     ("trigger_enabled", "TRIGGER", ""),
     ("auto_range", "AUTO RANGE", ""),
 ];
-fn scope_control_rect(index: usize) -> Rect {
-    if index == 8 {
-        return Rect::from_min_size(pos2(320.0, 353.0), vec2(105.0, 22.0));
-    }
-    Rect::from_min_size(
-        pos2(
-            30.0 + (index % 4) as f32 * 145.0,
-            274.0 + (index / 4) as f32 * 40.0,
-        ),
-        vec2(130.0, 22.0),
-    )
-}
 fn scope_voice_color(base: Color32, voice: usize) -> Color32 {
     let factor = 0.55 + 0.45 * (voice % 4) as f32 / 3.0;
     let mix = (voice / 4) as u8 * 18;
@@ -18932,6 +18621,12 @@ mod tests {
     }
     mod stock_mix_ui_tests {
         include!("stock_mix_ui_tests.rs");
+    }
+    mod scope_atlas_ui_tests {
+        include!("scope_atlas_ui_tests.rs");
+    }
+    mod view_atlas_ui_tests {
+        include!("view_atlas_ui_tests.rs");
     }
     mod mixer_endpoint_ui_tests {
         include!("mixer_endpoint_ui_tests.rs");
