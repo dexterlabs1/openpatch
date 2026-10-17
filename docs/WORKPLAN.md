@@ -69,6 +69,13 @@ Stock Delay, Stereo Delay and Space extend the detailed native treatment to twen
 
 [Native delay/reverb panels and matching thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-effects.png). **19 focused checks passed**, including real Session successive edits with one undo for all 24 controls, their construction-motion anchors, precision units/navigation, actual clock emission, graph-edit gesture identity, all generic control geometry, socket/text clearance and shared rack/browser drawing. Strict desktop Clippy and formatting passed; light/dim-room CPU meshes were inspected. The prior mixer CI passed 1,099 desktop checks and found one reduced-zoom endpoint label crossing its knob hit target; that actual layout issue is corrected with the target preserved. No DSP/frozen-reference changes or installation. Next: dynamics and macro/drum voices.
 
+
+### Dynamics and creative voices
+
+DUCK, Drum and Macro Voice bring the detailed native pass to twenty-three panels. DUCK pairs its seven controls with a configured soft-knee transfer plot including makeup, explicit dB axes and a separate explanation of detector/attack/release behavior. Drum retains three direct mode choices, with a source/drive/envelope/level path and the envelope's configured T60. Macro Voice retains all eight engines, six continuous controls and its original pitch/trigger polyphony, showing the engine/LPG/DC/output path. Existing widths, sockets, real units, precision editing and grouped history remain intact; both mode choices and all eighteen rotaries have MCP cues.
+
+[Native dynamics/voice panels and matching thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-creative-voices.png). **16 focused checks passed** across the interaction, geometry, choices and configured-guide targets; this includes real Session successive edits/undo for every rotary, twenty MCP anchors, mode/envelope legend changes, and shared rack/browser drawing. The compressor plot agrees within 0.001 dB with the actual settled Core engine across 45 input/ratio/knee combinations. This bounded static check is not a transient, detector or hardware equivalence claim. Strict desktop Clippy and formatting passed; light/dim-room CPU meshes were inspected. Prior `69e5077` passed complete GitHub CI, including the Mac build and visualizer job. No DSP/frozen-reference changes or installation. Next: the SVF filter and physical resonator.
+
 The following catalog batches describe existing development source, not an approved final design.
 
 ### First catalog batch in progress
