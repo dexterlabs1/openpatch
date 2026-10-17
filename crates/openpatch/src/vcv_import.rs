@@ -8,6 +8,9 @@
 //! newer Stock identities. VCF startup history and RNG ownership are disclosed.
 //! Primary source: https://github.com/VCVRack/Fundamental/tree/e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e/src
 //! This is source-behavior conversion, not official binary/hardware equivalence.
+//! Core Notes 2.6.6 text/load contract: Rack v2.6.6,
+//! 061ccf63c1758599396ac1bb10d47345d9d34076, src/core/Notes.cpp and
+//! src/engine/Module.cpp. Native presentation and text bounds are an adaptation.
 
 use crate::project_document::{
     DocumentCable, DocumentGraph, DocumentNode, MappingFidelity, ObservedPort, PortDirection,
@@ -336,6 +339,29 @@ pub fn import(bytes: &[u8]) -> Result<ImportResult, String> {
         })
         .collect();
     let mut warnings = vec!["Source-behavior mappings use OpenPatch scheduling, lifecycle and random streams; no official binary or hardware equivalence is claimed.".into()];
+    if modules.iter().any(core_audio_interface_266) {
+        warnings.push("Core 2.6.6 AudioInterface2 remains an unresolved hardware boundary. Its driver/device/rate settings are retained as source metadata; import does not select a device or substitute the native stereo output.".into());
+        if modules
+            .iter()
+            .filter(|module| core_audio_interface_266(module))
+            .any(|module| {
+                module["params"].as_array().is_some_and(|params| {
+                    params.iter().any(|param| {
+                        param["id"].as_u64() == Some(0) && param["value"].as_f64() == Some(0.0)
+                    })
+                })
+            })
+        {
+            warnings.push("A source AudioInterface2 output level is zero (muted). Import preserves that source setting and does not automatically unmute an output.".into());
+        }
+    }
+
+    if summaries
+        .iter()
+        .any(|module| module.native_kind.as_deref() == Some("notes"))
+    {
+        warnings.push("Core 2.6.6 Notes uses a MusicalRole text adaptation: multiline Unicode and legacy text/bypass loading are retained within the native 8192 UTF-8 byte limit. The native Notes panel, font and editor differ; Rack visual/editor equivalence is unclaimed. Original source text and module records remain preserved.".into());
+    }
     if summaries
         .iter()
         .any(|module| module.native_kind.as_deref() == Some("rackmcp_sequencer"))
@@ -495,6 +521,14 @@ struct Manifest {
     outputs: &'static [&'static str],
 }
 fn manifest(module: &Value) -> Option<Manifest> {
+    if module["plugin"] == "Core" && module["model"] == "Notes" && module["version"] == "2.6.6" {
+        return Some(Manifest {
+            kind: "notes",
+            params: &[],
+            inputs: &[],
+            outputs: &[],
+        });
+    }
     if module["plugin"] == "RackMCP" && module["model"] == "Bridge" && module["version"] == "2.0.0"
     {
         return Some(Manifest {
@@ -666,7 +700,7 @@ pub(crate) fn registered_source_mapping(module: &Value) -> Option<SourceMapping>
         version: 1,
         fidelity: if matches!(
             mapping.kind,
-            "rackmcp_sequencer" | "rackmcp_listen" | "rackmcp_bridge"
+            "notes" | "rackmcp_sequencer" | "rackmcp_listen" | "rackmcp_bridge"
         ) {
             MappingFidelity::MusicalRole
         } else {
@@ -709,8 +743,18 @@ pub(crate) fn source_automation_parameter(
 fn unsupported_reason(_module: &Value) -> String {
     "no mapping for this exact plugin/model/version identity".into()
 }
+fn core_audio_interface_266(module: &Value) -> bool {
+    module["plugin"] == "Core"
+        && module["model"] == "AudioInterface2"
+        && module["version"] == "2.6.6"
+}
 fn source_port_counts(module: &Value) -> Option<(usize, usize)> {
-    manifest(module).map(|mapping| (mapping.inputs.len(), mapping.outputs.len()))
+    // Pinned source shape is known even though device I/O is not translated.
+    if core_audio_interface_266(module) {
+        Some((2, 2))
+    } else {
+        manifest(module).map(|mapping| (mapping.inputs.len(), mapping.outputs.len()))
+    }
 }
 fn route_port(mapping: Option<&Manifest>, direction: PortDirection, index: u32) -> String {
     match mapping {
@@ -722,6 +766,36 @@ fn route_port(mapping: Option<&Manifest>, direction: PortDirection, index: u32) 
             .into(),
         None => ObservedPort { direction, index }.key(),
     }
+}
+
+fn source_notes_text(module: &Value) -> Result<&str, String> {
+    fn text_field(value: &Value) -> Result<&str, String> {
+        let text = value.as_str().ok_or("Notes source text must be a string")?;
+        if text.len() > openpatch_core::MAX_NOTES_BYTES || text.contains('\0') {
+            return Err("Notes source text exceeds 8192 UTF-8 bytes or contains NUL".into());
+        }
+        Ok(text)
+    }
+
+    let mut text = "";
+    if let Some(data) = module.get("data") {
+        let data = data
+            .as_object()
+            .ok_or("Notes source data must be an object containing only optional text")?;
+        if data.keys().any(|key| key != "text") {
+            return Err(
+                "unrecognized Notes source data is outside the pinned mapping contract".into(),
+            );
+        }
+        if let Some(value) = data.get("text") {
+            text = text_field(value)?;
+        }
+    }
+    // NotesModule::fromJson loads generic data first, then legacy root text.
+    if let Some(value) = module.get("text") {
+        text = text_field(value)?;
+    }
+    Ok(text)
 }
 
 fn convert(
@@ -831,6 +905,22 @@ fn convert(
             );
         }
     }
+    let bypassed = if mapping.kind == "notes" {
+        if module
+            .get("disabled")
+            .is_some_and(|value| !value.is_boolean())
+        {
+            return Err("Notes legacy disabled must be Boolean".into());
+        }
+        // Rack Module::fromJson uses disabled only when bypass is absent.
+        module
+            .get("bypass")
+            .or_else(|| module.get("disabled"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    } else {
+        module["bypass"].as_bool().unwrap_or(false)
+    };
     let mut node = Node {
         id: id.into(),
         kind: mapping.kind.into(),
@@ -838,9 +928,14 @@ fn convert(
         content: None,
         rackmcp_sequence: None,
         score: None,
-        bypassed: module["bypass"].as_bool().unwrap_or(false),
+        bypassed,
     };
     let mut asset = None;
+    if mapping.kind == "notes" {
+        node.content = Some(ModuleContent::Notes {
+            text: source_notes_text(module)?.into(),
+        });
+    }
     if mapping.kind == "rackmcp_sequencer" {
         let state = match module.get("data") {
             Some(data) => SequenceState {

@@ -103,3 +103,17 @@ shared authored/durable saved-state status. Rack pairing/HMAC, TCP transport and
 writer leases are explicitly unsupported. Held source reset-pairing or custom
 state stays unresolved. Sequencer active/pending pattern and playhead controls
 use real shared transport observations. [Host contract and limits](RACKMCP_CONTROL_CONTRACT.md#native-bridge-and-live-sequencer-checkpoint-2026-10-17).
+
+
+## Core Notes development mapping
+
+The branch now maps exact **Core Notes 2.6.6** into editable native Notes, retaining
+Unicode/whitespace, legacy loading precedence and original source bytes. Native
+text is bounded to 8192 UTF-8 bytes; unsupported text/state remains unresolved.
+The full reference patch now preserves 55 modules/83 cables with **37 mapped and
+18 unresolved** on the development branch, including its four annotations. The
+installed 0.2.7 build 9 remains at the earlier 33/22 checkpoint.
+
+Core AudioInterface2 remains an unresolved device boundary. Its known source
+ports are validated; saved hardware settings are not applied, and a saved zero
+output level is reported as muted. [Pinned Notes/audio source and limits](CORE_TEXT_IMPORT.md).

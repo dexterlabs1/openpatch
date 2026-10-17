@@ -225,6 +225,50 @@ class OpenPatchMCPTests(unittest.TestCase):
         check(payload)
         return payload
 
+    def test_core_notes_import_mcp_edits_history_and_export_preserve_original_package(self) -> None:
+        text = "  Guide\n\t日本語 🎛️\nkeep trailing  "
+        source = {"version": "2.6.6", "modules": [
+            {"id": 42, "plugin": "Core", "model": "Notes", "version": "2.6.6", "params": [], "data": {"text": text}},
+            {"id": 99, "plugin": "Missing", "model": "Effect", "version": "2.0", "data": {"opaque": [1, 2]}},
+            {"id": 81, "plugin": "Core", "model": "AudioInterface2", "version": "2.6.6",
+             "params": [{"id": 0, "value": 0}], "data": {"dcFilter": True, "audio": {
+                 "driver": 5, "deviceName": "Reference speakers", "sampleRate": 24000,
+                 "blockSize": 256, "inputOffset": 0, "outputOffset": 0}}}
+        ], "cables": []}
+        raw = json.dumps(source, ensure_ascii=False, indent=2).encode()
+        source_path = self.workspace / "notes.vcv"
+        source_path.write_bytes(raw)
+        imported = self.payload(self.require_tool_success("import_vcv", {"filename": source_path.name}))
+        self.assertEqual(imported["report"]["mapped_count"], 1)
+        self.assertEqual(imported["report"]["unresolved_count"], 2)
+        self.assertTrue(any("zero (muted)" in warning for warning in imported["report"]["warnings"]))
+        self.assertEqual(imported["execution"]["requested_disposition"], "suspended_unresolved")
+        package_id = imported["report"]["package_id"]
+
+        def document() -> dict[str, Any]:
+            return self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))["document"]
+
+        original = document()
+        package = original["sources"][package_id]
+        self.assertEqual(package["patch"], source)
+        self.assertEqual(base64.b64decode(original["source_blobs"][package["assets"]["patch.json"]]), raw)
+        changed = "Updated via MCP\nα β γ"
+        self.require_tool_success("set_module_content", {"id": "vcv_m_42", "content": {"type": "notes", "text": changed}})
+        edited = document()
+        self.assertEqual(self.patch_snapshot()["patch"]["nodes"][0]["content"]["text"], changed)
+        self.assertEqual(edited["sources"], original["sources"])
+        self.assertEqual(edited["source_blobs"], original["source_blobs"])
+        self.require_tool_success("undo")
+        self.assertEqual(self.patch_snapshot()["patch"]["nodes"][0]["content"]["text"], text)
+        self.require_tool_success("redo")
+        self.require_tool_success("save_document", {"filename": "notes.json"})
+        self.require_tool_success("load_document", {"filename": "notes.json"})
+        self.assertEqual(document(), edited)
+        self.assertEqual(source_path.read_bytes(), raw)
+        bridge = self.payload(self.require_tool_success("inspect_bridge"))
+        self.assertEqual(bridge["transport"]["state"], "stopped")
+        self.assertIsNone(bridge["transport"]["attachment_id"])
+
     def test_bridge_observation_and_exports_do_not_invent_native_services_or_active_saves(self) -> None:
         tools = self.client.request("tools/list")["result"]["tools"]
         names = {tool["name"] for tool in tools}

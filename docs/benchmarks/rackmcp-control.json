@@ -1,5 +1,5 @@
 {
-  "status": "Implemented, locally validated and installed 0.2.7 build9; one family PR CI pending; broader VCV parity remains incomplete",
+  "status": "Implemented and installed0.2.7 build9; PR32 merged after full Mac CI; broader VCV parity remains incomplete",
   "date": "2026-10-17",
   "source_contract": "../RACKMCP_CONTROL_CONTRACT.md",
   "upstream_rackmcp_pin": "285e84c5ff2d3ecef25890da07f578af6a0c5ca6",
@@ -46,7 +46,23 @@
       "bridge-save-control-001: missing tempfile dev dependency; corrected",
       "bridge-desktop-002: details target below physical panel; corrected",
       "control-family-workspace-001: old two-window fixtures reused one Session, violating new one-listener-per-session authority; fixtures use separate window Sessions, and new listener tests share the existing registry serial guard"
-    ]
+    ],
+    "github_ci": {
+      "passed": true,
+      "run": "https://github.com/dexterlabs1/openpatch/actions/runs/39040128343",
+      "rust_passed": 2616,
+      "rust_ignored": 17,
+      "python_passed": 123,
+      "includes": [
+        "strict formatting/Clippy",
+        "correctness/allocation suites",
+        "optimized binaries",
+        "macOS packaging",
+        "MCP integration",
+        "visualizer integration"
+      ],
+      "log": "control-family-ci-39040128343.log"
+    }
   },
   "artifact": {
     "version": "0.2.7",
@@ -80,6 +96,8 @@
     "No whole-Rack scheduler/transport protocol, arbitrary existing binary, full user-patch audio or physical hardware equivalence.",
     "Original source numerical proofs remain scoped to their frozen checkpoints; this host-only milestone does not regenerate or claim byte equality of the whole current Core manifest.",
     "Native-window, physical audio device and GPU-driver tests were not run.",
-    "Core Notes/audio host and third-party modules remain unresolved; next strict Core Notes slice is audited but intentionally held out of this installation."
-  ]
+    "Installed0.2.7 still preserves unresolved Core Notes/audio and third-party boundaries. Strict Core Notes import is a separate development follow-up; see CORE_TEXT_IMPORT.md."
+  ],
+  "source_checkpoint": "b4e46575471d55dff1a06d9326dc3504c2bbcad8",
+  "merged_commit": "aceb99e95ac503e630a4de8242284ff5c855d606"
 }

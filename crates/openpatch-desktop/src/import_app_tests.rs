@@ -203,7 +203,7 @@ fn actual_vcv_native_open_save_reopen_and_capture() {
     let mut app = host(directory.path());
     app.load_document("source.vcv", false);
     assert_eq!(app.project.graph.nodes.len(), 55, "{}", app.status);
-    assert_eq!(app.patch.nodes.len(), 33);
+    assert_eq!(app.patch.nodes.len(), 37);
     assert_eq!(app.project.graph.cables.len(), 83);
     assert!(!app.shared.lock().unwrap().layout_pending());
     let expected = app.project.clone();
@@ -541,4 +541,85 @@ fn imported_automation_review_suspends_exact_and_explicitly_enables_partial_with
         capture.observe(&output);
         capture.save(&ctx, output, size, destination.join("partial-explicit.png"));
     }
+}
+
+#[test]
+fn core_notes_import_edit_undo_save_reopen_preserves_source_and_dependency_boundary() {
+    let directory = tempfile::tempdir().unwrap();
+    let text = "Envelope guide\n\t日本語 🎛️ café\n  keep whitespace  ";
+    let source = json!({"version":"2.6.6","modules":[
+        {"id":1,"plugin":"Core","model":"Notes","version":"2.6.6","params":[],"pos":[0,0],"data":{"text":text}},
+        {"id":2,"plugin":"Missing","model":"Effect","version":"2.0","pos":[16,0],"data":{"opaque":[1,2,3]}}
+    ],"cables":[]});
+    let bytes = serde_json::to_vec_pretty(&source).unwrap();
+    let path = directory.path().join("notes.vcv");
+    std::fs::write(&path, &bytes).unwrap();
+    let mut app = host(directory.path());
+    app.load_document("notes.vcv", false);
+    assert_eq!(app.project.graph.nodes.len(), 2, "{}", app.status);
+    assert_eq!(app.patch.nodes.len(), 1);
+    assert_eq!(app.patch.nodes[0].effective_notes_text(), Some(text));
+    assert!(matches!(
+        &app.project.graph.nodes[1],
+        DocumentNode::Unresolved { .. }
+    ));
+    assert_eq!(
+        app.shared.lock().unwrap().execution_disposition(),
+        ExecutionDisposition::SuspendedUnresolved
+    );
+    assert!(app.audio.is_none());
+    assert_eq!(
+        execute_shared(&app.shared, "inspect_bridge", json!({})).unwrap()["transport"]["state"],
+        "stopped"
+    );
+    let payload = |app: &OpenPatch| {
+        serde_json::to_value((&app.project.sources, &app.project.source_blobs)).unwrap()
+    };
+    let original = payload(&app);
+    app.save_document("original-notes.openpatch", true);
+    assert!(!app.dirty(), "{}", app.status);
+    let changed = "Updated annotation\nα β γ\n  preserved  ";
+    assert!(
+        app.command(
+            "set_module_content",
+            json!({"id":"vcv_m_1","content":{"type":"notes","text":changed}})
+        ),
+        "{}",
+        app.status
+    );
+    assert_eq!(app.patch.nodes[0].effective_notes_text(), Some(changed));
+    app.observe_document(); // End-of-frame saved-state observation.
+    assert!(app.dirty());
+    assert!(app.command("undo", json!({})));
+    assert_eq!(app.patch.nodes[0].effective_notes_text(), Some(text));
+    app.observe_document();
+    assert!(!app.dirty());
+    assert!(app.command("redo", json!({})));
+    assert_eq!(app.patch.nodes[0].effective_notes_text(), Some(changed));
+    app.observe_document();
+    assert!(app.dirty());
+    assert_eq!(payload(&app), original);
+    app.save_document("edited-notes.openpatch", true);
+    assert_eq!(
+        app.active_file.as_deref(),
+        Some("edited-notes.openpatch"),
+        "{}",
+        app.status
+    );
+    assert!(!app.dirty());
+    let mut reopened = host(directory.path());
+    reopened.load_document("edited-notes.openpatch", false);
+    assert_eq!(
+        reopened.patch.nodes[0].effective_notes_text(),
+        Some(changed)
+    );
+    assert_eq!(payload(&reopened), original);
+    assert_eq!(reopened.project.graph.nodes.len(), 2);
+    assert_eq!(
+        reopened.shared.lock().unwrap().execution_disposition(),
+        ExecutionDisposition::SuspendedUnresolved
+    );
+    assert!(!reopened.dirty(), "{}", reopened.status);
+    assert!(reopened.audio.is_none());
+    assert_eq!(std::fs::read(path).unwrap(), bytes);
 }
