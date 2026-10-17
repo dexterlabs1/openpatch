@@ -46,7 +46,7 @@ pub fn texture_phrase(texture: &str) -> &'static str {
 pub fn texture_text(texture: &str) -> &'static str {
     match texture {
         "Glitchy" => "stutter and bit-crush bus between the mixer and the master, sequenced on the drum clock",
-        "Dusty" => "tape hiss bed, gentle tape wow on the chords, darker filters and a lazier swing",
+        "Dusty" => "tape hiss bed, darker filters and a lazier swing",
         "Spacious" => "long hall, longer echo and a slow wind band sweeping underneath",
         "Crisp" => "tighter drums, brighter filters, drier reverb",
         "Liquid" => "slow filter tide on the chords, smeared ping-pong echo, gliding lead",
@@ -102,6 +102,10 @@ impl Rng {
 
 fn r3(v: f64) -> f64 { (v * 1000.0).round() / 1000.0 }
 
+/// Stock VCF frequency knob for a cutoff in Hz (C4 · 2^(10·f − 5)). The stock four-pole VCF costs ~1/40 of the
+/// analog-modelled ladder and ~1/7 of the SVF per voice, which keeps every Patch Engine build inside a Steam Deck core.
+fn vcf_knob(hz: f64) -> f64 { r3(((hz.clamp(20.0, 18000.0) / 261.6256).log2() + 5.0) / 10.0) }
+
 // ---------------------------------------------------------------- score helpers
 fn st(step: i64, notes: &[i64], vel: f64, gate: f64, prob: f64, slide: bool) -> Value {
     let mut s = json!({"step": step, "notes": notes, "velocity": r3(vel), "gate": r3(gate)});
@@ -122,7 +126,7 @@ fn trk(steps: Vec<Value>, voices: u32, glide: u32) -> Value {
     json!({"voices": voices, "glide_ms": glide, "steps": by.into_values().collect::<Vec<_>>()})
 }
 fn lane(points: &[(f64, f64, &str)]) -> Value {
-    json!({"length_bars": 32, "looped": true,
+    json!({"length_bars": 64, "looped": true,
            "points": points.iter().map(|(b, v, c)| json!({"bar": b, "value": r3(*v), "curve": c})).collect::<Vec<_>>()})
 }
 fn euclid(k: i64, n: i64, rot: i64) -> Vec<i64> {
@@ -141,11 +145,13 @@ fn quality(q: &str) -> &'static [i64] {
         "maj7" => &[0, 4, 7, 11],
         "dom9" => &[4, 7, 10, 14],
         "m11" => &[3, 7, 10, 17],
+        "min_open" => &[0, 7, 12, 15],   // root · fifth · octave · minor tenth
+        "maj_open" => &[0, 7, 12, 16],
         _ => &[4, 7, 11, 18], // maj7#11
     }
 }
 fn qname(q: &str) -> &'static str {
-    match q { "maj9" => "maj9", "m9" => "m9", "m7" => "m7", "maj7" => "maj7", "dom9" => "9", "m11" => "m11", _ => "maj7♯11" }
+    match q { "maj9" => "maj9", "m9" => "m9", "m7" => "m7", "maj7" => "maj7", "dom9" => "9", "m11" => "m11", "min_open" => "m", "maj_open" => "", _ => "maj7♯11" }
 }
 const NOTE: [&str; 12] = ["C", "D♭", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
 
@@ -232,6 +238,30 @@ fn genre_def(g: &str) -> GenreDef {
     }
 }
 
+/// Genre chord colour: bold genres use open triads instead of jazz extensions; dub keeps its minor-seventh stabs.
+fn colorize(genre: &str, q: &'static str) -> &'static str {
+    let minor = matches!(q, "m9" | "m7" | "m11");
+    match genre {
+        "Techno" | "Synthwave" => if minor { "min_open" } else { "maj_open" },
+        "Dub Techno" => match q { "m9" | "m11" => "m7", "maj9" | "maj7s11" => "maj7", "dom9" => "maj_open", _ => q },
+        "Downtempo" | "UK Garage" => match q { "maj9" | "maj7s11" => "maj7", _ => q },
+        _ => q,
+    }
+}
+
+/// Harmonic rhythm: which progression chord sounds in each of the four slots (a slot is one bar, two for slow genres).
+/// Club genres hold a chord or vamp between two; song-like genres walk the full progression.
+fn harmonic_rhythms(genre: &str) -> &'static [[usize; 4]] {
+    match genre {
+        "Techno" => &[[0, 0, 0, 0], [0, 0, 1, 1], [0, 0, 0, 1]],
+        "Dub Techno" => &[[0, 0, 0, 0], [0, 0, 1, 1]],
+        "Deep House" => &[[0, 0, 1, 1], [0, 1, 0, 1], [0, 1, 2, 3]],
+        "UK Garage" | "Downtempo" => &[[0, 0, 1, 1], [0, 1, 2, 3]],
+        "Synthwave" | "Ambient" => &[[0, 1, 2, 3], [0, 0, 1, 1]],
+        _ => &[[0, 1, 2, 3]],
+    }
+}
+
 /// Mixer strip trims (dB) per voice, from offline stem measurements (56 random builds, all layers on) so each
 /// voice lands at its target level relative to the kick: chords ≈ 0…−3 dB, sub −2, bass −7, lead −3…−5.
 fn trim_db(name: &str) -> f64 {
@@ -251,6 +281,24 @@ fn out_gain(genre: &str) -> f64 {
         "Synthwave" => 0.95, "Downtempo" => 1.1, _ => 1.25,
     }
 }
+
+/// Offline DSP cost per module (% of one Apple M-series core at 48 kHz; mono, 4-voice), measured with every
+/// instance live. A Steam Deck core is roughly 3–3.5× slower, so a budget of ~18 keeps builds under ~65% there.
+fn module_cost(kind: &str, poly: bool) -> f64 {
+    let (mono, four) = match kind {
+        "multi_vco" => (0.21, 0.78), "analog_vco" => (0.03, 0.23), "stock_vcf" => (1.46, 1.59), "svf_filter" => (1.35, 4.6),
+        "ladder_vcf" => (7.5, 11.0), "stock_vca" => (0.05, 0.2), "analog_vca" => (3.2, 5.4), "adsr" => (0.07, 0.07),
+        "adsr_eg" => (0.17, 0.16), "cv_mix" => (0.11, 0.2), "fade" => (0.16, 0.23), "sidechain_compressor" => (0.38, 0.38),
+        "drum_voice" => (0.47, 0.47), "lowpass" => (0.04, 0.19), "stereo_reverb" => (0.41, 0.41), "stereo_delay" => (0.45, 0.45),
+        "studio_mixer" => (1.12, 1.12), "score_sequencer" => (0.31, 0.31), "poly_split" => (0.2, 0.2), "poly_merge" => (0.1, 0.1),
+        "poly_sum" => (0.07, 0.2), "gates" => (0.51, 0.51), "quantizer" => (0.18, 0.18), "multi_lfo" => (0.13, 0.13),
+        "colored_noise" => (0.49, 0.49), "wavetable_lfo" => (0.1, 0.1), "audio_stereo" => (0.05, 0.05), _ => (0.0, 0.0),
+    };
+    if poly { four } else { mono }
+}
+
+/// Optional layers dropped, in order, when a build exceeds its CPU budget.
+const DROP_ORDER: [&str; 5] = ["second percussion", "counter-line", "pad layer", "percussion", "open hat"];
 
 // ---------------------------------------------------------------- graph model
 struct Module { kind: &'static str, row: u8, params: Value, label: String, content: Option<Value> }
@@ -272,12 +320,13 @@ struct Ctx {
     rng: Rng, g: GenreDef, m: MoodDef, genre: &'static str, texture: &'static str,
     tonic: i64, chords: Vec<Vec<i64>>, roots: Vec<i64>, bright: f64, space: f64, six: f64,
     lead: &'static str, counter: bool, clap: bool, perc: Option<&'static str>, perc2: Option<&'static str>,
-    pad: bool, voice: &'static str, bass_style: &'static str, form: &'static str,
+    pad: bool, voice: &'static str, bass_style: &'static str, form: &'static str, ohat: bool,
+    break_shift: i64, drop2_shift: i64,
 }
 
 fn find(list: &[&'static str], s: &str) -> Option<&'static str> { list.iter().copied().find(|x| *x == s) }
 
-fn voice_chords(rng: &mut Rng, tonic: i64, prog: Prog) -> (Vec<Vec<i64>>, Vec<i64>) {
+fn voice_chords(rng: &mut Rng, tonic: i64, prog: &[(i64, &'static str)]) -> (Vec<Vec<i64>>, Vec<i64>) {
     let target = rng.pick(&[0.0, 2.0, 3.0, 5.0]);
     let spread = rng.chance(0.35);
     let mut out: Vec<Vec<i64>> = Vec::new();
@@ -311,6 +360,30 @@ fn voice_chords(rng: &mut Rng, tonic: i64, prog: Prog) -> (Vec<Vec<i64>>, Vec<i6
 
 impl Recipe {
     pub fn new(genre: &str, mood: &str, texture: &str, seed: u64) -> Result<Recipe, String> {
+        Self::build(genre, mood, texture, seed, 0)
+    }
+
+    /// Compose within a CPU budget (see `module_cost`): optional layers are dropped in `DROP_ORDER` until the
+    /// estimate fits. `None` means no limit. Deterministic for a given seed and budget.
+    pub fn with_budget(genre: &str, mood: &str, texture: &str, seed: u64, budget: Option<f64>) -> Result<Recipe, String> {
+        let mut r = Self::build(genre, mood, texture, seed, 0)?;
+        let Some(budget) = budget else { return Ok(r) };
+        for drop in 1..=DROP_ORDER.len() {
+            if r.cpu_estimate() <= budget { break; }
+            r = Self::build(genre, mood, texture, seed, drop)?;
+            r.notes.push(format!("light mode: left out {}", DROP_ORDER[..drop].join(", ")));
+        }
+        Ok(r)
+    }
+
+    /// Estimated DSP load (% of one Apple M-series core).
+    pub fn cpu_estimate(&self) -> f64 {
+        let poly = |id: &str| (id.starts_with("chord") || id.starts_with("pad") || id == "wow" || id == "tide" || id == "chop") && id != "pad_hold";
+        let modules: f64 = self.modules.iter().map(|(id, m)| module_cost(m.kind, poly(id))).sum();
+        r3(1.2 * (1.0 + modules + 0.01 * self.cid as f64))
+    }
+
+    fn build(genre: &str, mood: &str, texture: &str, seed: u64, drop: usize) -> Result<Recipe, String> {
         let genre = find(&GENRES, genre).ok_or("unknown genre")?;
         let mood_name = find(&MOODS, mood).ok_or("unknown mood")?;
         let texture = find(&TEXTURES, texture).ok_or("unknown texture")?;
@@ -318,8 +391,11 @@ impl Recipe {
         let g = genre_def(genre);
         let m = mood_def(mood_name);
         let tonic = rng.pick(m.keys);
-        let prog = m.progs[rng.idx(m.progs.len())];
-        let (chords, roots) = voice_chords(&mut rng, tonic, prog);
+        let colored: Vec<(i64, &'static str)> = m.progs[rng.idx(m.progs.len())].iter().map(|&(r, q)| (r, colorize(genre, q))).collect();
+        let rhythm = rng.pick(harmonic_rhythms(genre));
+        // the four slots of the loop, in order (a vamp repeats chords)
+        let prog: Vec<(i64, &'static str)> = rhythm.iter().map(|&i| colored[i]).collect();
+        let (chords, roots) = voice_chords(&mut rng, tonic, &prog);
         let bpm = (rng.int(g.bpm.0, g.bpm.1) + m.bpm).max(60);
         let swing = (rng.int(g.swing.0, g.swing.1) + if texture == "Dusty" { 4 } else { 0 }).clamp(50, 70);
         let bright = (m.bright + match texture { "Crisp" => 0.35, "Dusty" => -0.35, _ => 0.0 } + rng.uni(-0.15, 0.15)).clamp(-1.0, 1.0);
@@ -333,13 +409,28 @@ impl Recipe {
         let voice = rng.pick(g.voices);
         let pad = !voice.starts_with("pad") && !minimal && rng.chance(g.pad);
         let bass_style = rng.pick(g.bass);
-        let form = rng.pick(&["steady", "classic", "breathe", "build"]);
+        // song form: the breakdown (and maybe the second drop) moves to a related key
+        let shifts: &[i64] = if m.mode == "major" || m.mode == "lydian" || m.mode == "mixolydian" { &[5, -3, 2, 0] } else { &[-4, 5, 3, 0] };
+        let break_shift = rng.pick(shifts);
+        let drop2_shift = if rng.chance(0.4) { break_shift } else { 0 };
+        let form = "intro · build · drop · breakdown · drop · outro";
+        let dropped = |layer: &str| DROP_ORDER[..drop].contains(&layer);
+        let perc2 = if dropped("second percussion") { None } else { perc2 };
+        let counter = counter && !dropped("counter-line");
+        let pad = pad && !dropped("pad layer");
+        let (perc, perc2) = if dropped("percussion") { (None, None) } else { (perc, perc2) };
         let mut c = Ctx {
             rng, genre, texture, tonic, chords, roots, bright, space, six: 60.0 / bpm as f64 / 4.0,
-            lead, counter, clap: !minimal && genre != "Ambient", perc, perc2, pad, voice, bass_style, form, g, m,
+            lead, counter, clap: !minimal && genre != "Ambient", perc, perc2, pad, voice, bass_style, form, g, m, ohat: !dropped("open hat"),
+            break_shift, drop2_shift,
         };
         let key_name = format!("{} {}", NOTE[tonic as usize], c.m.mode);
-        let chord_names: Vec<String> = prog.iter().map(|&(r, q)| format!("{}{}", NOTE[(tonic + r).rem_euclid(12) as usize], qname(q))).collect();
+        let mut chord_names: Vec<String> = Vec::new();
+        for &i in rhythm.iter() {
+            let (r, q) = colored[i];
+            let name = format!("{}{}", NOTE[(tonic + r).rem_euclid(12) as usize], qname(q));
+            if chord_names.last() != Some(&name) { chord_names.push(name); }
+        }
         let mut r = Recipe {
             genre: genre.into(), mood: mood_name.into(), texture: texture.into(), seed,
             title: format!("{mood_name} {genre} · {texture}"),
@@ -374,6 +465,18 @@ impl Recipe {
         let n = self.strips.len() + 1;
         self.strips.push(Strip { name: name.into(), level, pan, hpf, send_a, send_b, high_db });
         self.con(node, port, "mixer", &format!("in{n}"));
+    }
+    /// Pitch source for a seq_music track, transposed by the song-form key lane when the arrangement changes key.
+    fn key_src(&mut self, c: &Ctx, port: &str) -> (String, String) {
+        if c.break_shift == 0 && c.drop2_shift == 0 { return ("seq_music".into(), port.into()); }
+        let id = format!("key_{port}");
+        if !self.modules.contains_key(&id) {
+            self.module(&id, "cv_mix", 1, json!({"level1": 1.0, "level2": 1.0, "level3": 0.0}), format!("Key change · {port}"));
+            self.con("seq_music", port, &id, "in1");
+            let kl = self.lane_out("key");
+            self.con("lanes", &kl, &id, "in2");
+        }
+        (id, "out".into())
     }
     fn lane_out(&self, name: &str) -> String { format!("out{}", self.lanes.iter().position(|l| *l == name).unwrap() + 1) }
     fn note(&mut self, s: impl Into<String>) { self.notes.push(s.into()); }
@@ -453,6 +556,7 @@ impl Recipe {
             _ => {}
         }
         if !c.clap { clap.clear(); }
+        if !c.ohat { ohat.clear(); }
 
         // ---- chords
         let ch = &c.chords;
@@ -688,36 +792,34 @@ impl Recipe {
             self.note("trance-gate pattern");
         }
 
-        // ---- song form: lanes on seq_drums (32-bar loop)
-        let brk = if c.genre == "Ambient" { None } else { rng.pick(&[Some(24.0), Some(24.0), Some(16.0), None]) };
-        let on = |pts: &[(f64, f64)]| -> Vec<(f64, f64, &'static str)> {
-            let mut v: Vec<(f64, f64, &str)> = pts.iter().map(|&(b, x)| (b, x, "hold")).collect();
-            v.push((32.0, pts[0].1, "hold"));
-            v
-        };
-        let (kick_l, bass_l, lead_l, perc_l, hats_l): (Vec<(f64, f64)>, Vec<(f64, f64)>, Vec<(f64, f64)>, Vec<(f64, f64)>, Vec<(f64, f64)>) = match c.form {
-            "classic" => (vec![(0.0, 10.0), (24.0, 0.0), (28.0, 10.0)], vec![(0.0, 0.0), (8.0, 10.0), (24.0, 0.0), (28.0, 10.0)],
-                          vec![(0.0, 0.0), (16.0, 10.0)], vec![(0.0, 10.0)], vec![(0.0, 10.0), (24.0, 4.0), (28.0, 10.0)]),
-            "breathe" => (vec![(0.0, 10.0)], vec![(0.0, 10.0), (12.0, 0.0), (16.0, 10.0)], vec![(0.0, 0.0), (8.0, 10.0), (16.0, 0.0), (24.0, 10.0)],
-                          vec![(0.0, 0.0), (8.0, 10.0)], vec![(0.0, 10.0)]),
-            "build" => (vec![(0.0, 10.0), (28.0, 0.0)], vec![(0.0, 0.0), (8.0, 10.0), (28.0, 0.0)], vec![(0.0, 0.0), (16.0, 10.0)],
-                        vec![(0.0, 0.0), (4.0, 10.0)], vec![(0.0, 0.0), (4.0, 10.0)]),
-            _ => (match brk { Some(b) => vec![(0.0, 10.0), (b, 0.0), (b + 4.0, 10.0)], None => vec![(0.0, 10.0)] }, vec![(0.0, 10.0)], vec![(0.0, 10.0)], vec![(0.0, 10.0)], vec![(0.0, 10.0)]),
-        };
-        let kick_l = if c.genre == "Ambient" { vec![(0.0, 6.0)] } else { kick_l };
-        let bass_l = if c.bass_style == "drone" { vec![(0.0, 10.0)] } else { bass_l };
-        self.note(format!("{} form", c.form));
-        let sweep: Vec<(f64, f64, &str)> = match rng.idx(3) {
-            0 => vec![(0.0, -0.6, "hold"), (16.0, 0.3, "linear"), (24.0, 0.6, "linear"), (28.0, -0.1, "ease_in_out"), (32.0, -0.6, "linear")],
-            1 => vec![(0.0, 0.0, "hold"), (8.0, 0.5, "ease_in"), (16.0, -0.4, "ease_out"), (24.0, 0.6, "ease_in"), (32.0, 0.0, "linear")],
-            _ => vec![(0.0, -0.3, "hold"), (28.0, 0.7, "linear"), (32.0, -0.3, "ease_out")],
-        };
-        let throws = c.texture == "Echoing";
-        let fx: Vec<(f64, f64, &str)> = if throws {
-            vec![(0.0, 4.0, "hold"), (7.0, 10.0, "hold"), (8.0, 4.0, "hold"), (15.0, 10.0, "hold"), (16.0, 4.0, "hold"), (23.0, 10.0, "hold"), (28.0, 6.0, "hold"), (31.0, 10.0, "hold"), (32.0, 4.0, "hold")]
-        } else { vec![(0.0, 5.0, "hold"), (20.0, 5.0, "hold"), (24.0, 10.0, "ease_in"), (28.0, 7.0, "hold"), (32.0, 5.0, "linear")] };
+        // ---- song form (64-bar loop on seq_drums lanes):
+        //   intro 0–8 · build 8–16 (riser, fill, kick drops out for the last two beats) · drop 16–32 ·
+        //   breakdown 32–40 (no kick or bass, related key, riser, fill) · drop 40–56 · outro 56–64
+        let h = |pts: &[(f64, f64)]| -> Vec<(f64, f64, &'static str)> { pts.iter().map(|&(b, x)| (b, x, "hold")).collect() };
+        let ambient = c.genre == "Ambient";
+        let break_lead = matches!(c.lead, "hook" | "bells" | "counter");
+        let kick_l = if ambient { h(&[(0.0, 0.0), (8.0, 6.0), (32.0, 0.0), (40.0, 6.0), (56.0, 0.0), (64.0, 0.0)]) }
+                     else { h(&[(0.0, 10.0), (15.5, 0.0), (16.0, 10.0), (32.0, 0.0), (40.0, 10.0), (64.0, 10.0)]) };
+        let bass_l = if c.bass_style == "drone" { h(&[(0.0, 10.0), (64.0, 10.0)]) }
+                     else { h(&[(0.0, 0.0), (8.0, 10.0), (15.5, 0.0), (16.0, 10.0), (32.0, 0.0), (40.0, 10.0), (56.0, 0.0), (64.0, 0.0)]) };
+        let lead_l = h(&[(0.0, 0.0), (16.0, 10.0), (32.0, if break_lead { 10.0 } else { 0.0 }), (40.0, 10.0), (56.0, 0.0), (64.0, 0.0)]);
+        let perc_l = h(&[(0.0, 0.0), (8.0, 10.0), (32.0, 0.0), (40.0, 10.0), (64.0, 10.0)]);
+        let hats_l = h(&[(0.0, 6.0), (8.0, 10.0), (32.0, 3.0), (40.0, 10.0), (56.0, 6.0), (64.0, 6.0)]);
+        let sweep: Vec<(f64, f64, &str)> = vec![(0.0, -0.9, "hold"), (16.0, 0.0, "ease_in"), (32.0, 0.2, "linear"), (38.0, 0.8, "ease_in"),
+                                                (40.0, 0.1, "hold"), (56.0, 0.35, "linear"), (64.0, -0.9, "linear")];
+        let base = if c.texture == "Echoing" { 6.0 } else { 4.0 };
+        let fx = h(&[(0.0, base), (15.0, 10.0), (16.0, base), (31.0, 10.0), (32.0, base + 2.0), (39.0, 10.0), (40.0, base), (55.0, 10.0), (56.0, base), (64.0, base)]);
+        let key = h(&[(0.0, 0.0), (32.0, c.break_shift as f64 / 12.0), (40.0, c.drop2_shift as f64 / 12.0), (56.0, 0.0), (64.0, 0.0)]);
+        let riser: Vec<(f64, f64, &str)> = vec![(0.0, 0.0, "hold"), (12.0, 0.0, "hold"), (15.9, 10.0, "ease_in"), (16.0, 0.0, "hold"),
+                                                (36.0, 0.0, "hold"), (39.9, 10.0, "ease_in"), (40.0, 0.0, "hold"), (64.0, 0.0, "hold")];
+        let fill = h(&[(0.0, 0.0), (15.0, 10.0), (16.0, 0.0), (39.0, 10.0), (40.0, 0.0), (64.0, 0.0)]);
+        if c.break_shift != 0 {
+            let name = |n: i64| NOTE[(c.tonic + n).rem_euclid(12) as usize];
+            self.note(format!("breakdown in {}{}", name(c.break_shift), if c.drop2_shift != 0 { ", second drop stays there" } else { "" }));
+        }
         let lanes: Vec<(&'static str, Vec<(f64, f64, &str)>)> = vec![
-            ("kick", on(&kick_l)), ("bass", on(&bass_l)), ("lead", on(&lead_l)), ("perc", on(&perc_l)), ("hats", on(&hats_l)), ("cut", sweep), ("fx", fx)];
+            ("kick", kick_l), ("bass", bass_l), ("lead", lead_l), ("perc", perc_l), ("hats", hats_l), ("cut", sweep), ("fx", fx),
+            ("key", key), ("riser", riser), ("fill", fill)];
         self.lanes = lanes.iter().map(|l| l.0).collect();
         self.scores.insert("seq_drums".into(), json!({"version": 1, "seed": self.seed % 1_000_000, "length": 64, "steps_per_beat": 4,
             "tracks": [trk(kick, 1, 0), trk(clap, 1, 0), trk(hats, 1, 0), trk(ohat, 1, 0)],
@@ -725,9 +827,18 @@ impl Recipe {
         let glide = if matches!(bstyle, "house" | "lofi" | "gen" | "sub" | "garage") { 25 } else { 0 };
         self.scores.insert("seq_music".into(), json!({"version": 1, "seed": (self.seed + 7) % 1_000_000, "length": 64, "steps_per_beat": 4 / div,
             "tracks": [trk(chords, 4, 0), trk(bass, 1, glide), trk(melody_track, 1, if c.texture == "Liquid" { 60 } else { 20 }), trk(counter, 1, 40)]}));
+        let mut fill = vec![];
+        let fill_style = rng.idx(3);
+        for k in 0..16i64 {
+            let on = match fill_style { 0 => true, 1 => k >= 8 || k % 2 == 0, _ => k % 4 != 1 };
+            if !on { continue; }
+            let mut s = st(48 + k, &[0], 0.35 + 0.65 * k as f64 / 15.0, 0.3, 1.0, false);
+            if k >= 12 && fill_style != 2 { s["ratchet"] = json!(2); }
+            fill.push(s);
+        }
         let [p1, p2, p3]: [Vec<Value>; 3] = percs.try_into().unwrap();
         self.scores.insert("seq_perc".into(), json!({"version": 1, "seed": (self.seed + 13) % 1_000_000, "length": 64, "steps_per_beat": 4,
-            "tracks": [trk(p1, 1, 0), trk(p2, 1, 0), trk(p3, 1, 0)]}));
+            "tracks": [trk(p1, 1, 0), trk(p2, 1, 0), trk(p3, 1, 0), trk(fill, 1, 0)]}));
         if c.texture == "Glitchy" {
             let stut_pool = [(28, 3), (44, 2), (60, 4), (12, 2), (22, 2), (54, 3), (38, 2)];
             let crush_pool = [(14, 2), (36, 4), (54, 2), (6, 2), (46, 4), (30, 2)];
@@ -737,7 +848,7 @@ impl Recipe {
             let amt = rng.pick(&[4.0, 6.0]);
             self.scores.insert("seq_glitch".into(), json!({"version": 1, "seed": (self.seed + 99) % 1_000_000, "length": 64, "steps_per_beat": 4,
                 "tracks": [trk(stutter, 1, 0), trk(crush, 1, 0)],
-                "lanes": [lane(&[(0.0, 0.0, "hold"), (4.0, amt, "hold"), (16.0, 8.0, "hold"), (22.0, 10.0, "hold"), (28.0, 4.0, "hold"), (32.0, 0.0, "hold")])]}));
+                "lanes": [lane(&[(0.0, 0.0, "hold"), (16.0, amt, "hold"), (24.0, 8.0, "hold"), (30.0, 10.0, "hold"), (32.0, 3.0, "hold"), (40.0, 8.0, "hold"), (52.0, 10.0, "hold"), (56.0, 0.0, "hold"), (64.0, 0.0, "hold")])]}));
         }
     }
 
@@ -821,7 +932,17 @@ impl Recipe {
         self.label(2, format!("ROW 2 · DRUMS\n\n{genre} kit · {}", drum_notes.join(" · ")));
         let (kp, kd, kdr, kt) = c.g.kick;
         let crisp = tex == "Crisp";
-        let kick_p = json!({"mode": 0, "pitch": r3(kp + c.rng.uni(-3.0, 3.0)), "decay": r3(kd * c.rng.uni(0.85, 1.15)), "drive": r3((kdr + c.rng.uni(-0.1, 0.1)).max(0.0)), "tone": kt, "level": 2.0});
+        // tune the kick to the key: the tonic (or its fifth) in the genre's kick register
+        let kick_hz = {
+            let mut best = kp;
+            for pc in [c.tonic, c.tonic + 7] {
+                let mut hz = 261.6256 * 2f64.powf(pc as f64 / 12.0);
+                while hz > kp * 1.2 { hz /= 2.0; }
+                if (hz - kp).abs() < (best - kp).abs() || best == kp { best = hz; }
+            }
+            best
+        };
+        let kick_p = json!({"mode": 0, "pitch": r3(kick_hz), "decay": r3(kd * c.rng.uni(0.85, 1.15)), "drive": r3((kdr + c.rng.uni(-0.1, 0.1)).max(0.0)), "tone": kt, "level": 2.0});
         self.module("kick", "drum_voice", 2, kick_p, "Kick");
         self.con("seq_drums", "gate1", "kick", "trigger");
         self.module("kick_vca", "stock_vca", 2, json!({"level": 1.0}), "Kick lane VCA");
@@ -878,6 +999,16 @@ impl Recipe {
             self.strip(id, &vca, "out", if kind == "shaker" { 1.27 } else { 0.95 }, pan, 120.0, 0.15, 0.2, -2.0);
         }
 
+        // drum fill into each drop (seq_perc track 4, opened by the fill lane)
+        if genre != "Ambient" {
+            let fl = self.lane_out("fill");
+            self.module("fill", "drum_voice", 2, json!({"mode": 1, "pitch": c.rng.int(900, 1300), "decay": 0.12, "tone": 0.3, "level": 1.3}), "Fill snare");
+            self.con("seq_perc", "gate4", "fill", "trigger"); self.con("seq_perc", "velocity4", "fill", "accent");
+            self.module("fill_vca", "stock_vca", 2, json!({"level": 1.0}), "Fill lane VCA");
+            self.con("fill", "out", "fill_vca", "signal"); self.con("lanes", &fl, "fill_vca", "cv");
+            self.strip("fill", "fill_vca", "out", 1.2, 0.1, 200.0, 0.1, 0.3, -3.0);
+        }
+
         // row 3 · bass
         let bstyle = c.bass_style;
         let drone = bstyle == "drone";
@@ -888,7 +1019,8 @@ impl Recipe {
             "pwm" => "slowly pulse-width-modulated square, low-passed", _ => "pure sine sub",
         }, self.notes.iter().find(|n| n.contains("bass") || n.contains("drone")).cloned().unwrap_or_default(), if c.g.pump { " · ducked by the kick" } else { "" }));
         self.module("bass_osc", "multi_vco", 3, json!({"frequency": 261.62558, "pulse_width": if bass_kind == "pwm" { 0.4 } else { 0.5 }, "pwm_amount": if bass_kind == "pwm" { 0.3 } else { 0.0 }}), "Bass oscillator");
-        self.con("seq_music", "pitch2", "bass_osc", "pitch");
+        let (bp, bo) = self.key_src(c, "pitch2");
+        self.con(&bp, &bo, "bass_osc", "pitch");
         if bass_kind == "pwm" { self.con("motion", "sine", "bass_osc", "pwm"); }
         let env = if drone { json!({"attack": 0.5, "decay": 0.25, "sustain": 0.8, "release": 1.2}) }
                   else { json!({"attack": 0.004, "decay": r3(0.25 * c.rng.uni(0.8, 1.3)), "sustain": 0.45, "release": 0.09}) };
@@ -907,12 +1039,14 @@ impl Recipe {
             self.con("lanes", &cl, "bass_fcv", "in1"); self.con("bass_env", "out", "bass_fcv", "in2");
             let base = if bstyle == "octave" { 380.0 } else if bass_kind == "round" { 500.0 } else { 260.0 };
             let cutoff = Self::cut(c.bright, base * c.rng.uni(0.8, 1.25), 0.5);
-            self.module("bass_vcf", "ladder_vcf", 3, json!({"cutoff": cutoff, "resonance": r3(c.rng.uni(0.2, 0.4)), "drive": 0.9}), format!("Ladder low-pass ({wave})"));
+            let bold = matches!(genre, "Techno" | "UK Garage" | "Synthwave" | "Dub Techno");
+            let (res, drive) = if bold { (c.rng.uni(0.25, 0.4), c.rng.uni(0.2, 0.4)) } else { (c.rng.uni(0.15, 0.3), 0.0) };
+            self.module("bass_vcf", "stock_vcf", 3, json!({"frequency": vcf_knob(cutoff), "resonance": r3(res), "drive": r3(drive), "cutoff_cv_amount": 1.0}), format!("Four-pole low-pass ({wave}){}", if bold { " · driven" } else { "" }));
             self.con("bass_osc", wave, "bass_vcf", "signal"); self.con("bass_fcv", "out", "bass_vcf", "cutoff_cv");
-            self.module("bass_vca", "analog_vca", 3, json!({"gain": 1.0}), "Bass VCA");
-            self.con("bass_vcf", "out", "bass_vca", "signal"); self.con("bass_gate", "out", "bass_vca", "cv");
+            self.module("bass_vca", "stock_vca", 3, json!({"level": 1.0}), "Bass VCA");
+            self.con("bass_vcf", "lowpass", "bass_vca", "signal"); self.con("bass_gate", "out", "bass_vca", "cv");
         }
-        self.module("sub_vca", "analog_vca", 3, json!({"gain": 1.0}), "Sub VCA");
+        self.module("sub_vca", "stock_vca", 3, json!({"level": 1.0}), "Sub VCA");
         self.con("bass_osc", "sine", "sub_vca", "signal"); self.con("bass_gate", "out", "sub_vca", "cv");
         let (bass_src, sub_src) = if c.g.pump {
             self.module("low_pump", "sidechain_compressor", 3, json!({"threshold_db": -26, "ratio": 5, "attack_ms": 0.5, "release_ms": 120, "detector_ms": 2, "knee_db": 4, "makeup_db": 0}), "Kick ducks the bass");
@@ -931,12 +1065,7 @@ impl Recipe {
         // row 4 · chords (+ optional pad layer)
         self.label(4, format!("ROW 4 · CHORDS\n\n{}{} · 4 voices · low-pass on the sweep lane{}{}", voice_word[..1].to_uppercase(), &voice_word[1..],
             if c.pad { " · plus a held pad layer" } else { "" }, if c.g.pump { " · pumped by the kick" } else { "" }));
-        let mut pitch = ("seq_music".to_string(), "pitch1".to_string());
-        if tex == "Dusty" {
-            self.module("wow", "cv_mix", 4, json!({"level1": 1.0, "level2": 0.0012, "level3": 0.0}), "Tape wow (± a few cents)");
-            self.con("seq_music", "pitch1", "wow", "in1"); self.con("motion", "sine", "wow", "in2");
-            pitch = ("wow".into(), "out".into());
-        }
+        let pitch = self.key_src(c, "pitch1");
         let cl = self.lane_out("cut");
         let mut fcv = ("lanes".to_string(), cl.clone());
         if tex == "Liquid" {
@@ -1007,12 +1136,23 @@ impl Recipe {
 
         // row 6 · texture
         self.label(6, format!("ROW 6 · TEXTURE · {}\n\n{}{}", tex.to_uppercase(), texture_text(tex)[..1].to_uppercase(), &texture_text(tex)[1..]));
-        if tex == "Dusty" || tex == "Spacious" {
+        // riser: pink noise through a rising high-pass into each drop (song-form lane drives cutoff and level)
+        if genre != "Ambient" || tex == "Dusty" || tex == "Spacious" {
             self.module("noise", "colored_noise", 6, json!({"level": 1, "seed": self.seed % 100_000}), "Noise");
+        }
+        if genre != "Ambient" {
+            let rl = self.lane_out("riser");
+            self.module("riser_vcf", "stock_vcf", 6, json!({"frequency": vcf_knob(150.0), "resonance": 0.25, "cutoff_cv_amount": 0.45}), "Riser high-pass sweep");
+            self.con("noise", "pink", "riser_vcf", "signal"); self.con("lanes", &rl, "riser_vcf", "cutoff_cv");
+            self.module("riser_vca", "stock_vca", 6, json!({"level": 1.0}), "Riser level (lane)");
+            self.con("riser_vcf", "highpass", "riser_vca", "signal"); self.con("lanes", &rl, "riser_vca", "cv");
+            self.strip("riser", "riser_vca", "out", 0.06, 0.0, 300.0, 0.15, 0.45, -5.0);
+        }
+        if tex == "Dusty" || tex == "Spacious" {
             if tex == "Dusty" {
-                self.module("hiss", "svf_filter", 6, json!({"cutoff": 2200, "resonance": 0.05}), "Hiss low-pass");
+                self.module("hiss", "lowpass", 6, json!({"cutoff": 2200}), "Hiss low-pass (one-pole)");
                 self.con("noise", "pink", "hiss", "signal");
-                self.strip("tape hiss", "hiss", "low", 0.018, 0.0, 300.0, 0.0, 0.0, -4.0);
+                self.strip("tape hiss", "hiss", "out", 0.018, 0.0, 300.0, 0.0, 0.0, -4.0);
             } else {
                 self.module("wind", "svf_filter", 6, json!({"cutoff": 600, "resonance": 0.15, "cutoff_cv_amount": 1.0}), "Wind band-pass");
                 self.con("noise", "white", "wind", "signal"); self.con("motion", "triangle", "wind", "cutoff_cv");
@@ -1054,7 +1194,7 @@ impl Recipe {
         let mut src: (String, String);
         match kind {
             "pad_saw" | "stab" => {
-                let cents = c.rng.uni(5.0, 12.0);
+                let cents = c.rng.uni(3.0, 6.0);
                 self.module(&osc, "analog_vco", row, json!({"frequency": detune(cents), "waveform": 0}), "Saw A");
                 self.con(&pitch.0, &pitch.1, &osc, "pitch");
                 let b = format!("{id}_osc2");
@@ -1112,19 +1252,30 @@ impl Recipe {
         let pluck = kind == "pluck" || kind == "stab";
         let base = match kind { "pad_saw" => 800.0, "pad_square" => 700.0, "organ" => 2200.0, "keys" => 1800.0, "stab" => 900.0, _ => 600.0 };
         let cutoff = Self::cut(c.bright, base * c.rng.uni(0.8, 1.2), 0.6);
-        if pluck {
+        if kind == "organ" || kind == "keys" {
+            // sine/triangle voices are already mellow: no filter needed (saves a four-pole VCF per build)
+        } else if id == "pad" {
+            // the held pad layer sits underneath: two one-pole low-passes (12 dB/oct) cost a tenth of a swept VCF
+            let hz = r3(cutoff * 0.9);
+            self.module(&vcf, "lowpass", row, json!({"cutoff": hz}), "Low-pass (one-pole)");
+            self.con(&src.0, &src.1, &vcf, "signal");
+            let vcf2 = format!("{id}_vcf2");
+            self.module(&vcf2, "lowpass", row, json!({"cutoff": hz}), "Low-pass (one-pole)");
+            self.con(&vcf, "out", &vcf2, "signal");
+            src = (vcf2, "out".into());
+        } else if pluck {
             // per-voice filter envelope: sweep lane + envelope
             let fm = format!("{id}_fcv");
             self.module(&fm, "cv_mix", row, json!({"level1": 1.0, "level2": r3(c.rng.uni(0.2, 0.35)), "level3": 0.0}), "Filter CV: sweep + envelope");
             self.con(&fcv.0, &fcv.1, &fm, "in1"); self.con(&env, "out", &fm, "in2");
-            self.module(&vcf, "ladder_vcf", row, json!({"cutoff": cutoff, "resonance": r3(c.rng.uni(0.15, 0.3)), "drive": 0.8}), "Ladder low-pass");
+            self.module(&vcf, "stock_vcf", row, json!({"frequency": vcf_knob(cutoff), "resonance": r3(c.rng.uni(0.1, 0.25)), "cutoff_cv_amount": 1.0}), "Four-pole low-pass");
             self.con(&src.0, &src.1, &vcf, "signal"); self.con(&fm, "out", &vcf, "cutoff_cv");
-            src = (vcf.clone(), "out".into());
         } else {
-            self.module(&vcf, "svf_filter", row, json!({"cutoff": cutoff, "resonance": 0.1, "cutoff_cv_amount": 1}), "Low-pass");
+            // the four-pole slope is steeper than the old two-pole SVF: open it a little to keep the same brightness
+            self.module(&vcf, "stock_vcf", row, json!({"frequency": vcf_knob(cutoff * 1.3), "resonance": 0.05, "cutoff_cv_amount": 1.0}), "Four-pole low-pass");
             self.con(&src.0, &src.1, &vcf, "signal"); self.con(&fcv.0, &fcv.1, &vcf, "cutoff_cv");
-            src = (vcf.clone(), "low".into());
         }
+        if kind != "organ" && kind != "keys" && id != "pad" { src = (vcf.clone(), "lowpass".into()); }
         let vca = format!("{id}_vca");
         self.module(&vca, "stock_vca", row, json!({"level": 1.0}), "VCA");
         self.con(&src.0, &src.1, &vca, "signal"); self.con(&env, "out", &vca, "cv");
@@ -1135,11 +1286,16 @@ impl Recipe {
     fn mono_voice(&mut self, c: &mut Ctx, id: &str, pitch: &str, gate: &str, wave: &str, base: f64, env: Value, lane_port: &str) {
         let osc = format!("{id}_osc");
         self.module(&osc, "multi_vco", 5, json!({"frequency": 261.62558}), format!("{} oscillator ({wave})", if id == "lead" { "Melody" } else { "Counter-line" }));
-        self.con("seq_music", pitch, &osc, "pitch");
+        let (pp, po) = self.key_src(c, pitch);
+        self.con(&pp, &po, &osc, "pitch");
+        // triangle and sine are already soft; only saw/square melodies get a (moving) four-pole filter
+        let filtered = matches!(wave, "saw" | "square");
         let vcf = format!("{id}_vcf");
-        let cutoff = Self::cut(c.bright, base * c.rng.uni(0.8, 1.2), 0.6);
-        self.module(&vcf, "svf_filter", 5, json!({"cutoff": cutoff, "resonance": r3(c.rng.uni(0.1, 0.2)), "cutoff_cv_amount": 1}), "Low-pass");
-        self.con(&osc, wave, &vcf, "signal"); self.con("motion", "sine", &vcf, "cutoff_cv");
+        if filtered {
+            let cutoff = Self::cut(c.bright, base * c.rng.uni(0.8, 1.2), 0.6);
+            self.module(&vcf, "stock_vcf", 5, json!({"frequency": vcf_knob(cutoff * 1.3), "resonance": r3(c.rng.uni(0.05, 0.15)), "cutoff_cv_amount": 1.0}), "Four-pole low-pass");
+            self.con(&osc, wave, &vcf, "signal"); self.con("motion", "sine", &vcf, "cutoff_cv");
+        }
         let e = format!("{id}_env");
         self.module(&e, "adsr", 5, env, "Envelope");
         self.con("seq_music", gate, &e, "gate");
@@ -1147,8 +1303,8 @@ impl Recipe {
         self.module(&g, "stock_vca", 5, json!({"level": 1.0}), "Envelope × song-form lane");
         self.con(&e, "out", &g, "signal"); self.con("lanes", lane_port, &g, "cv");
         let vca = format!("{id}_vca");
-        self.module(&vca, "analog_vca", 5, json!({"gain": 1.0}), "VCA");
-        self.con(&vcf, "low", &vca, "signal"); self.con(&g, "out", &vca, "cv");
+        self.module(&vca, "stock_vca", 5, json!({"level": 1.0}), "VCA");
+        if filtered { self.con(&vcf, "lowpass", &vca, "signal"); } else { self.con(&osc, wave, &vca, "signal"); } self.con(&g, "out", &vca, "cv");
     }
 
     fn glitch_bus(&mut self, c: &mut Ctx, master_l: &str, master_r: &str) {
@@ -1182,10 +1338,10 @@ impl Recipe {
         let mask = c.rng.pick(&[65, 273]);
         self.module("crush", "quantizer", r, json!({"scale_mask": mask}), "Bit-crush (coarse voltage grid)");
         self.con("stut_fade", "out", "crush", "pitch");
-        self.module("crush_lp", "svf_filter", r, json!({"cutoff": 3000, "resonance": 0.05}), "Crush low-pass 3 kHz");
+        self.module("crush_lp", "lowpass", r, json!({"cutoff": 3000}), "Crush low-pass 3 kHz (one-pole)");
         self.con("crush", "out", "crush_lp", "signal");
         self.module("crush_fade", "fade", r, json!({"position": 0.0, "cv_amount": 1.0, "law": 0}), "Dry ↔ crushed");
-        self.con("stut_fade", "out", "crush_fade", "a"); self.con("crush_lp", "low", "crush_fade", "b"); self.con("g_sw", "out2", "crush_fade", "cv");
+        self.con("stut_fade", "out", "crush_fade", "a"); self.con("crush_lp", "out", "crush_fade", "b"); self.con("g_sw", "out2", "crush_fade", "cv");
         self.module("g_out", "poly_split", r, json!({}), "Glitch bus out → master");
         self.con("crush_fade", "out", "g_out", "signal");
         self.ops.push(Op::Move(master_l.into(), "g_out".into(), "out1".into()));
@@ -1272,7 +1428,7 @@ impl Recipe {
         json!({"title": self.title, "sentence": self.sentence, "description": self.description, "notes": self.notes,
                "genre": self.genre, "mood": self.mood, "texture": self.texture, "seed": self.seed, "bpm": self.bpm, "swing": self.swing,
                "key": self.key_name, "chords": self.chord_names, "modules": self.modules.len(), "cables": self.cid,
-               "strips": self.strips.iter().map(|s| s.name.clone()).collect::<Vec<_>>(), "kinds": self.kinds})
+               "strips": self.strips.iter().map(|s| s.name.clone()).collect::<Vec<_>>(), "kinds": self.kinds, "cpu": self.cpu_estimate()})
     }
     pub fn cable_count(&self) -> usize { self.cid }
 
