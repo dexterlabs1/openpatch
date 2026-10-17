@@ -62,8 +62,9 @@ never invents measured activity. Notes and narrow Blank panels retain editing,
 resize behavior and physically bounded mounting details.
 
 The installed 0.2.6 build 8 remains the earlier 34-panel checkpoint with stronger
-glow. The newer source is awaiting final Mac workspace/MCP CI and has not been
-installed. This is a macOS/non-MIDI design milestone, not complete Rack parity or
+glow. The redesign is [merged](https://github.com/dexterlabs1/openpatch/pull/28);
+[full Mac workspace/MCP CI](https://github.com/dexterlabs1/openpatch/actions/runs/39007243527)
+and the internal app artifact passed inspection. It has not been installed. This is a macOS/non-MIDI design milestone, not complete Rack parity or
 native audio-device qualification. The sections below retain earlier rollout
 records; their historical platform gates do not add new qualification claims.
 

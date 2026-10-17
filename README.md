@@ -424,9 +424,10 @@ MCP edits remain part of the controls; LED and screen glow is now more restraine
 [Review the panels and audit](design/reviews/signal-atlas-two-modules-v1/README.md#non-midi-design-candidate-audit) · [Current development PR](https://github.com/dexterlabs1/openpatch/pull/28)
 
 The installed Mac checkpoint is **0.2.6 build 8**, with the earlier 34-panel pass
-and stronger glow. The newer source candidate is undergoing final Mac
-workspace/MCP CI; it has not replaced that app. Headless layout/interaction
-checks do not establish native-window or physical audio-device qualification.
+and stronger glow. The redesign is [merged](https://github.com/dexterlabs1/openpatch/pull/28), with
+[full Mac workspace/MCP CI](https://github.com/dexterlabs1/openpatch/actions/runs/39007243527)
+and the internal app artifact verified. It has not replaced that installed app.
+Native-window and physical audio-device qualification remain separate.
 
 The library also includes [Stock VCA Mix](docs/STOCK_VCA_MIX.md), [Stock Mix](docs/STOCK_MIX.md), [Stock Mid/Side](docs/STOCK_MID_SIDE.md), [Stock VCO](docs/STOCK_VCO.md), [Stock LFO](docs/STOCK_LFO.md), [Stock Delay](docs/STOCK_DELAY.md), [Stock Quantizer](docs/STOCK_QUANTIZER.md), and [Stock SEQ3](docs/STOCK_SEQ3.md), alongside voices, modulation, scores, effects and utilities. Search controls and ports, filter by musical role, and save favorites in the docked library. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; the number of OpenPatch kinds is not a count of completed equivalents.
 
