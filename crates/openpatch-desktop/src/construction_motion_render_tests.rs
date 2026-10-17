@@ -98,7 +98,8 @@ fn known_slider_mapping_and_discrete_choice_have_honest_markers_and_missing_anch
             "220.0 Hz → 440.0 Hz",
         ),
         ("sh_asr", "range", 0.0, 5.0, false, "0..10 V → −1..1 V"),
-        ("sh_asr", "random", 0.0, 1.0, false, ""),
+        ("sh_asr", "random", 0.0, 1.0, false, "RND OFF → RND ON"),
+        ("quantizer", "scale_mask", 4095.0, 1.0, false, ""),
     ] {
         let ctx = egui::Context::default();
         let mut rack = Rack::default();
@@ -117,12 +118,12 @@ fn known_slider_mapping_and_discrete_choice_have_honest_markers_and_missing_anch
         );
         rack.set_construction_clock_override(Some(now + Duration::from_millis(160)));
         let output = frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10).1;
-        if name == "random" {
+        if name == "scale_mask" {
             assert!(!rack
                 .construction_anchors
                 .contains_key(&("target".into(), name.into())));
-            assert!(text(&output).iter().any(|t| t.starts_with("random  ")));
-            assert!(text(&output).iter().any(|t| t == "RND ON"));
+            assert!(text(&output).iter().any(|t| t.starts_with("scale_mask  ")));
+            assert!(text(&output).iter().any(|t| t == "1 NOTE ENABLED"));
         } else {
             let anchor = &rack.construction_anchors[&("target".into(), name.into())];
             assert_eq!(anchor.marker.is_some(), marker);
@@ -1158,7 +1159,13 @@ fn converted_rotary_cue_tracks_pan_zoom_and_yields_to_human_precision_entry() {
     assert!(text(&output).iter().any(|label| label == "80.0%"));
     assert_eq!(after.nodes[0].params["duty"], 0.8);
     let anchor = rack.construction_anchors[&("target".into(), "duty".into())].clone();
-    let Some(Marker::Rotary { center, radius, old, new }) = anchor.marker else {
+    let Some(Marker::Rotary {
+        center,
+        radius,
+        old,
+        new,
+    }) = anchor.marker
+    else {
         panic!("converted gate must emit a rotary marker");
     };
     assert!((radius - 30.0 * rack.zoom).abs() < 0.001);
@@ -1169,7 +1176,11 @@ fn converted_rotary_cue_tracks_pan_zoom_and_yields_to_human_precision_entry() {
     rack.set_zoom(0.85);
     frame_revision_state(&ctx, &mut rack, &after, 0.2, vec![], true, true, 10);
     let shifted = rack.construction_anchors[&("target".into(), "duty".into())].clone();
-    let Some(Marker::Rotary { center: moved_center, radius: moved_radius, .. }) = shifted.marker
+    let Some(Marker::Rotary {
+        center: moved_center,
+        radius: moved_radius,
+        ..
+    }) = shifted.marker
     else {
         panic!("pan/zoom preserves angular cue");
     };
@@ -1180,8 +1191,13 @@ fn converted_rotary_cue_tracks_pan_zoom_and_yields_to_human_precision_entry() {
     // The readout remains a separate exact-entry target after the view change.
     let (local, layout_radius) = parameter_position(2, 1, module_width(&after.nodes[0]));
     let readout = moved_center + vec2(0.0, (layout_radius + 15.0) * rack.zoom);
-    assert!((moved_center.distance(rack.viewport.unwrap().min + rack.pan
-        + (rack.positions["target"].to_vec2() + local.to_vec2()) * rack.zoom)) < 0.001);
+    assert!(
+        (moved_center.distance(
+            rack.viewport.unwrap().min
+                + rack.pan
+                + (rack.positions["target"].to_vec2() + local.to_vec2()) * rack.zoom
+        )) < 0.001
+    );
     frame_revision_state(
         &ctx,
         &mut rack,
@@ -1193,6 +1209,18 @@ fn converted_rotary_cue_tracks_pan_zoom_and_yields_to_human_precision_entry() {
         10,
     );
     assert!(rack.construction_animation.parameters.is_empty());
-    frame_revision_state(&ctx, &mut rack, &after, 0.4, vec![button(readout, false)], true, true, 10);
-    assert!(rack.editing.as_ref().is_some_and(|edit| edit.id == "target" && edit.parameter == "duty"));
+    frame_revision_state(
+        &ctx,
+        &mut rack,
+        &after,
+        0.4,
+        vec![button(readout, false)],
+        true,
+        true,
+        10,
+    );
+    assert!(rack
+        .editing
+        .as_ref()
+        .is_some_and(|edit| edit.id == "target" && edit.parameter == "duty"));
 }

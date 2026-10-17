@@ -99,7 +99,11 @@ fn accepted_stock_quantizer_construction_edits_anchor_actual_keyboard_and_offset
         },
     );
     assert!(preview.renderer.construction_anchors.is_empty());
-    assert!(!text(&output).iter().any(|t| t.contains(" → ")));
+    // Static pitch-path arrows are panel notation, not construction cues.
+    for anchor in [keyboard, offset] {
+        let cue = format!("{} → {}", anchor.old_text, anchor.new_text);
+        assert!(!text(&output).iter().any(|t| t == &cue));
+    }
     assert!(text(&output).iter().any(|t| t == "PLAYED —"));
     let at = pos2(24.0, 12.0) + vec2(stock_quantizer_key_rect(0).center().x, 181.0);
     let action = frame_revision_state(

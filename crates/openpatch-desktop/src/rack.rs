@@ -22,6 +22,7 @@ include!("stock_lfo_panel.rs");
 include!("stock_vco_panel.rs");
 include!("stock_seq3_panel.rs");
 include!("stock_quantizer_panel.rs");
+include!("quantizer_keyboard.rs");
 include!("stock_vca_mix_panel.rs");
 include!("stock_process_panel.rs");
 include!("stock_noise_panel.rs");
@@ -31,6 +32,9 @@ include!("atlas_stochastic_panels.rs");
 include!("shift_register_panel.rs");
 include!("switch_panel.rs");
 include!("atlas_capture_routing.rs");
+include!("atlas_voltage_panels.rs");
+include!("atlas_rescale_panel.rs");
+include!("atlas_quantizer_panels.rs");
 include!("studio_mixer_panel.rs");
 include!("resonator_panel.rs");
 include!("atlas_voice_panel.rs");
@@ -127,10 +131,12 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("switch_1to4" | "switch_4to1", "clock" | "reset", false) => Above(25.0),
         ("switch_1to4" | "switch_4to1", _, false) => Left(34.0),
         ("switch_1to4" | "switch_4to1", _, true) => Right(34.0),
-        ("sample_hold", _, false) => Above(25.0),
+        ("sample_hold" | "crossfade", _, false) => Above(25.0),
         ("sample_hold", _, true) => Right(36.0),
         ("rescale", "signal", false) => Left(31.0),
         ("attenuverter", "signal", false) => Left(31.0),
+        ("quantizer", "pitch", false) => Left(34.0),
+        ("quantizer", "offset_cv", false) => Right(40.0),
         ("process" | "multi_vco" | "multi_lfo", _, false) => Above(21.0),
         ("stock_vcf", _, false) => Above(21.0),
         ("lfo" | "lowpass" | "gain" | "analog_vca", _, false) => Above(25.0),
@@ -143,8 +149,8 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("modal_resonator", _, false) => Above(21.0),
         ("modal_resonator", _, true) => Right(32.0),
         (
-            "crossfade" | "quantizer" | "stock_quantizer" | "poly_sum" | "mid_side"
-            | "stock_mid_side" | "mix6" | "stock_mix",
+            "quantizer" | "stock_quantizer" | "poly_sum" | "mid_side" | "stock_mid_side" | "mix6"
+            | "stock_mix",
             _,
             false,
         ) => Above(21.0),
@@ -260,6 +266,7 @@ fn generic_parameter_hardware(
         GenericParameterHardware::Choice
     } else if kind == "sample_hold"
         || atlas_stochastic_rotary(kind, parameter)
+        || atlas_voltage_kind(kind)
         || atlas_oscillator(kind)
         || kind == "svf_filter"
         || atlas_voice(kind)
@@ -3350,7 +3357,13 @@ impl Rack {
             if matches!(node.kind.as_str(), "vca_mix" | "fade") {
                 self.mixing_panel(ui, node, rect);
             }
-            if is_signal_utility(&node.kind) {
+            if node.kind == "rescale" {
+                if let Some(edit) =
+                    self.atlas_rescale_panel(ui, node, rect, revision, mode.is_interactive())
+                {
+                    action = Some(edit);
+                }
+            } else if is_signal_utility(&node.kind) {
                 if let Some(edit) = self.signal_panel(ui, node, rect, allow_manual_press) {
                     action = Some(edit);
                 }
@@ -3559,6 +3572,27 @@ impl Rack {
                 ) {
                     action = Some(edit);
                 }
+            }
+            if matches!(node.kind.as_str(), "quantizer" | "stock_quantizer") {
+                let mask = if node.kind == "stock_quantizer" {
+                    self.stock_quantizer_states
+                        .get(&node.id)
+                        .copied()
+                        .unwrap_or_else(|| stock_quantizer_mask(node))
+                } else {
+                    stock_quantizer_mask(node)
+                };
+                paint_atlas_quantizer_configuration(
+                    &painter,
+                    &node.kind,
+                    mask,
+                    rect,
+                    self.zoom,
+                    &self.lighting,
+                );
+            }
+            if matches!(node.kind.as_str(), "attenuverter" | "crossfade") {
+                paint_atlas_voltage_configuration(&painter, node, rect, self.zoom, &self.lighting);
             }
             if node.kind == "white_noise" {
                 paint_stochastic_configuration(
@@ -4226,19 +4260,11 @@ impl Rack {
                 } else if node.kind == "gates" {
                     (pos2(78.0, 182.0), 29.0)
                 } else if node.kind == "rescale" {
-                    let column = usize::from(matches!(*name, "offset" | "max"));
-                    let row = usize::from(matches!(*name, "min" | "max"));
-                    (
-                        pos2(
-                            width * (0.25 + column as f32 * 0.5),
-                            127.0 + row as f32 * 116.0,
-                        ),
-                        25.0,
-                    )
-                } else if node.kind == "stock_quantizer" {
-                    (pos2(width * 0.5, 303.0), 23.0)
-                } else if node.kind == "quantizer" {
-                    (pos2(width * 0.5, 256.0), 23.0)
+                    atlas_rescale_control(name)
+                } else if matches!(node.kind.as_str(), "quantizer" | "stock_quantizer") {
+                    atlas_quantizer_control(&node.kind)
+                } else if matches!(node.kind.as_str(), "attenuverter" | "crossfade") {
+                    atlas_voltage_control(&node.kind, name)
                 } else if node.kind == "sample_hold" {
                     (pos2(75.0, 135.0), 32.0)
                 } else if node.kind == "white_noise" {
@@ -4481,7 +4507,14 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if node.kind == "sample_hold" {
+                let value_center = if atlas_voltage_kind(&node.kind) {
+                    let local = match node.kind.as_str() {
+                        "rescale" => atlas_rescale_value_center(name),
+                        "quantizer" | "stock_quantizer" => atlas_quantizer_value_center(&node.kind),
+                        _ => atlas_voltage_value_center(&node.kind, name),
+                    };
+                    point(local.x, local.y)
+                } else if node.kind == "sample_hold" {
                     point(75.0, 187.0)
                 } else if node.kind == "random" {
                     let local = random_value_center(index);
@@ -4513,7 +4546,14 @@ impl Rack {
                 } else {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
-                let readout_width = if node.kind == "sample_hold" {
+                let readout_width = if atlas_voltage_kind(&node.kind) {
+                    match node.kind.as_str() {
+                        "attenuverter" => 78.0,
+                        "crossfade" => 120.0,
+                        "rescale" => 88.0,
+                        _ => 88.0,
+                    }
+                } else if node.kind == "sample_hold" {
                     112.0
                 } else if matches!(node.kind.as_str(), "multi_vco" | "multi_lfo") {
                     82.0
@@ -4813,6 +4853,7 @@ impl Rack {
                 } else if let GenericParameterHardware::Rotary { body_radius, .. } = hardware {
                     let paint_rotary = if node.kind == "sample_hold"
                         || atlas_stochastic_rotary(&node.kind, name)
+                        || atlas_voltage_kind(&node.kind)
                         || atlas_oscillator(&node.kind)
                         || node.kind == "svf_filter"
                         || atlas_voice(&node.kind)
@@ -4844,7 +4885,13 @@ impl Rack {
                         self.zoom,
                     );
                 }
-                if node.kind == "sample_hold" {
+                if node.kind == "rescale" {
+                    paint_atlas_rescale_print(&painter, rect, name, self.zoom);
+                } else if matches!(node.kind.as_str(), "quantizer" | "stock_quantizer") {
+                    paint_atlas_quantizer_print(&painter, rect, &node.kind, self.zoom);
+                } else if matches!(node.kind.as_str(), "attenuverter" | "crossfade") {
+                    paint_atlas_voltage_print(&painter, rect, &node.kind, name, self.zoom);
+                } else if node.kind == "sample_hold" {
                     paint_capture_control_print(&painter, rect, self.zoom);
                 } else if matches!(node.kind.as_str(), "white_noise" | "random") {
                     paint_stochastic_control_print(
@@ -4932,6 +4979,7 @@ impl Rack {
                 }
                 let paint_readout = if node.kind == "sample_hold"
                     || atlas_stochastic_kind(&node.kind)
+                    || atlas_voltage_kind(&node.kind)
                     || atlas_oscillator(&node.kind)
                     || node.kind == "svf_filter"
                     || atlas_voice(&node.kind)
@@ -6261,44 +6309,6 @@ impl Rack {
                     "LIGHTS UNAVAILABLE"
                 },
                 crate::panel_skin::print_font(painter.ctx(), 7.5 * zoom),
-                MUTED,
-            );
-        }
-        if node.kind == "rescale" {
-            let states = self.module_lights.get(&node.id);
-            for (index, x, name) in [(0, 180.0, "max"), (1, 60.0, "min")] {
-                let brightness = states
-                    .filter(|s| index < usize::from(s.count))
-                    .map_or([0.0; 2], |s| s.brightness[index]);
-                let center = point(x, 294.0);
-                paint_signal_light(&painter, center, brightness, zoom, &self.lighting);
-                ui.interact(Rect::from_center_size(center,vec2(30.0,14.0)*zoom),ui.id().with((&node.id,"bound-light",index)),Sense::hover()).on_hover_text(format!("Pre-bound {name} crossing: yellow mono, blue poly. Brightness follows DSP, before clipping or reflection."));
-                let reflect = node
-                    .params
-                    .get(&format!("reflect_{name}"))
-                    .copied()
-                    .unwrap_or(0.0)
-                    >= 0.5;
-                painter.text(
-                    point(x, 311.0),
-                    Align2::CENTER_CENTER,
-                    if reflect { "REFLECT" } else { "CLIP" },
-                    crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
-                    MUTED,
-                );
-            }
-            painter.text(
-                point(120.0, 331.0),
-                Align2::CENTER_CENTER,
-                if self.module_lights.contains_key(&node.id) {
-                    format!(
-                        "Multiplier {}x · right-click to set",
-                        node.params.get("multiplier").copied().unwrap_or(1.0) as u32
-                    )
-                } else {
-                    "Lights unavailable · right-click settings".into()
-                },
-                crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
                 MUTED,
             );
         }
@@ -10347,155 +10357,6 @@ fn paint_jack_light(painter: &egui::Painter, center: Pos2, zoom: f32, color: Col
     painter.circle_stroke(center, 11.4 * zoom, Stroke::new(1.6 * zoom, color));
 }
 
-fn scale_keyboard(
-    ui: &mut egui::Ui,
-    painter: &egui::Painter,
-    origin: Pos2,
-    width: f32,
-    zoom: f32,
-    id: egui::Id,
-    mask: u16,
-) -> Option<u16> {
-    let key_width = (width - 40.0) / 7.0;
-    let mut changed = None;
-    painter.text(
-        origin + vec2(width * 0.5, 86.0) * zoom,
-        Align2::CENTER_CENTER,
-        "SCALE",
-        crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
-        INK,
-    );
-    for (white_index, (note, label)) in [
-        (0, "C"),
-        (2, "D"),
-        (4, "E"),
-        (5, "F"),
-        (7, "G"),
-        (9, "A"),
-        (11, "B"),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let rect = Rect::from_min_size(
-            origin + vec2(20.0 + white_index as f32 * key_width, 101.0) * zoom,
-            vec2(key_width - 1.0, 76.0) * zoom,
-        );
-        let enabled = mask & (1 << note) != 0;
-        let response = ui.interact(rect, id.with(note), Sense::click());
-        response.widget_info(|| {
-            egui::WidgetInfo::selected(
-                egui::WidgetType::Checkbox,
-                true,
-                enabled,
-                format!("Scale note {label}"),
-            )
-        });
-        painter.rect_filled(
-            rect,
-            1.0,
-            if enabled {
-                Color32::from_rgb(167, 205, 180)
-            } else {
-                Color32::from_gray(236)
-            },
-        );
-        painter.rect_stroke(
-            rect,
-            1.0,
-            Stroke::new(0.8 * zoom, Color32::from_gray(109)),
-            egui::StrokeKind::Inside,
-        );
-        painter.text(
-            rect.center_bottom() - vec2(0.0, 10.0) * zoom,
-            Align2::CENTER_CENTER,
-            label,
-            crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
-            INK,
-        );
-        if response.clicked() {
-            changed = Some(mask ^ (1 << note));
-        }
-        response.on_hover_text(format!("Toggle {label} in the quantizer scale"));
-    }
-    for (boundary, note, label) in [
-        (1, 1, "C#"),
-        (2, 3, "D#"),
-        (4, 6, "F#"),
-        (5, 8, "G#"),
-        (6, 10, "A#"),
-    ] {
-        let rect = Rect::from_min_size(
-            origin + vec2(20.0 + boundary as f32 * key_width - key_width * 0.3, 101.0) * zoom,
-            vec2(key_width * 0.6, 46.0) * zoom,
-        );
-        let enabled = mask & (1 << note) != 0;
-        let response = ui.interact(rect, id.with(note), Sense::click());
-        response.widget_info(|| {
-            egui::WidgetInfo::selected(
-                egui::WidgetType::Checkbox,
-                true,
-                enabled,
-                format!("Scale note {label}"),
-            )
-        });
-        painter.rect_filled(
-            rect,
-            1.0,
-            if enabled {
-                Color32::from_rgb(58, 126, 86)
-            } else {
-                Color32::from_rgb(35, 39, 39)
-            },
-        );
-        painter.text(
-            rect.center_bottom() - vec2(0.0, 10.0) * zoom,
-            Align2::CENTER_CENTER,
-            label,
-            crate::panel_skin::print_font(painter.ctx(), 7.0 * zoom),
-            Color32::from_gray(236),
-        );
-        if response.clicked() {
-            changed = Some(mask ^ (1 << note));
-        }
-        response.on_hover_text(format!("Toggle {label} in the quantizer scale"));
-    }
-    for (x, label, value) in [
-        (width * 0.5 - 28.0, "All", 4095),
-        (width * 0.5 + 28.0, "None", 0),
-    ] {
-        let rect = Rect::from_center_size(origin + vec2(x, 194.0) * zoom, vec2(44.0, 18.0) * zoom);
-        let response = ui.interact(rect, id.with(label), Sense::click());
-        response.widget_info(|| {
-            egui::WidgetInfo::labeled(
-                egui::WidgetType::Button,
-                true,
-                format!("{label} scale notes"),
-            )
-        });
-        painter.rect_filled(
-            rect,
-            2.0,
-            if response.hovered() {
-                Color32::from_gray(175)
-            } else {
-                Color32::from_gray(191)
-            },
-        );
-        painter.text(
-            rect.center(),
-            Align2::CENTER_CENTER,
-            label,
-            crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
-            INK,
-        );
-        if response.clicked() {
-            changed = Some(value);
-        }
-    }
-    changed
-}
-
 fn finite_number(value: &Value, min: f32, max: f32) -> Result<f32, String> {
     let value = value
         .as_f64()
@@ -11425,6 +11286,7 @@ fn paint_panel(
     if atlas_voice(&node.kind)
         || atlas_stochastic_kind(&node.kind)
         || atlas_capture_routing_kind(&node.kind)
+        || atlas_voltage_kind(&node.kind)
         || matches!(
             node.kind.as_str(),
             "stock_vco"
@@ -11513,6 +11375,7 @@ fn paint_panel(
     if atlas_voice(&node.kind)
         || atlas_stochastic_kind(&node.kind)
         || atlas_capture_routing_kind(&node.kind)
+        || atlas_voltage_kind(&node.kind)
         || matches!(
             node.kind.as_str(),
             "stock_vco"
@@ -11797,6 +11660,7 @@ fn paint_jack(
     }
     if atlas_stochastic_kind(kind)
         || atlas_capture_routing_kind(kind)
+        || atlas_voltage_kind(kind)
         || matches!(
             kind,
             "stock_vco"
@@ -19631,6 +19495,15 @@ mod tests {
         include!("large_socket_ui_tests.rs");
     }
 
+    mod quantizer_atlas_ui_tests {
+        include!("quantizer_atlas_ui_tests.rs");
+    }
+    mod rescale_atlas_ui_tests {
+        include!("rescale_atlas_ui_tests.rs");
+    }
+    mod atlas_voltage_ui_tests {
+        include!("atlas_voltage_ui_tests.rs");
+    }
     mod atlas_oscillator_ui_tests {
         include!("atlas_oscillator_ui_tests.rs");
     }

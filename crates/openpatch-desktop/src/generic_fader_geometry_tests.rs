@@ -603,7 +603,7 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                                 ("gate", "duty") => Some((60.0, 22.9)),
                                 ("white_noise", "level") => Some((66.0, 26.0)),
                                 ("analog_vco", "pulse_width") => Some((51.0, 19.5)),
-                                ("rescale", "gain") => Some((46.0, 15.9)),
+                                ("rescale", "gain") => Some((56.0, 21.66667)),
                                 ("multi_vco" | "multi_lfo", "pulse_width") => {
                                     Some((62.0, 24.26667))
                                 }
