@@ -29,6 +29,12 @@ The capacitor-ramp VCO and OTA VCA now extend the same native material, hardware
 
 [Four-module native voice and browser thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-analog-voice.png). **56 focused checks passed**, covering the updated gestures/units, choices, jack targets, text/geometry, rack/browser identity and OTA DC guide against the actual engine. Strict desktop Clippy and formatting passed. No DSP sources or frozen references changed. Next: modulation/filter utilities, then stock voice/envelope panels, before dense effect/sequencer/mixer families. Other catalog panels retain intermediate styling until their individual pass.
 
+### Modulation and utility continuation
+
+Sine LFO, Low-pass and Gain now use the detailed native treatment, bringing the completed layout family to seven panels. The LFO explicitly fits weak configured cycles and retains its zero-Hz hold and original logarithmic travel through zero. The one-pole plot uses the actual discrete coefficient; Gain shows its signed transfer with CV normalled to 1. Diagrams and markings describe the existing processors. The former VCA utility is labeled GAIN and remains searchable as VCA.
+
+[Native utility panels and matching thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-modulation-utilities.png). **82 focused checks passed**, including actual Session edits/undo, numeric entry, keyboard zero-Hz recovery, socket picking, text clearance, library search, shared rack/browser rendering and configured guides compared with the engine. Strict desktop Clippy, formatting and light/dark mesh review passed. The preceding `703c26b` analog-voice checkpoint passed GitHub CI. No DSP sources, frozen references or installed app changed. Next: Stock VCO and ADSR EG, preserving real phase/stage telemetry and PUSH behavior.
+
 The following catalog batches describe existing development source, not an approved final design.
 
 ### First catalog batch in progress

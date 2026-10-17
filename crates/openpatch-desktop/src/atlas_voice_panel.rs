@@ -1,7 +1,10 @@
 // Signal Atlas analog voice family, extending the approved two-panel design. Design coordinates follow the
 // reviewed 420×720 artwork; existing HP widths and rack height stay unchanged.
 fn atlas_voice(kind: &str) -> bool {
-    matches!(kind, "adsr" | "ladder_vcf" | "analog_vco" | "analog_vca")
+    matches!(
+        kind,
+        "adsr" | "ladder_vcf" | "analog_vco" | "analog_vca" | "lfo" | "lowpass" | "gain"
+    )
 }
 
 #[derive(Clone, Copy)]
@@ -21,7 +24,9 @@ impl AtlasVoiceLayout {
             ("adsr", "decay") => (326.0, 166.0, 45.0),
             ("adsr", "sustain") => (94.0, 360.0, 45.0),
             ("adsr", _) => (326.0, 360.0, 45.0),
-            ("analog_vca", _) => (210.0, 180.0, 70.0),
+            ("analog_vca" | "lowpass" | "gain", _) => (210.0, 180.0, 70.0),
+            ("lfo", "frequency") => (131.0, 170.0, 57.0),
+            ("lfo", "amplitude") => (94.0, 360.0, 45.0),
             ("analog_vco", "frequency") | (_, "cutoff") => (131.0, 170.0, 57.0),
             ("analog_vco", "waveform") => (94.0, 360.0, 45.0),
             (_, "resonance") => (94.0, 360.0, 45.0),
@@ -35,7 +40,10 @@ impl AtlasVoiceLayout {
     }
     fn value_width(self, kind: &str, name: &str) -> f32 {
         match (kind, name) {
-            ("analog_vca", _) => 68.0,
+            ("analog_vca" | "gain", _) => 68.0,
+            ("lowpass", _) => 84.0,
+            ("lfo", "frequency") => 76.0,
+            ("lfo", _) => 62.0,
             ("analog_vco", "waveform") => 82.0,
             ("analog_vco", "frequency") => 74.0,
             _ => 96.0 * self.width / 420.0,
@@ -45,6 +53,15 @@ impl AtlasVoiceLayout {
 fn atlas_voice_value(kind: &str, name: &str, value: f32, spec: &Value) -> String {
     if name == "resonance" || (kind == "adsr" && name == "sustain") {
         format!("{:.0}%", value * 100.0)
+    } else if kind == "lfo" && matches!(name, "amplitude" | "offset") {
+        let text = atlas_signal_number(f64::from(value));
+        if name == "offset" && value >= 0.0 {
+            format!("+{text}")
+        } else {
+            text
+        }
+    } else if kind == "gain" && name == "gain" {
+        format_value(value, "x").replace('x', "×")
     } else if matches!(name, "drive" | "gain") {
         format!("{value:.2}×")
     } else {
@@ -234,7 +251,17 @@ fn paint_atlas_voice_rotary(
             center + vec2(a.cos(), a.sin()) * (radius + 13.0 * u)
         })
         .collect();
-    painter.add(egui::Shape::line(arc, Stroke::new(u, MUTED)));
+    painter.add(egui::Shape::line(
+        arc,
+        Stroke::new(
+            if active { 1.6 * u } else { u },
+            if active {
+                Color32::from_rgb(169, 121, 49)
+            } else {
+                MUTED
+            },
+        ),
+    ));
     for i in 0..=20 {
         let a = angle(i as f32 / 20.0);
         let d = vec2(a.cos(), a.sin());
@@ -287,13 +314,6 @@ fn paint_atlas_voice_rotary(
         [center + d * radius * 0.24, center + d * (radius - 10.0 * u)],
         Stroke::new(4.5 * u, Color32::from_rgb(230, 227, 209)),
     );
-    if active {
-        painter.circle_stroke(
-            center,
-            radius + 19.0 * u,
-            Stroke::new(1.2 * u, Color32::from_rgb(169, 121, 49)),
-        );
-    }
 }
 
 fn paint_atlas_voice_readout(
@@ -491,6 +511,10 @@ fn paint_atlas_voice_configuration(
         },
         zoom,
     };
+    if matches!(node.kind.as_str(), "lfo" | "lowpass" | "gain") {
+        paint_atlas_utility_configuration(&draw, node, rate, lighting);
+        return;
+    }
     if matches!(node.kind.as_str(), "analog_vco" | "analog_vca") {
         paint_atlas_analog_configuration(&draw, node, rate, lighting);
         return;
@@ -729,17 +753,25 @@ fn paint_atlas_voice_configuration(
 fn paint_atlas_voice_control_print(
     painter: &egui::Painter,
     center: Pos2,
+    kind: &str,
     name: &str,
     radius: f32,
     zoom: f32,
 ) {
-    let label = if name == "cutoff" {
+    let label = if kind == "ladder_vcf" && name == "cutoff" {
         "POLE FREQUENCY"
     } else {
         parameter_label(name)
     };
+    // The utility labels need two logical pixels above their value wells;
+    // older envelope labels keep their clearance from the stage lenses.
+    let label_gap = if matches!(kind, "lfo" | "lowpass" | "gain") {
+        25.0
+    } else {
+        29.0
+    };
     painter.text(
-        center + vec2(0.0, radius + 29.0 * PANEL_HEIGHT / 720.0) * zoom,
+        center + vec2(0.0, radius + label_gap * PANEL_HEIGHT / 720.0) * zoom,
         Align2::CENTER_CENTER,
         label,
         crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
@@ -750,7 +782,10 @@ fn paint_atlas_voice_control_print(
         "sustain" => "0 – 100%",
         "resonance" => "0 – 110%",
         "drive" => "0 – 4×",
+        "gain" if kind == "gain" => "−16 – +16×",
         "gain" => "0 – 2×",
+        "amplitude" => "0 – 1 PEAK",
+        "offset" => "−1 – +1",
         "pulse_width" => "5 – 95%",
         _ => "",
     };

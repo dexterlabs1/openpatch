@@ -28,6 +28,7 @@ include!("studio_mixer_panel.rs");
 include!("resonator_panel.rs");
 include!("atlas_voice_panel.rs");
 include!("atlas_analog_panels.rs");
+include!("atlas_utility_panels.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
 #[path = "agent_follow.rs"]
@@ -50,7 +51,7 @@ const STOCK_PROCESS_PORT_SCALE: f32 = 1.30;
 const REDESIGNED_PORT_SCALE: f32 = 1.30;
 fn port_material_scale(kind: &str) -> f32 {
     match kind {
-        "adsr" | "ladder_vcf" | "analog_vco" | "analog_vca" => {
+        "adsr" | "ladder_vcf" | "analog_vco" | "analog_vca" | "lfo" | "lowpass" | "gain" => {
             32.0 * AtlasVoiceLayout {
                 width: panel_width(kind),
             }
@@ -79,9 +80,6 @@ fn port_material_scale(kind: &str) -> f32 {
         | "wavetable_lfo"
         | "stock_vcf"
         | "stock_vca"
-        | "lfo"
-        | "lowpass"
-        | "gain"
         | "adsr_eg"
         | "svf_filter"
         | "stereo_delay"
@@ -3582,6 +3580,15 @@ impl Rack {
                     let (min, max, help) = if node.kind == "adsr" {
                         (layout.point(157.0,145.0), layout.point(263.0,390.0),
                          "Configured RC envelope guide at the saved settings. Attack: time to 10 V; decay/release: 99% settling. A sample gate illustrates the hold and release. Stage lenses are inactive; this module has no stage telemetry.")
+                    } else if node.kind == "lfo" {
+                        (layout.point(242.0,106.0),layout.point(384.0,276.0),
+                         "Configured sine cycle at zero FM, with an explicitly fitted vertical range. Amplitude and offset are native normalized signal levels; there is no automatic 10 V conversion. At 0 Hz the running phase holds; this guide shows the saved cycle shape, not the held live value. FM adds directly in Hz.")
+                    } else if node.kind == "lowpass" {
+                        (layout.point(38.0,345.0),layout.point(382.0,457.0),
+                         "Configured frequency response of the actual discrete one-pole coefficient. Log-frequency axis: 1 Hz to Nyquist; amplitude: 0 to −60 dB. Near Nyquist the response differs from an ideal analog one-pole. Cutoff is capped at the lower of 20 kHz and 45% of sample rate.")
+                    } else if node.kind == "gain" {
+                        (layout.point(38.0,345.0),layout.point(382.0,457.0),
+                         "Configured transfer for input −1 to +1 at CV 1, with a fitted output axis. Saved gain is bipolar (−16 to +16). Unpatched CV is 1; patched CV multiplies the signal directly and can also invert polarity. It is not divided by 10 like the OTA VCA control input.")
                     } else if node.kind == "analog_vca" {
                         (layout.point(38.0,345.0),layout.point(382.0,457.0),
                          "Configured static OTA transfer at CV 10 V and 25°C. Horizontal axis: input −10 to +10 V; vertical axis: output −12 to +12 V. Shows the matched-pair saturation law, before oversampling-filter dynamics. Unpatched CV is 10 V; patched CV clamps from 0 to 10 V.")
@@ -4272,7 +4279,7 @@ impl Rack {
                 };
                 let geometric = (matches!(node.kind.as_str(), "multi_lfo" | "multi_vco")
                     && *name == "frequency")
-                    || (atlas_voice(&node.kind) && logarithmic);
+                    || (atlas_voice(&node.kind) && logarithmic && min > 0.0);
                 let wave_rate = node.kind == "wavetable_lfo" && *name == "rate";
                 let stock_rate = node.kind == "stock_lfo" && *name == "rate";
                 let stock_pitch = node.kind == "stock_vco" && *name == "frequency";
@@ -4801,7 +4808,9 @@ impl Rack {
                         self.zoom,
                     );
                 } else {
-                    paint_atlas_voice_control_print(&painter, center, name, radius, self.zoom);
+                    paint_atlas_voice_control_print(
+                        &painter, center, &node.kind, name, radius, self.zoom,
+                    );
                 }
                 let paint_readout = if atlas_voice(&node.kind) {
                     paint_atlas_voice_readout
@@ -10354,7 +10363,10 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
-        "adsr" | "ladder_vcf" | "analog_vco" | "analog_vca" => {
+        "lfo" | "lowpass" => {
+            return AtlasVoiceLayout { width }.point(if input { 105.0 } else { 315.0 }, 610.0)
+        }
+        "adsr" | "ladder_vcf" | "analog_vco" | "analog_vca" | "gain" => {
             return AtlasVoiceLayout { width }.point(
                 if input {
                     if index == 0 {
@@ -11702,7 +11714,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "multi_vco" => "MULTI VCO",
         "seq3" => "SEQUENCE 3",
         "lfo" => "SINE LFO",
-        "gain" => "VCA",
+        "gain" => "GAIN",
         "lowpass" => "LOW-PASS",
         "mixer" => "MIXER",
         "constant" => "DC",
@@ -13902,6 +13914,9 @@ mod tests {
             "ladder_vcf",
             "analog_vco",
             "analog_vca",
+            "lfo",
+            "lowpass",
+            "gain",
             "macro_voice",
             "mix6",
             "stock_mix",

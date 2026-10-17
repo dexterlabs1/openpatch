@@ -763,8 +763,8 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
         ("stock_mid_side", "encode_width", 1.0, pos2(75.0, 133.0)),
         ("mix6", "level", 0.5, pos2(120.0, 125.0)),
         ("stock_mix", "level", 0.5, pos2(120.0, 125.0)),
-        ("lowpass", "cutoff", 1000.0, pos2(90.0, 183.0)),
-        ("gain", "gain", 1.0, pos2(75.0, 183.0)),
+        ("lowpass", "cutoff", 1000.0, pos2(90.0, 99.0)),
+        ("gain", "gain", 1.0, pos2(75.0, 99.0)),
         ("analog_vca", "gain", 1.0, pos2(75.0, 99.0)),
         ("analog_vco", "frequency", 261.62558, pos2(65.5,93.5)),
         ("analog_vco", "pulse_width", 0.5, pos2(163.0,198.0)),
@@ -776,7 +776,9 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
         ("ladder_vcf", "resonance", 0.3, pos2(47.0, 198.0)),
         ("ladder_vcf", "drive", 1.0, pos2(163.0, 198.0)),
         ("adsr_eg", "attack", 0.5, pos2(58.0, 136.0)),
-        ("lfo", "frequency", 2.0, pos2(90.0, 138.0)),
+        ("lfo", "frequency", 2.0, pos2(56.142857, 93.5)),
+        ("lfo", "amplitude", 0.5, pos2(40.285713,198.0)),
+        ("lfo", "offset", 0.5, pos2(139.71428,198.0)),
         ("svf_filter", "cutoff", 1000.0, pos2(67.5, 139.0)),
     ] {
         let mut f = FaderFixture::new(kind, parameter, initial, 1.0);
@@ -806,6 +808,11 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
 #[test]
 fn approved_voice_numeric_fields_commit_physical_units_and_undo() {
     for (kind, parameter, initial, local, text, expected) in [
+        ("lfo", "frequency", 2.0, pos2(56.142857,151.15), "0", 0.0),
+        ("lfo", "amplitude", 0.5, pos2(40.285713,249.65), "0.001", 0.001),
+        ("lfo", "offset", 0.5, pos2(139.71428,249.65), "-0.25", -0.25),
+        ("lowpass", "cutoff", 1000.0, pos2(90.0,163.15), "80", 80.0),
+        ("gain", "gain", 1.0, pos2(75.0,163.15), "-4", -4.0),
         ("analog_vco", "frequency", 261.62558, pos2(65.5,151.15), "440", 440.0),
         ("analog_vco", "pulse_width", 0.5, pos2(163.0,249.65), "25", 0.25),
         ("analog_vco", "waveform", 0.0, pos2(47.0,249.65), "1", 1.0),
@@ -835,4 +842,20 @@ fn approved_voice_numeric_fields_commit_physical_units_and_undo() {
         f.session.execute("undo",json!({})).unwrap();
         near(f.value("target",parameter),initial);
     }
+}
+
+#[test]
+fn detailed_lfo_zero_hz_hold_remains_keyboard_editable() {
+    let mut f=FaderFixture::new("lfo","frequency",2.0,1.0);
+    let local=pos2(56.142857,93.5);
+    let center=f.rack.viewport.unwrap().min+f.rack.pan+f.rack.positions["target"].to_vec2()+local.to_vec2();
+    f.time=1.0;f.click(center);
+    f.draw(vec![key_event(egui::Key::Home,true,false,egui::Modifiers::NONE)],true).expect("Home sets a true zero-Hz hold");
+    assert_eq!(f.value("target","frequency"),0.0);
+    f.draw(vec![key_event(egui::Key::Home,false,false,egui::Modifiers::NONE)],true);
+    f.draw(vec![key_event(egui::Key::ArrowUp,true,false,egui::Modifiers::NONE)],true).expect("a held LFO can restart with an arrow key");
+    let hz=f.value("target","frequency");
+    assert!(hz.is_finite() && hz>0.0 && hz<0.1);
+    f.session.execute("undo",json!({})).unwrap();
+    assert_eq!(f.value("target","frequency"),0.0);
 }

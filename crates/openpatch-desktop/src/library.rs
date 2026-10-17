@@ -319,6 +319,7 @@ impl ModuleLibrary {
             module["kind"].as_str(),
             module["title"].as_str(),
             Some(crate::rack::title(kind)),
+            (kind == "gain").then_some("VCA"), // preserve the former panel-name search
             module["description"].as_str(),
             module["model"].as_str(),
         ]
@@ -1458,6 +1459,18 @@ mod tests {
 
     #[test]
     fn search_categories_and_favorites_use_catalog_meaning_not_model_provenance() {
+        let full = openpatch_core::catalog();
+        let gain = full["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["kind"] == "gain")
+            .unwrap();
+        assert!(ModuleLibrary::default().matches(gain, "gain"));
+        assert!(
+            ModuleLibrary::default().matches(gain, "vca"),
+            "former VCA name remains searchable"
+        );
         let catalog = fixture();
         let mut library = ModuleLibrary {
             search: "cutoff".into(),
