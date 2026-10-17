@@ -136,12 +136,22 @@ fn stock_noise_print_and_jack_rings_clear_at_rack_and_browser_scales() {
             let center = origin + vec2(270.0, stock_noise_row_y(index)) * zoom;
             let ring_radius = 13.0 * STOCK_NOISE_PORT_SCALE * zoom;
             let ring = Rect::from_center_size(center, vec2(2.0 * ring_radius, 2.0 * ring_radius));
-            assert!((output_label.center().y - y).abs() < 0.1);
-            assert!((process_label.center().y - y).abs() < 0.1);
+            assert!((output_label.center().y - (y - 9.0 * zoom)).abs() < 0.1);
+            assert!((process_label.center().y - (y + 9.0 * zoom)).abs() < 0.1);
             assert!(
-                process_label.right() < output_label.left(),
+                output_label.bottom() < process_label.top(),
                 "{zoom}: {process_label:?} {output_label:?}"
             );
+            let screen = stock_noise_screen_rect(bounds, zoom, index);
+            assert!(screen.contains_rect(output_label));
+            assert!(screen.contains_rect(process_label));
+            assert!(!screen.expand(1.5 * zoom).intersects(ring));
+            if index > 0 {
+                assert!(
+                    stock_noise_screen_rect(bounds, zoom, index - 1).bottom() < screen.top(),
+                    "process rows must stay separate at zoom {zoom}"
+                );
+            }
             assert!(
                 !output_label.intersects(ring),
                 "{zoom}: {output_label:?} {ring:?}"
@@ -203,4 +213,52 @@ fn stock_noise_enlarged_jack_target_reaches_past_the_visible_rim() {
         "pointer should start a cable within the enlarged jack target"
     );
     assert!(rack.dragging_cable);
+}
+
+#[test]
+fn stock_noise_process_roles_remain_visible_with_room_lights_off() {
+    let ctx = egui::Context::default();
+    crate::panel_skin::install_fonts(&ctx);
+    let mut lighting = crate::lighting::RoomLighting::default();
+    lighting.set(0.0);
+    let output = ctx.run(egui::RawInput::default(), |ctx| {
+        let painter = ctx.layer_painter(egui::LayerId::background());
+        let start = lighting.begin(&painter);
+        paint_stock_noise_face(
+            &painter,
+            Rect::from_min_size(pos2(20.0, 20.0), vec2(300.0, 396.0)),
+            1.0,
+            &lighting,
+        );
+        lighting.finish(&painter, start);
+    });
+    for (process, name) in STOCK_NOISE_PROCESSES.iter().zip(STOCK_NOISE_OUTPUTS) {
+        for label in [process.to_string(), stock_noise_port_label(name).to_owned()] {
+            let text = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.text() == label => Some(text),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("missing illuminated process label {label}"));
+            let color = text.override_text_color.unwrap_or(text.fallback_color);
+            assert!(
+                color.g() >= 120,
+                "process description should emit in a dark room: {label}"
+            );
+        }
+    }
+    let header = output
+        .shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.text() == "PROCESS ROLES · SOURCE → OUTPUT" => {
+                Some(text)
+            }
+            _ => None,
+        })
+        .unwrap();
+    let color = header.override_text_color.unwrap_or(header.fallback_color);
+    assert_eq!(color, Color32::BLACK, "face printing remains reflective");
 }

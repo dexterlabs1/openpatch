@@ -29,6 +29,48 @@ fn export_panel_design_preview() {
         .unwrap_or(1.0);
     for preview in &mut previews {
         preview.renderer.lighting.set(light);
+        if std::env::var_os("OPENPATCH_PANEL_ENGINE_STATE").is_some() {
+            // Opt-in offline Core processing supplies real lights/held values;
+            // this export never opens an audio device or invents a sample trace.
+            let id = format!("preview_{}", preview.patch.nodes[0].kind);
+            preview.patch.nodes[0].id = id.clone();
+            preview.renderer.positions.clear();
+            preview.renderer.positions.insert(id, Pos2::ZERO);
+            let mut engine = preview.patch.compile().unwrap();
+            engine.set_port_lights_enabled(true);
+            engine.process_block(&mut vec![0.0; 60_000]);
+            let node = &preview.patch.nodes[0];
+            if let Some(lights) = engine
+                .resolve_module_lights(&node.id)
+                .ok()
+                .and_then(|h| engine.module_lights(h))
+            {
+                preview
+                    .renderer
+                    .module_lights
+                    .insert(node.id.clone(), lights);
+            }
+            if let Some(openpatch_core::SavedModuleState::RandomValues { values, rng }) = engine
+                .resolve_module_state(&node.id)
+                .ok()
+                .and_then(|h| engine.module_saved_state(h))
+            {
+                let values = values.map(|row| row.map(f32::from_bits));
+                let channels = preview
+                    .renderer
+                    .module_lights
+                    .get(&node.id)
+                    .and_then(|l| l.input_channels)
+                    .unwrap_or(1);
+                preview.renderer.set_random_values_states(BTreeMap::from([(
+                    node.id.clone(),
+                    json!({"values":values,"rng_state":rng,"active_channels":channels}),
+                )]));
+            }
+            preview.renderer.port_lights = Some(
+                crate::port_light_transport::offline_frame(&preview.patch, &engine, 0).unwrap(),
+            );
+        }
     }
     let ctx = egui::Context::default();
     crate::panel_skin::install_fonts(&ctx);

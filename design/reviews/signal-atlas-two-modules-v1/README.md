@@ -68,3 +68,11 @@ Process shows source-backed sample/hold edge capture, reciprocal track/hold beha
 [Updated dim-room capture](native-ux-dark-room.png) uses actual engine port/lamp state with ambient light at 8%. LEDs, ports and meters gain wider, brighter additive falloff; detailed screens have bounded soft spill, and Studio Mixer setting rings glow more broadly. Display illumination does not imply measured activity. Missing or zero signal stays dark.
 
 32 focused checks passed, including all catalog panels' light/dark geometry and cable targets, port signals, mixer controls and corrected oscillator acceptance fixtures. Strict desktop Clippy and formatting passed. Full-light, 8% and lights-off CPU mesh captures were reviewed without opening a native window or audio device. Installed 0.2.5 build 7 is unchanged.
+
+## Noise and stochastic controls
+
+[Five native panels and matching thumbnails](native-stochastic.png), with [actual offline-engine state in a dim room](native-stochastic-dark.png). White Noise keeps RMS volts and exact 24-bit seed entry; Stock Noise's seven source-backed process roles are separate from Colored Noise's configured filter-response plots. Random has eight larger rotaries and a visible integer seed control. Random Values retains its range, seed, guarded PUSH and seven sets of sixteen actual held voltages; absent snapshots explicitly remain unavailable.
+
+All widths and socket coordinates remain stable, with bounded socket enlargement. Static configured guides do not imply running samples. MCP cues cover every stochastic control, including seeds and modes; successive real Session edits retain one undo per gesture. 54 focused checks, strict desktop Clippy and formatting passed; light/dim CPU meshes were inspected. The dim export uses actual Core snapshots without opening an audio device or window. The preceding lighting checkpoint passed full Mac/visualizer CI. This family changes no DSP or frozen references.
+
+The user requested a native build after this family: **0.2.6 build 8** was built optimized for ARM64, bundled with its MCP CLI/icon/licenses, locally signed and installed at `~/Applications/OpenPatch.app`. Installed signatures/hashes were verified; the older 0.2.5 bundle was removed. The app was left closed. This is a local development installation, not a notarized public release or native audio-device qualification.

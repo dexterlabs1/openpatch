@@ -4,9 +4,9 @@ Read this file and [docs/WORKPLAN.md](docs/WORKPLAN.md) first. Open only the sou
 
 ## Delivery and focus
 
-- Keep the installed 0.2.5 build 7 stable until the user requests an upgrade or a substantial milestone is ready. Do not package, increment versions or install after every fix/module.
+- Keep the installed 0.2.6 build 8 stable until the user requests an upgrade or a substantial milestone is ready. Do not package, increment versions or install after every fix/module.
 - Validate macOS ARM only by default. Linux/Windows and throughput benchmarks are deferred to an explicitly requested full-platform milestone. MIDI and live performance remain last.
-- Work on one product milestone at a time. The user approved the ADSR/Ladder direction and resumed the goal with ‘continue’. Extend that design across the supported catalog in coherent layout families; twenty-nine panels now have detailed layouts, including stock utilities, mixers, studio effects, macro/drum voices, SVF, physical resonator and multi-voice/wavetable oscillators; continue with noise and stochastic control families next. Preserve real units/routing, existing editing/MCP behavior and shared rack/browser rendering. Keep Stock Scope checkpointed until this design milestone is delivered; do not install a release automatically.
+- Work on one product milestone at a time. The user approved the ADSR/Ladder direction and resumed the goal with ‘continue’. Extend that design across the supported catalog in coherent layout families; thirty-four panels now have detailed layouts, including stock utilities, mixers, studio effects, macro/drum voices, SVF, physical resonator, multi-voice/wavetable oscillators and noise/stochastic controls; continue with sample/hold and routing utilities next. Preserve real units/routing, existing editing/MCP behavior and shared rack/browser rendering. Keep Stock Scope checkpointed until this design milestone is delivered; do not install a release automatically.
 - Each work item needs one user-visible outcome and a short done checklist. Avoid expanding acceptance into unrelated cleanup or exhaustive internal equivalence. Preserve existing frozen references and honest fidelity claims.
 - Do not touch user patches/settings or replace a running app. Preserve existing computer-use restrictions; headless validation does not establish a native device test.
 

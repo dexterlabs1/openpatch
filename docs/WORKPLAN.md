@@ -4,7 +4,7 @@ Updated 2026-10-16. This is the compact execution plan; [ROADMAP.md](ROADMAP.md)
 
 ## Stable release
 
-**OpenPatch 0.2.5 build 7 stays installed.** It includes the Signal Atlas knob/socket rollout, Ferrofluid and the Studio Mixer with FX sends. PR25 merged at `ab3b2a280e9affdd55015ba5fd0a4664a32df6aa`. Do not create another release for routine development changes. User priority is macOS ARM; Linux/Windows validation can wait. MIDI/live performance remain last.
+**OpenPatch 0.2.6 build 8 is installed at `~/Applications/OpenPatch.app`.** The user explicitly requested this upgrade. It includes the 34-panel detailed Signal Atlas pass, stronger lights-off glow, value bubbles, undo/toolbar fixes, Ferrofluid and Studio Mixer. The optimized ARM64 desktop/CLI bundle is locally ad-hoc signed, with installed hashes/signature verified; 0.2.5 build 7 was removed. Keep this build stable during continued development. User priority is macOS ARM; Linux/Windows validation can wait. MIDI/live performance remain last. No native-window/audio-device qualification is claimed.
 
 ## Execution changes
 
@@ -18,6 +18,12 @@ Active LEDs, ports and meters now cast wider, stronger additive halos as ambient
 
 [Updated dim-room preview](../design/reviews/signal-atlas-two-modules-v1/native-ux-dark-room.png). **32 focused checks passed**, covering lighting, unchanged rack/browser geometry and cable targets, port signals, Studio Mixer behavior and eight oscillator acceptance fixtures corrected after the preceding CI run. Strict desktop Clippy and formatting passed. Actual-engine CPU captures were inspected at full, dim and zero ambient light; no native window/device or installed-release claim. The noise/stochastic design family resumes next.
 
+### Noise and stochastic controls
+
+White Noise, Stock Noise, Colored Noise, Random and Random Values bring the detailed native pass to **34 panels**. White Noise states its Gaussian/RMS path, Stock Noise shows seven actual process roles, and Colored Noise pairs its level knob and exact seed field with the core's configured response curves. Random has eight larger knobs, a clock/probability/target/curve path and a visible full-precision seed button. Random Values shows actual held voltages in illuminated readouts, retaining all sixteen lanes in hover details and guarded PUSH behavior.
+
+[Native family and matching thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-stochastic.png), [dark view from offline engine snapshots](../design/reviews/signal-atlas-two-modules-v1/native-stochastic-dark.png). **54 focused checks passed**, including successive Session gestures/undo for every new rotary, exact values, all stochastic MCP anchors, real lamps, held-state provenance, PUSH lifecycle, shared rack/browser geometry and low-zoom label/target clearance. Strict desktop Clippy and formatting passed. A preceding socket selection also passed 34 checks. No DSP or frozen-reference changes. The lighting checkpoint `9e9a111` passed full Mac and visualizer CI. Next: sample/hold and routing utilities, then dense sequencers.
+
 ## Active milestone: extend the approved native design
 
 The user rejected the material/control rollout as too far from the [01 Signal Atlas reference](../design/concepts/module-panels-20261016-v1/01-signal-atlas.png). The user approved the two-panel preview (“Looks good”) and resumed work with “continue”. Extend that native design across the catalog in coherent families, retaining the finished ADSR/Ladder panels as the reference.
@@ -27,7 +33,7 @@ The [interactive design review](../design/reviews/signal-atlas-two-modules-v1/in
 - **Native scope:** tactile knobs, warm material, metal sockets, diagrams, static configured RC/linearized filter plots, scaled thumbnails, existing drag/fine/keyboard/numeric/context editing, undo and MCP motion anchors. Existing panel widths and port identities remain stable; the three sockets now share the approved bottom row.
 - **Validation:** actual Session gestures and numeric entry for all seven controls, cable target/label clearance, rack/browser geometry, response-guide contracts, native mesh previews and macOS desktop regression. No native window or physical audio-device qualification is claimed.
 - **Verified:** 1,081 macOS ARM desktop tests passed, 4 ignored; strict desktop Clippy and formatting passed. Native light/dark mesh captures were inspected. [Native panels and thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-preview.png).
-- **Delivery:** keep one development PR and publish useful family checkpoints. Keep 0.2.5 build 7 installed during development; avoid new releases and repeated full CI runs for individual layout edits.
+- **Delivery:** keep one development PR and publish useful family checkpoints. Keep the user-requested 0.2.6 build 8 installation stable; avoid new releases and repeated full CI runs for individual layout edits.
 
 ### Analog voice continuation
 
