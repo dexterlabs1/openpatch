@@ -154,6 +154,74 @@ pub(crate) fn signal_atlas_face(painter: &egui::Painter, rect: Rect, zoom: f32) 
     );
 }
 
+/// Seated black-anodized socket screw, shared by native and imported panels.
+/// Reflections are painted material values, so rack dimming affects the whole
+/// fastener along with its panel. Small previews keep the head and drive only.
+pub(crate) fn mounting_screw(painter: &egui::Painter, center: Pos2, zoom: f32) {
+    if !zoom.is_finite() || zoom <= 0.0 || !center.x.is_finite() || !center.y.is_finite() {
+        return;
+    }
+    // A thin captive washer and tight contact shadow seat the head in the panel.
+    painter.circle_filled(
+        center + vec2(0.15, 0.3) * zoom,
+        4.7 * zoom,
+        Color32::from_black_alpha(62),
+    );
+    painter.circle_filled(center, 4.5 * zoom, Color32::from_rgb(45, 46, 43));
+    painter.circle_filled(center, 4.1 * zoom, Color32::from_rgb(17, 19, 18));
+    if zoom >= 0.65 {
+        // A continuous, softly lit bevel reads as machined black metal without
+        // bright chrome edges or individual glints that shimmer when zooming.
+        let mut bevel = egui::Mesh::default();
+        const SEGMENTS: u32 = 32;
+        for index in 0..=SEGMENTS {
+            let angle = std::f32::consts::TAU * index as f32 / SEGMENTS as f32;
+            let direction = vec2(angle.cos(), angle.sin());
+            let illumination = (-direction.x * 0.6 - direction.y * 0.8) * 0.5 + 0.5;
+            let outer = (23.0 + 26.0 * illumination) as u8;
+            let inner = (32.0 + 43.0 * illumination) as u8;
+            bevel.colored_vertex(
+                center + direction * (3.95 * zoom),
+                Color32::from_gray(outer),
+            );
+            bevel.colored_vertex(
+                center + direction * (3.05 * zoom),
+                Color32::from_gray(inner),
+            );
+            if index < SEGMENTS {
+                let start = index * 2;
+                bevel.add_triangle(start, start + 2, start + 1);
+                bevel.add_triangle(start + 1, start + 2, start + 3);
+            }
+        }
+        painter.add(egui::Shape::mesh(bevel));
+    }
+    painter.circle_filled(center, 3.05 * zoom, Color32::from_rgb(40, 43, 41));
+    let socket: Vec<Pos2> = (0..6)
+        .map(|index| {
+            let angle = std::f32::consts::TAU * index as f32 / 6.0;
+            center + vec2(angle.cos(), angle.sin()) * (1.65 * zoom)
+        })
+        .collect();
+    if zoom >= 0.65 {
+        // The lower/right socket lip catches light; the upper/left wall remains
+        // dark. Its inset floor makes this a real hex drive rather than a dot.
+        painter.add(egui::Shape::convex_polygon(
+            socket
+                .iter()
+                .map(|point| *point + vec2(0.16, 0.24) * zoom)
+                .collect(),
+            Color32::from_rgb(76, 79, 74),
+            Stroke::NONE,
+        ));
+    }
+    painter.add(egui::Shape::convex_polygon(
+        socket,
+        Color32::from_rgb(10, 12, 11),
+        Stroke::NONE,
+    ));
+}
+
 /// Black hardware for a saved continuous setting. The marker reports the
 /// configured position, not a live signal. `radius` is the logical body size;
 /// callers separately choose a pointer target that clears neighboring text.
@@ -853,3 +921,7 @@ mod tests {
 #[cfg(test)]
 #[path = "generic_fader_paint_tests.rs"]
 mod generic_fader_paint_tests;
+
+#[cfg(test)]
+#[path = "mounting_screw_paint_tests.rs"]
+mod mounting_screw_paint_tests;

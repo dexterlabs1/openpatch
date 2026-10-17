@@ -3859,6 +3859,112 @@ class OpenPatchMCPTests(unittest.TestCase):
             "frequency": 0, "pulse_width": .5, "fm_amount": 0, "pwm_amount": 0, "linear_fm": 0, "soft_sync": 0})
         self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
 
+    def test_segment_garden_outputs_grouped_history_presets_and_saved_reopen(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["segment_garden"]
+        self.assertEqual(descriptor["inputs"], [f"gate{i}" for i in range(1, 7)] + [f"cv{i}" for i in range(1, 7)])
+        self.assertEqual(descriptor["outputs"], [f"out{i}" for i in range(1, 7)] + [f"active{i}" for i in range(1, 7)])
+        self.assertEqual(descriptor["polyphony"]["maximum_channels"], 1)
+        self.assertIn("Custom", descriptor["tags"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "garden", "kind": "segment_garden"}], "output": "garden", "output_port": "out1"}})
+        before = self.patch_snapshot()
+        trace = self.payload(self.require_tool_success("capture_signal", {"id": "garden", "port": "out1", "seconds": .02}))
+        means = [point["mean"] for point in trace["bins"] if point["mean"] is not None]
+        self.assertTrue(means and all(math.isfinite(v) and abs(v) <= 8 for v in means))
+        self.assertGreater(max(means), .01)
+        self.assertEqual(self.patch_snapshot(), before)
+        for value in [.2, .3]:
+            self.require_tool_success("set_parameter", {"id": "garden", "parameter": "level1", "value": value,
+                "history_group": "garden-level", "expected_revision": self.patch_snapshot()["revision"]})
+        changed = self.patch_snapshot()
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], before["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], changed["patch"])
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "garden"}))["preset"]
+        self.assertAlmostEqual(preset["params"]["level1"], .3, places=6)
+        before_errors = self.patch_snapshot()
+        for name, value in [("type1", .5), ("loop2", .1), ("seed", 16777216), ("shape6", 1.01)]:
+            self.require_tool_error("set_parameter", {"id": "garden", "parameter": name, "value": value})
+            self.assertEqual(self.patch_snapshot(), before_errors)
+        self.require_tool_success("save_patch", {"filename": "segment-garden.json"})
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": []}})
+        self.require_tool_success("load_patch", {"filename": "segment-garden.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
+
+    def test_frame_scene_authoring_stable_ids_history_presets_and_saved_reopen(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["frame_scene"]
+        self.assertEqual(descriptor["outputs"], ["out1", "out2", "out3", "out4", "mix", "step"])
+        self.assertEqual(descriptor["content_schema"]["properties"]["keyframes"]["maxItems"], 64)
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "scene", "kind": "frame_scene"}], "output": "scene", "output_port": "mix"}})
+        def edit(change: dict[str, Any], **extra: Any) -> dict[str, Any]:
+            return self.payload(self.require_tool_success("edit_frame_scene", {
+                "id": "scene", "edit": change, "expected_revision": self.patch_snapshot()["revision"], **extra}))
+        edit({"operation": "add", "timestamp": 0, "values": [65535, 0, 0, 0]})
+        edit({"operation": "add", "timestamp": 65535, "values": [0, 65535, 0, 0]})
+        self.require_tool_success("set_parameter", {"id": "scene", "parameter": "frame", "value": .5})
+        before_capture = self.patch_snapshot()
+        for port in ["out1", "out2"]:
+            trace = self.payload(self.require_tool_success("capture_signal", {"id": "scene", "port": port, "seconds": .001}))
+            self.assertTrue(all(abs(point["mean"] - 5) < .02 for point in trace["bins"]))
+        self.assertEqual(self.patch_snapshot(), before_capture)
+        edit({"operation": "add", "timestamp": 32768, "values": [20000, 30000, 40000, 50000]})
+        before = self.patch_snapshot()
+        for timestamp in [50000, 55000]:
+            edit({"operation": "update", "keyframe_id": 0, "timestamp": timestamp}, history_group="move-frame0")
+        changed = self.patch_snapshot()
+        keys = changed["patch"]["nodes"][0]["content"]["keyframes"]
+        self.assertEqual([key["id"] for key in keys], [2, 0, 1])
+        self.assertEqual(changed["history"]["undo_steps"], before["history"]["undo_steps"] + 1)
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], before["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], changed["patch"])
+        changed = self.patch_snapshot()  # Undo/redo advance revision while restoring the same graph.
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "scene"}))["preset"]
+        self.assertEqual(preset["content"], changed["patch"]["nodes"][0]["content"])
+        for change in [{"operation": "remove", "keyframe_id": 999},
+                       {"operation": "update", "keyframe_id": 0, "timestamp": 32768},
+                       {"operation": "add", "timestamp": 1, "values": [1, 2, 3, 65536]}]:
+            self.require_tool_error("edit_frame_scene", {"id": "scene", "edit": change})
+            self.assertEqual(self.patch_snapshot(), changed)
+        self.require_tool_success("save_patch", {"filename": "frame-scene.json"})
+        edit({"operation": "clear"})
+        self.require_tool_success("load_patch", {"filename": "frame-scene.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
+
+    def test_tidal_functions_source_outputs_history_presets_and_saved_reopen(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["tidal_functions"]
+        self.assertEqual(descriptor["outputs"], ["out1", "out2", "out3", "out4"])
+        self.assertEqual(descriptor["polyphony"]["maximum_channels"], 1)
+        self.assertIn("Custom", descriptor["tags"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "tidal", "kind": "tidal_functions", "params": {"frequency": 200, "output_mode": 2}}],
+            "output": "tidal", "output_port": "out1"}})
+        original = self.patch_snapshot()
+        for port in descriptor["outputs"]:
+            trace = self.payload(self.require_tool_success("capture_signal", {
+                "id": "tidal", "port": port, "seconds": .02, "points": 64,
+                "expected_revision": original["revision"]}))
+            self.assertEqual(trace["summary"]["active_frames"], 960)
+            self.assertTrue(all(math.isfinite(point["mean"]) for point in trace["bins"]))
+            self.assertGreater(max(abs(point["mean"]) for point in trace["bins"]), .01)
+        self.assertEqual(self.patch_snapshot(), original, "capture must remain observational")
+        self.require_tool_success("set_parameter", {"id": "tidal", "parameter": "output_mode", "value": 3})
+        changed = self.patch_snapshot()
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], changed["patch"])
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "tidal"}))["preset"]
+        self.assertEqual(preset["params"]["output_mode"], 3)
+        self.require_tool_success("save_patch", {"filename": "tidal-functions.json"})
+        before = self.patch_snapshot()
+        for name, value in [("frequency", 0), ("ramp_mode", .5), ("clock_ratio", 9)]:
+            self.require_tool_error("set_parameter", {"id": "tidal", "parameter": name, "value": value})
+            self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": []}})
+        self.require_tool_success("load_patch", {"filename": "tidal-functions.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
+
     def test_stock_lfo_source_polarity_phase_origins_and_named_outputs_through_mcp(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         descriptor = modules["stock_lfo"]

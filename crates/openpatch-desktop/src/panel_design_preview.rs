@@ -23,6 +23,23 @@ fn export_panel_design_preview() {
             )
         })
         .collect();
+    // Optional authored fixture for content-backed instruments. The shared
+    // default-drawing guard remains independent of this opt-in review helper.
+    if let Ok(path) = std::env::var("OPENPATCH_PANEL_PROJECT") {
+        let authored: Patch =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        for preview in &mut previews {
+            if let Some(node) = authored
+                .nodes
+                .iter()
+                .find(|node| node.kind == preview.patch.nodes[0].kind)
+            {
+                let id = preview.patch.nodes[0].id.clone();
+                preview.patch.nodes[0] = node.clone();
+                preview.patch.nodes[0].id = id;
+            }
+        }
+    }
     let light = std::env::var("OPENPATCH_PANEL_LIGHT")
         .ok()
         .and_then(|s| s.parse::<f32>().ok())
