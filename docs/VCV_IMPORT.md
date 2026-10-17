@@ -2,7 +2,7 @@
 
 OpenPatch can open `.vcv` patches as editable, recoverable projects. Verified mappings become native modules. Unsupported dependencies remain visible placeholders with their original data, assets and cables. Import does not promise that every Rack patch will play.
 
-This workflow is merged through [PR #30](https://github.com/dexterlabs1/openpatch/pull/30), runtime source `cc14da0`; it is not in the installed 0.2.6 build 8. macOS ARM is the validation target. No native audio-device qualification is implied by headless tests.
+The base workflow is merged through [PR #30](https://github.com/dexterlabs1/openpatch/pull/30), extended with version-specific voices and shared panels in [PR #31](https://github.com/dexterlabs1/openpatch/pull/31), runtime source `597ebce`. It is not in the installed 0.2.6 build 8. macOS ARM is the validation target. No native audio-device qualification is implied by headless tests.
 
 ## Open, review, save
 

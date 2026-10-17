@@ -20,11 +20,23 @@ The shared MCP boundary provides `inspect_document`, `replace_document`, `load_d
 
 Execution permission travels with revision/generation-fenced audio plans. Explicit suspension adopts frozen native state without processing either active or donor engine, retires donors, cancels stale input and hides signal observations. Waiting for a newer runnable plan freezes execution/publication without canceling held MIDI or newly accepted actions. Runtime persistent fields are captured before crossing from runnable to suspended, including undo/redo; explicit history state assignments retain priority.
 
-Bounded `.vcv` container decoding is implemented. Pinned conversion mappings, native placeholders, the native project-store migration and the complete opening/repair/play/save/reopen collection remain unfinished. This boundary is not a shipped generic Rack importer or a VCV binary host.
+Bounded `.vcv` decoding, pinned mappings, visible placeholders, project-store migration and supported import/repair/save/reopen workflows are implemented through PRs #30/#31. The user's complete musical patch still has unsupported dependencies; the full declared playback collection remains unfinished. This boundary is not universal third-party import or a VCV binary host.
 
 ## Extensions and existing VCV binaries
 
 A versioned Rust module manifest/API and a host for existing VCV C++ binaries are separate deliverables. New native extensions use the same identity/state/migration rules as imports. Existing binary compatibility remains an explicit open host-matrix gate; choose a separate compatibility host boundary before implementing it. Do not load an arbitrary existing VCV library directly into the Rust audio callback or claim that porting a few modules supplies ecosystem compatibility.
+
+The preferred **feasibility direction**, not an implemented or proven host, is
+a separate Rack-compatible companion process with a versioned native interface
+to Rust and explicit hosted-module document identities. A bounded later spike
+must load one actual existing macOS ARM plugin binary, process it and restore
+its state. Compiling plugin source into a new wrapper does not prove existing
+binary compatibility. Resolve exported C++ symbols/runtime dependencies,
+context/engine/thread ownership, plugin UI callbacks, bounded audio transfer,
+failure/state capture and mixed-graph scheduling/feedback latency before
+committing to that architecture. Process isolation alone proves neither sample
+scheduling nor GUI compatibility. This tracked gate remains open; imported
+native sequencing/control is the next musical milestone.
 
 Pin supported module/version mappings and audit licenses/assets for each port or host. Keep source behavior, public plugin ABI, official distributed-binary identity and physical hardware accuracy as distinct claims. General-purpose on-the-fly DSP authoring does not block the usable import milestone.
 

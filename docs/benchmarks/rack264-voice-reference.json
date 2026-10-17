@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "Processor qualification checkpoint; shared panels/import workflows and full milestone CI unfinished. Not installed.",
+  "status": "Processor source-qualification evidence reused for delivered PR31 voice imports/panels; full Rack parity remains open.",
   "source_commit": "e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e",
   "models": [
     "rack264_vco",
@@ -89,5 +89,20 @@
     "No undefined SDK BLEP endpoint behavior qualification.",
     "No new source mappings enabled until shared panels and imported workflow checks pass.",
     "Existing Stock oracle pins and declarations untouched."
-  ]
+  ],
+  "integration": {
+    "pr": "https://github.com/dexterlabs1/openpatch/pull/31",
+    "merge_commit": "c020ceff327ba324a5bdf5770169657aeaf0af37",
+    "runtime_source": "597ebce62960fc296fb7472c4e4da18578c360b4",
+    "ci_run": 39020770229,
+    "rust_passed": 2411,
+    "desktop_passed": 1211,
+    "desktop_ignored": 9,
+    "python_mcp_passed": 118,
+    "artifact_id": 12096862321,
+    "artifact_sha256": "24f3484346ca3301afc706b9869c17ee874552361e4eccd791be65213769b92c",
+    "artifact_inspected": true,
+    "installed_app_unchanged": true,
+    "limits": "No native-window/audio-device qualification or whole-patch equivalence. Numerical source contracts remain the recorded fixture/toolchain scope; later host bypass routes are covered separately by actual Core tests."
+  }
 }
