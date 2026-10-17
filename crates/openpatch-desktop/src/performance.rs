@@ -1668,15 +1668,22 @@ impl LiveModuleEvents for Performance {
                 .iter()
                 .any(|node| node.id == *id && node.kind == entry.kind)
         });
-        control.scope_readers.retain(|id, _| {
-            control.state_entries.get(id).is_some_and(|entry| {
-                rack_scope_kind(&entry.kind)
-                    && patch
-                        .nodes
-                        .iter()
-                        .any(|node| node.id == *id && node.kind == entry.kind)
-            })
-        });
+        {
+            let Control {
+                scope_readers,
+                state_entries,
+                ..
+            } = &mut *control;
+            scope_readers.retain(|id, _| {
+                state_entries.get(id).is_some_and(|entry| {
+                    rack_scope_kind(&entry.kind)
+                        && patch
+                            .nodes
+                            .iter()
+                            .any(|node| node.id == *id && node.kind == entry.kind)
+                })
+            });
+        }
         let mut state_used = [false; MAX_NODES];
         for entry in control.state_entries.values() {
             state_used[entry.slot] = true;

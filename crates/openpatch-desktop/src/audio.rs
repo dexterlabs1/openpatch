@@ -14,7 +14,7 @@ mod audio_diagnostics;
 pub use audio_diagnostics::Snapshot as AudioTimingSnapshot;
 #[path = "performance.rs"]
 mod performance;
-pub(crate) use performance::ManualReleaseTicket;
+pub(crate) use performance::{rack_scope_kind, ManualReleaseTicket};
 use performance::{EventReader, ModulePlan, Performance, EVENT_CAPACITY};
 #[path = "scope_stream.rs"]
 mod scope_stream;
@@ -772,9 +772,6 @@ impl Audio {
 
     pub fn module_control_state(&self, id: &str) -> Option<openpatch_core::ModuleControlState> {
         self.performance.module_control_state(id)
-    }
-    pub fn module_scope(&self, id: &str) -> Option<Arc<openpatch_core::ScopeSnapshot>> {
-        self.module_scope_frame(id).map(|frame| frame.snapshot)
     }
     /// A coherent live capture with its graph incarnation and publication
     /// identity. Stock Scope view caches must use the token, not just node ID.

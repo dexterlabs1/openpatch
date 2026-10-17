@@ -106,8 +106,8 @@ fn port_material_scale(kind: &str) -> f32 {
         "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "crossfade"
         | "quantizer" | "stock_quantizer" | "poly_sum" | "mid_side" | "stock_mid_side" | "mix6"
         | "stock_mix" => REDESIGNED_PORT_SCALE,
-        "audio_stereo" | "poly_viz" | "scope" | "constant" | "octave" | "vca_mix" | "mixer"
-        | "output" | "audio_out" => REDESIGNED_PORT_SCALE,
+        "audio_stereo" | "poly_viz" | "scope" | "stock_scope" | "constant" | "octave"
+        | "vca_mix" | "mixer" | "output" | "audio_out" => REDESIGNED_PORT_SCALE,
         "attenuverter8" => 1.10,
         "cv_mix" => REDESIGNED_PORT_SCALE,
         "logic"
@@ -152,7 +152,7 @@ enum JackCaptionPlacement {
 fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPlacement {
     use JackCaptionPlacement::*;
     match (kind, port, output) {
-        ("scope" | "poly_viz", _, _) => Right(40.0),
+        ("scope" | "stock_scope" | "poly_viz", _, _) => Right(40.0),
         ("audio_stereo", _, false) => Right(32.0),
         ("audio_stereo", _, true) => Right(40.0),
         ("mixer" | "output" | "audio_out", _, true) => Right(36.0),
@@ -3088,7 +3088,9 @@ impl Rack {
                         } else {
                             width - 15.0
                         },
-                        if atlas_voice(&node.kind) || node.kind == "scope" {
+                        if atlas_voice(&node.kind)
+                            || matches!(node.kind.as_str(), "scope" | "stock_scope")
+                        {
                             43.0
                         } else {
                             69.0
@@ -3192,7 +3194,9 @@ impl Rack {
                         } else {
                             width - 15.0
                         },
-                        if atlas_voice(&node.kind) || node.kind == "scope" {
+                        if atlas_voice(&node.kind)
+                            || matches!(node.kind.as_str(), "scope" | "stock_scope")
+                        {
                             43.0
                         } else {
                             69.0
@@ -5884,7 +5888,11 @@ impl Rack {
                 rect.min,
                 vec2(
                     header_width,
-                    if node.kind == "scope" { 43.0 } else { 65.0 } * self.zoom,
+                    if matches!(node.kind.as_str(), "scope" | "stock_scope") {
+                        43.0
+                    } else {
+                        65.0
+                    } * self.zoom,
                 ),
             );
             if header_keyboard
@@ -11891,7 +11899,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            80,
+            81,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules

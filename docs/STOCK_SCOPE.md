@@ -2,7 +2,7 @@
 
 `stock_scope` is the separate Rust realization of the pinned Fundamental Scope acquisition contract. The existing `scope` kind and saved patches keep their independent behavior. This is a digital source-behavior model; it is not a physical instrument or hardware timing claim.
 
-The implementation and panel are under qualification. The genuine SDK reference passed its frozen declaration; the production paired comparison, separate safety cases, application integration, realtime, panel and release gates must be recorded before this module is advertised as qualified.
+The source model and application integration have passed their focused qualification checks. The production probe matched all 4,242 frozen genuine-Rack snapshots without discarding observations. Seven Core checks, 66 affected desktop Scope checks and the separate 46-record local safety probe passed. Complete macOS milestone CI remains pending; this is not an installed release or a physical-device qualification.
 
 ## Source controls and ports
 
@@ -22,7 +22,7 @@ Completed history can span different TIME settings, sample rates or resets. Nomi
 
 ## Native view and MCP
 
-Rack and browser use the same module renderer. The planned source panel has the eight source controls plus a separately labeled native AUTO/MANUAL view preference. That preference must not become a ninth source parameter or mutate capture, raw measurements, the Engine revision or Session undo history. Temporary view state is keyed by module incarnation. Before real publication, previews and new modules must show unavailable capture and neutral lamps.
+Rack and browser use the same Signal Atlas module renderer, with larger rotary controls, real voltage/time calibration and the eight source controls. A separately labeled native AUTO/MANUAL preference fits the display without becoming a ninth source parameter or mutating capture, raw measurements, the Engine revision or Session undo history. Temporary view state is keyed by module incarnation. Before real publication, previews and new modules show unavailable capture and neutral lamps. TIME fields use nominal milliseconds per screen while storing the raw source control; successive drags remain one undoable gesture, and a stale text editor cannot overwrite a newer edit.
 
 The live publication path carries borrowed completed bins through preallocated packets with one shared budget across both Scope kinds. MCP inspection retains exact kind, incarnation and revision checks. Stock metadata identifies raw controls and bits, actual held lamp bits, acquisition rate, nominal duration and next-bin width. Extrema remain measurements of actual completed bins, with selected-voice and all-active-voice bases; temporary UI fitting is separately identified.
 
@@ -33,3 +33,13 @@ The reference is Fundamental `src/Scope.cpp` at `10dd0160c664770910e5584b7b00498
 The ordinary immediate-parameter diagnostic comparison has a declared finite domain, including TIME in [−6, 8]. The public authored constructor uses configured quantity ranges and snap policy. Forty-six separate nonfinite, extreme finite and out-of-band TIME records qualify only the local Rust safety policy, not equivalence in an undefined or unobserved SDK domain. The [frozen protocol](../scripts/stock_scope_reference/README.md) and retained evidence define the exact boundary.
 
 The upstream GPL source and separately obtained Rack SDK are behavioral/oracle references; no upstream panel artwork or source class is shipped in the application. Original Rust model, host adapter and UI are kept distinct from the separately obtained reference build. Source equivalence does not establish official distributed plugin-binary identity, full upstream GUI/statistics behavior, VCV patch import, physical audio-device timing or complete host/49-module parity.
+
+## Application evidence
+
+- Seven focused Core tests cover authored quantities, independent polyphonic ports, acquisition adoption, source initialize/recreation, bypass, bounded live rate changes and heap-free processing.
+- The 66 affected desktop checks include real Callback → Session inspection, shared publication limits, kind/incarnation fencing, retained acquisition across TIME/threshold/routing edits, initialize and same-ID recreation. Callback execution/adoption is checked for allocation and deallocation.
+- Panel checks cover physical-unit TIME entry and keyboard bounds, successive field/rotary moves with one undo/redo, stale entry rejection, native AUTO history separation, actual weak-signal measurements, bypass-held lamps and controls clearing jack targets at reduced zoom.
+- All 46 unchanged local safety inputs ran through the actual Engine: 12 finite updates accepted; 34 invalid/out-of-domain updates rejected atomically. These results carry no SDK-equivalence claim.
+- Workspace Clippy with warnings denied, formatting and the 81-kind shared default rack/browser drawing check passed. [Actual panel captures](../design/reviews/stock-scope-v1/README.md) document the disconnected default view in normal and dim rooms.
+
+The frozen numerical proof is reused because executable Core/host/probe logic is unchanged since that comparison. The current source audit permits only test changes, desktop package-version metadata and one comment/Clippy-only attribute; removing those two diagnostic lines restores the frozen model file byte for byte. Full logs, manifests, binary hashes and the explicit reuse audit are retained in the integration worktree under `native-test-output/stock-scope/`.

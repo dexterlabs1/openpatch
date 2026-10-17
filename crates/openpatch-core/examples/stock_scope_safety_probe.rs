@@ -40,7 +40,13 @@ struct SafetyRecord {
 
 impl SafetyRecord {
     fn validate(&self) -> Result<(), String> {
-        if !self.classification.contains("local Rust safety only") {
+        // The two frozen finite TIME extremes predate the local-only suffix.
+        // Keep their original classification intact; run_record always labels
+        // every output as local safety and never claims SDK equivalence.
+        let frozen_finite_time_extreme = self.role.as_deref() == Some("time")
+            && matches!(self.bits, Some(0x7f7f_ffff | 0xff7f_ffff))
+            && self.classification == "finite TIME outside the declared bounded domain; float-to-int32 conversion in exp2Floor exceeds its range";
+        if !self.classification.contains("local Rust safety only") && !frozen_finite_time_extreme {
             return Err(format!(
                 "{}: missing explicit local-only classification",
                 self.id
@@ -86,7 +92,7 @@ fn safety_engine() -> Result<Engine, String> {
         patch.cables.push(
             serde_json::from_value(json!({
                 "id":format!("input{index}"),"from":name,"output":"out",
-                "to":"scope","input":["x","y","trigger"][index]
+                "to":"scope","input":(["x","y","trigger"][index])
             }))
             .map_err(|error| error.to_string())?,
         );

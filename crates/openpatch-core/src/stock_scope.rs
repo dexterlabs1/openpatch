@@ -255,6 +255,8 @@ impl StockScope {
         &self.snapshot
     }
 
+    // Preserve the explicit axis/lane transpose used by the frozen diagnostic.
+    #[allow(clippy::needless_range_loop)]
     pub(crate) fn diagnostic_bits(&self) -> StockScopeDiagnosticBits {
         let mut completed = Vec::with_capacity(SCOPE_BINS);
         for bin in 0..SCOPE_BINS {

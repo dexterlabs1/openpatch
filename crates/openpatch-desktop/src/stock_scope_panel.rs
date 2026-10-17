@@ -60,18 +60,24 @@ impl Rack {
                 point(local.min.x, local.min.y),
                 point(local.max.x, local.max.y),
             );
-            painter.text(
-                point(local.min.x, local.min.y - 8.0),
-                Align2::LEFT_CENTER,
-                *label,
-                crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
-                INK,
-            );
             if let Some(spec) = module.and_then(|module| module["params"].get(*name)) {
                 let edit = match *name {
-                    "x_scale" | "y_scale" => {
-                        self.choice_parameter(ui, node, name, spec, control, &SCOPE_SCALE_CHOICES)
-                    }
+                    "x_scale" => self.choice_parameter(
+                        ui,
+                        node,
+                        name,
+                        spec,
+                        control,
+                        &ATLAS_SCOPE_X_RANGE_CHOICES,
+                    ),
+                    "y_scale" => self.choice_parameter(
+                        ui,
+                        node,
+                        name,
+                        spec,
+                        control,
+                        &ATLAS_SCOPE_Y_RANGE_CHOICES,
+                    ),
                     "xy" => self.choice_parameter(ui, node, name, spec, control, &["TIME", "XY"]),
                     "trigger_disabled" => self.choice_parameter(
                         ui,
@@ -81,8 +87,30 @@ impl Rack {
                         control,
                         &["ENABLED", "DISABLED"],
                     ),
-                    "time" => self.stock_scope_time_control(ui, node, spec, control),
-                    _ => self.compact_parameter(ui, node, name, spec, control, suffix),
+                    _ => {
+                        let center = scope_knob_center(index);
+                        painter.text(
+                            point(center.x, 258.0),
+                            Align2::CENTER_CENTER,
+                            *label,
+                            crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
+                            INK,
+                        );
+                        let field_edit = if *name == "time" {
+                            self.stock_scope_time_control(ui, node, spec, control)
+                        } else {
+                            self.compact_parameter(ui, node, name, spec, control, suffix)
+                        };
+                        let knob_edit = self.scope_rotary_parameter(
+                            ui,
+                            node,
+                            name,
+                            spec,
+                            rect,
+                            (control, index, *suffix),
+                        );
+                        field_edit.or(knob_edit)
+                    }
                 };
                 if let Some(edit) = edit {
                     if matches!(*name, "x_scale" | "y_scale" | "x_offset" | "y_offset") {
@@ -100,19 +128,12 @@ impl Rack {
             point(local.min.x, local.min.y),
             point(local.max.x, local.max.y),
         );
-        painter.text(
-            point(local.min.x, local.min.y - 8.0),
-            Align2::LEFT_CENTER,
-            "VIEW · NATIVE",
-            crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
-            INK,
-        );
         let token = self.scope_identities.get(&node.id).copied();
         let enabled = ui.is_enabled() && token.is_some();
         let automatic = self
             .stock_scope_views
             .get(&node.id)
-            .map_or(true, |view| view.automatic);
+            .is_none_or(|view| view.automatic);
         let response = ui.interact(
             control,
             ui.id().with((&node.id, "stock-scope-native-view", token)),
@@ -133,7 +154,11 @@ impl Rack {
         crate::panel_skin::readout(
             &painter,
             control.center(),
-            if automatic { "AUTO" } else { "MANUAL" },
+            if automatic {
+                "AUTO · NATIVE"
+            } else {
+                "MANUAL · NATIVE"
+            },
             control.width(),
             zoom,
         );
@@ -164,6 +189,11 @@ impl Rack {
             .clamp(min_raw, max_raw);
         let mut millis = stock_scope_nominal_ms(raw);
         let id = ui.id().with((&node.id, "stock-scope-time"));
+        let editor_start = if self.lighting.amount() < 1.0 {
+            crate::lighting::next(ui.painter())
+        } else {
+            0
+        };
         let response = ui
             .scope_builder(egui::UiBuilder::new().max_rect(rect).id_salt(id), |ui| {
                 crate::panel_skin::control_style(ui, self.zoom);
@@ -179,6 +209,9 @@ impl Rack {
                 )
             })
             .inner;
+        if response.has_focus() || response.lost_focus() {
+            self.lighting.preserve(ui.painter(), editor_start);
+        }
         response.widget_info(|| {
             egui::WidgetInfo::slider(
                 true,
@@ -233,9 +266,15 @@ impl Rack {
             let value = stock_scope_time_raw(millis).clamp(min_raw, max_raw);
             if value.to_bits() != raw.to_bits() {
                 self.select_primary(node.id.clone());
-                let revision = ui
-                    .data(|data| data.get_temp::<u64>(revision_id))
-                    .unwrap_or(self.observed_revision);
+                // A drag is a sequence of guarded edits against the latest
+                // observed Session. Only a typed editor retains its opening
+                // revision, so it cannot overwrite a newer external edit.
+                let revision = if response.dragged() || response.drag_stopped() {
+                    self.observed_revision
+                } else {
+                    ui.data(|data| data.get_temp::<u64>(revision_id))
+                        .unwrap_or(self.observed_revision)
+                };
                 let mut args = json!({"id":node.id,"parameter":"time","value":value,"expected_revision":revision});
                 if let Some(group) = history_group {
                     args["history_group"] = json!(group);

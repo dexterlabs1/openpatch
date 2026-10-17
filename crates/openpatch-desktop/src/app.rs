@@ -8062,7 +8062,7 @@ impl eframe::App for OpenPatch {
             let mut scope_identities = BTreeMap::new();
             if let Some(audio) = self.audio.as_ref() {
                 for node in &self.patch.nodes {
-                    if crate::performance::rack_scope_kind(&node.kind) {
+                    if crate::audio::rack_scope_kind(&node.kind) {
                         if let Some((kind, token)) = audio.module_scope_identity(&node.id) {
                             if kind == node.kind {
                                 scope_identities.insert(node.id.clone(), token);

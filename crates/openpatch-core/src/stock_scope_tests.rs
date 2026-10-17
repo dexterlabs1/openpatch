@@ -184,7 +184,9 @@ fn independent_sixteen_and_seven_lane_inputs_copy_only_connected_output_widths()
     );
 
     let mut unconsumed = patch(48_000);
-    unconsumed.cables.retain(|cable| cable.id != "y_out");
+    unconsumed
+        .cables
+        .retain(|cable| cable.id.as_deref() != Some("y_out"));
     let mut engine = unconsumed.compile().unwrap();
     let scope = engine.resolve_module_state("scope").unwrap();
     frames(&mut engine, 3);
@@ -282,7 +284,7 @@ fn receiving_controls_win_same_identity_route_adoption_while_acquisition_and_byp
     changed
         .cables
         .iter_mut()
-        .find(|cable| cable.id == "y_in")
+        .find(|cable| cable.id.as_deref() == Some("y_in"))
         .unwrap()
         .from = "y_alternate".into();
     let mut receiving = changed.compile().unwrap();
@@ -299,6 +301,19 @@ fn receiving_controls_win_same_identity_route_adoption_while_acquisition_and_byp
     assert_eq!(adopted.parameter_bits[4], 2.0_f32.to_bits());
     assert_eq!(adopted.parameter_bits[5], 1.0_f32.to_bits());
 
+    frames(&mut receiving, 3);
+    let scope = receiving.resolve_module_state("scope").unwrap();
+    let routed = receiving.host_module_snapshot(scope).unwrap();
+    assert_eq!(routed.inputs[1].channels, 3);
+    // The alternate authors v1 only; active v2/v3 keep their catalog defaults.
+    assert_eq!(&routed.inputs[1].values[..3], &[4.0, 2.0, 3.0]);
+    assert_eq!(
+        (routed.outputs[0].channels, routed.outputs[1].channels),
+        (16, 3)
+    );
+    assert_eq!(&routed.outputs[1].values[..3], &[4.0, 2.0, 3.0]);
+    assert_eq!(state(&receiving).channels_y, 3);
+
     let mut bypass_patch = changed;
     bypass_patch.nodes[3].bypassed = true;
     let mut bypassed = bypass_patch.compile().unwrap();
@@ -307,10 +322,15 @@ fn receiving_controls_win_same_identity_route_adoption_while_acquisition_and_byp
     frames(&mut bypassed, 4);
     assert_eq!(state(&bypassed), held);
     let scope = bypassed.resolve_module_state("scope").unwrap();
-    let output = bypassed.host_module_snapshot(scope).unwrap().outputs[0];
-    assert!(output.values[..usize::from(output.channels)]
-        .iter()
-        .all(|value| *value == 0.0));
+    let raw = bypassed.host_module_snapshot(scope).unwrap();
+    assert_eq!(raw.output_count, 2);
+    assert_eq!(raw.output_consumers, 0b11);
+    for (output, previous) in raw.outputs[..2].iter().zip(&routed.outputs[..2]) {
+        assert_eq!(output.channels, 1);
+        assert!(output.values[..usize::from(previous.channels)]
+            .iter()
+            .all(|value| value.to_bits() == 0));
+    }
 }
 
 #[test]
