@@ -120,11 +120,11 @@ impl Default for RoomLighting {
 impl RoomLighting {
     fn bloom_amount(&self) -> f32 {
         // Keep the light concentrated in its lens, even with the room off.
-        0.08 + 0.18 * (1.0 - self.amount).powf(1.5)
+        0.06 + 0.12 * (1.0 - self.amount).powf(1.5)
     }
 
     fn bloom_diffusion(&self) -> f32 {
-        0.12 + 0.04 * (1.0 - self.amount).powf(1.5)
+        0.08 + 0.02 * (1.0 - self.amount).powf(1.5)
     }
 
     /// Static display illumination, distinct from signal-driven lamps. The
@@ -429,8 +429,11 @@ mod tests {
             assert!(meshes.iter().all(|mesh| mesh.vertices.len() == 120));
         }
         for light in 0..3 {
-            assert!(room_energy[2][light] > room_energy[1][light]);
-            assert!(room_energy[1][light] > room_energy[0][light]);
+            // Soft, weak halos can share an 8-bit color step at adjacent room
+            // levels, but must never get darker as ambient light falls.
+            assert!(room_energy[2][light] >= room_energy[1][light]);
+            assert!(room_energy[1][light] >= room_energy[0][light]);
+            assert!(room_energy[2][light] > room_energy[0][light]);
             assert!(room_extent[2][light] > room_extent[1][light]);
             assert!(room_extent[1][light] > room_extent[0][light]);
         }

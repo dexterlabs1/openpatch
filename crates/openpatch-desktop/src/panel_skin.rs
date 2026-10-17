@@ -392,11 +392,11 @@ pub(crate) fn parameter_rotary(
         if t <= value {
             painter.line_segment(
                 points,
-                Stroke::new(6.0 * zoom, lighting.setting_glow(accent, 0.04)),
+                Stroke::new(4.0 * zoom, lighting.setting_glow(accent, 0.03)),
             );
             painter.line_segment(
                 points,
-                Stroke::new(3.3 * zoom, lighting.setting_glow(accent, 0.16)),
+                Stroke::new(2.5 * zoom, lighting.setting_glow(accent, 0.12)),
             );
             painter.line_segment(points, Stroke::new(1.35 * zoom, accent));
         } else {
