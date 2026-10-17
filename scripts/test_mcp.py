@@ -3859,6 +3859,43 @@ class OpenPatchMCPTests(unittest.TestCase):
             "frequency": 0, "pulse_width": .5, "fm_amount": 0, "pwm_amount": 0, "linear_fm": 0, "soft_sync": 0})
         self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
 
+    def test_event_fork_source_routing_observation_history_presets_and_saved_reopen(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["event_fork"]
+        self.assertEqual(descriptor["inputs"], ["gate1", "gate2", "probability1_cv", "probability2_cv"])
+        self.assertEqual(descriptor["outputs"], ["a1", "b1", "a2", "b2"])
+        self.assertEqual(descriptor["polyphony"]["maximum_channels"], 1)
+        self.assertIn("Custom", descriptor["tags"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "gate", "kind": "constant", "params": {"value": 5}},
+                      {"id": "fork", "kind": "event_fork", "params": {"probability1": 0, "probability2": 1, "seed": 17, "latch2": 1}}],
+            "cables": [{"from": "gate", "output": "out", "to": "fork", "input": "gate1"}],
+            "output": "fork", "output_port": "a1"}})
+        before = self.patch_snapshot()
+        for port, high in [("a1", True), ("b1", False), ("a2", False), ("b2", True)]:
+            trace = self.payload(self.require_tool_success("capture_signal", {"id": "fork", "port": port, "seconds": .02}))
+            means = [point["mean"] for point in trace["bins"] if point["mean"] is not None]
+            self.assertTrue(means and all(math.isfinite(v) and 0 <= v <= 5 for v in means))
+            self.assertEqual(max(means), 5 if high else 0)
+        self.assertEqual(self.patch_snapshot(), before, "signal capture is observational")
+        for value in [.2, .35]:
+            self.require_tool_success("set_parameter", {"id": "fork", "parameter": "probability1", "value": value,
+                "history_group": "fork-probability", "expected_revision": self.patch_snapshot()["revision"]})
+        changed = self.patch_snapshot()
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], before["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], changed["patch"])
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "fork"}))["preset"]
+        self.assertEqual(preset["params"]["seed"], 17)
+        self.assertEqual(preset["params"]["latch2"], 1)
+        before_errors = self.patch_snapshot()
+        for name, value in [("seed", 0), ("seed", 1.5), ("toggle1", .5), ("latch2", 2), ("probability2", 1.01)]:
+            self.require_tool_error("set_parameter", {"id": "fork", "parameter": name, "value": value})
+            self.assertEqual(self.patch_snapshot(), before_errors)
+        self.require_tool_success("save_patch", {"filename": "event-fork.json"})
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": []}})
+        self.require_tool_success("load_patch", {"filename": "event-fork.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
+
     def test_segment_garden_outputs_grouped_history_presets_and_saved_reopen(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         descriptor = modules["segment_garden"]

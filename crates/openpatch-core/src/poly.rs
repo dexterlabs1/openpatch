@@ -3,6 +3,7 @@
 //! storage are resolved/allocated only during compilation.
 use crate::adsr_eg::{self, AdsrEg};
 use crate::colored_noise::{self, ColoredNoise};
+use crate::event_fork::{self, EventFork};
 use crate::frame_scene::{self, FrameScene};
 use crate::gates::{self, Gates};
 use crate::host_ports::{
@@ -150,6 +151,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "stock_lfo"
                 | "tidal_functions"
                 | "frame_scene"
+                | "event_fork"
                 | "segment_garden"
                 | "random_values"
                 | "random"
@@ -219,6 +221,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "stock_vco" | "rack264_vco" => stock_vco::INPUTS.iter().position(|port| *port == name),
         "stock_lfo" => stock_lfo::INPUTS.iter().position(|port| *port == name),
         "frame_scene" => frame_scene::INPUTS.iter().position(|port| *port == name),
+        "event_fork" => event_fork::INPUTS.iter().position(|port| *port == name),
         "segment_garden" => segment_garden::INPUTS.iter().position(|port| *port == name),
         "tidal_functions" => tidal_functions::INPUTS
             .iter()
@@ -348,6 +351,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
             .position(|port| *port == name)
     } else if matches!(kind, "stock_vco" | "rack264_vco") {
         stock_vco::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "event_fork" {
+        event_fork::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "segment_garden" {
         segment_garden::OUTPUTS
             .iter()
@@ -585,6 +590,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
+    } else if kind == "event_fork" {
+        event_fork::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
     } else if kind == "segment_garden" {
         segment_garden::OUTPUTS
             .iter()
@@ -826,6 +836,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "frame_scene" {
         frame_scene::annotate(module);
     }
+    if kind == "event_fork" {
+        event_fork::annotate(module);
+    }
     if kind == "segment_garden" {
         segment_garden::annotate(module);
     }
@@ -943,6 +956,7 @@ enum Model {
     TidalFunctions(Box<TidalFunctions>),
     FrameScene(Box<FrameScene>),
     SegmentGarden(Box<SegmentGarden>),
+    EventFork(EventFork),
     StockVco(Box<StockVco>),
     Rack264Vco(Box<Rack264Vco>),
     StockNoise(Box<StockNoise>),
@@ -1108,6 +1122,9 @@ impl Model {
         }
         if node.kind == "rack264_vco" {
             return Ok(Self::Rack264Vco(Box::new(Rack264Vco::build(node, rate)?)));
+        }
+        if node.kind == "event_fork" {
+            return Ok(Self::EventFork(EventFork::build(node, rate)?));
         }
         if node.kind == "segment_garden" {
             return Ok(Self::SegmentGarden(Box::new(SegmentGarden::build(
@@ -2063,6 +2080,7 @@ impl PolyEngine {
             Some(Model::TidalFunctions(s)) => Some(s.lights()),
             Some(Model::FrameScene(s)) => Some(s.lights()),
             Some(Model::SegmentGarden(s)) => Some(s.lights()),
+            Some(Model::EventFork(s)) => Some(s.lights()),
             Some(Model::StockVco(s)) => Some(s.lights()),
             Some(Model::Rack264Vco(s)) => Some(s.lights()),
             Some(Model::StockQuantizer(q)) => Some(q.lights()),
@@ -2560,6 +2578,7 @@ impl PolyEngine {
             Model::TidalFunctions(tidal) => tidal.initialize_state(),
             Model::FrameScene(scene) => scene.initialize_state(),
             Model::SegmentGarden(garden) => garden.initialize_state(),
+            Model::EventFork(fork) => fork.initialize_state(),
             Model::StockVco(vco) => vco.initialize_state(),
             Model::Rack264Vco(vco) => vco.initialize_state(),
             Model::StockNoise(noise) => noise.initialize_state(),
@@ -2775,6 +2794,7 @@ impl PolyEngine {
                     "tidal_functions" => tidal_functions::OUTPUTS.len(),
                     "frame_scene" => frame_scene::OUTPUTS.len(),
                     "segment_garden" => segment_garden::OUTPUTS.len(),
+                    "event_fork" => event_fork::OUTPUTS.len(),
                     "stock_vco" => stock_vco::OUTPUTS.len(),
                     "rack264_vco" => rack264_vco::OUTPUTS.len(),
                     "stock_noise" => stock_noise::OUTPUTS.len(),
@@ -3623,6 +3643,21 @@ impl PolyEngine {
                             [node.output_start..node.output_start + rack264_vco::OUTPUTS.len()],
                     );
                 }
+                Model::EventFork(fork) => {
+                    let mut inputs = [PortFrame::default(); 4];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    fork.process(
+                        &inputs,
+                        node.physical_input_mask,
+                        node.connected_mask as u16,
+                        &mut self.outputs
+                            [node.output_start..node.output_start + event_fork::OUTPUTS.len()],
+                    );
+                }
                 Model::SegmentGarden(garden) => {
                     let mut inputs = [PortFrame::default(); 12];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -4243,6 +4278,7 @@ impl PolyEngine {
                 (Model::TidalFunctions(s), Model::TidalFunctions(old)) => s.adopt(old),
                 (Model::FrameScene(s), Model::FrameScene(old)) => s.adopt(old),
                 (Model::SegmentGarden(s), Model::SegmentGarden(old)) => s.adopt(old),
+                (Model::EventFork(s), Model::EventFork(old)) => s.adopt(old),
                 (Model::StockVco(s), Model::StockVco(old)) => s.adopt(old),
                 (Model::Rack264Vco(s), Model::Rack264Vco(old)) => s.adopt(old),
                 (Model::StockQuantizer(q), Model::StockQuantizer(old)) => q.adopt(old),

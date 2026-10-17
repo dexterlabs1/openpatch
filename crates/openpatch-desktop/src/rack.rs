@@ -66,6 +66,7 @@ include!("atlas_creative_panels.rs");
 include!("tidal_functions_panel.rs");
 include!("frame_scene_panel.rs");
 include!("segment_garden_panel.rs");
+include!("event_fork_panel.rs");
 include!("atlas_svf_panel.rs");
 include!("atlas_multi_panels.rs");
 include!("atlas_wavetable_panel.rs");
@@ -108,7 +109,7 @@ fn port_material_scale(kind: &str) -> f32 {
         "seq3" => 1.20,
         "stock_seq3" => 1.07,
         "stock_delay" => 1.20, // y380 sockets must remain inside the 396-point panel.
-        "modal_resonator" | "tidal_functions" | "frame_scene" | "segment_garden" => {
+        "modal_resonator" | "tidal_functions" | "frame_scene" | "segment_garden" | "event_fork" => {
             REDESIGNED_PORT_SCALE
         }
         "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "rackmcp_sequencer"
@@ -197,6 +198,7 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("stock_vcf" | "rack264_vcf", _, false) => Above(21.0),
         ("lfo" | "lowpass" | "gain" | "analog_vca", _, false) => Above(25.0),
         ("adsr" | "svf_filter", _, false) => Above(21.0),
+        ("event_fork", _, _) => Above(25.0),
         ("frame_scene", _, _) => Above(25.0),
         ("segment_garden", _, _) => Above(24.0),
         ("tidal_functions", _, false) => Above(21.0),
@@ -343,7 +345,7 @@ fn generic_parameter_hardware(
         || atlas_voice(kind)
         || atlas_studio_effect(kind)
         || atlas_creative_kind(kind)
-        || matches!(kind, "tidal_functions" | "segment_garden")
+        || matches!(kind, "tidal_functions" | "segment_garden" | "event_fork")
         || matches!(
             kind,
             "stock_vco" | "rack264_vco" | "stock_lfo" | "mix6" | "stock_mix"
@@ -3862,6 +3864,13 @@ impl Rack {
                     &self.lighting,
                 );
             }
+            if node.kind == "event_fork" {
+                if let Some(edit) =
+                    self.event_fork_panel(ui, node, patch, module, rect, revision, interactive)
+                {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "frame_scene" {
                 if let Some(edit) = self.frame_scene_panel(ui, node, rect, revision, interactive) {
                     action = Some(edit);
@@ -3875,9 +3884,10 @@ impl Rack {
                 }
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
-                if (node.kind == "segment_garden"
-                    && !name.starts_with("level")
-                    && !name.starts_with("shape"))
+                if (node.kind == "event_fork" && !name.starts_with("probability"))
+                    || (node.kind == "segment_garden"
+                        && !name.starts_with("level")
+                        && !name.starts_with("shape"))
                     || (node.kind == "random" && *name == "seed")
                     || matches!(node.kind.as_str(), "scope" | "stock_scope")
                     || node.kind == "modal_resonator"
@@ -4323,7 +4333,9 @@ impl Rack {
                     "macro_voice" => 8.0,
                     _ => 13.0,
                 };
-                let (knob_position, radius) = if node.kind == "segment_garden" {
+                let (knob_position, radius) = if node.kind == "event_fork" {
+                    event_fork_control(name)
+                } else if node.kind == "segment_garden" {
                     segment_garden_control(name)
                 } else if node.kind == "tidal_functions" {
                     tidal_control(name)
@@ -4427,7 +4439,10 @@ impl Rack {
                 let geometric = (matches!(node.kind.as_str(), "multi_lfo" | "multi_vco")
                     && *name == "frequency")
                     || ((atlas_voice(&node.kind)
-                        || matches!(node.kind.as_str(), "tidal_functions" | "segment_garden"))
+                        || matches!(
+                            node.kind.as_str(),
+                            "tidal_functions" | "segment_garden" | "event_fork"
+                        ))
                         && logarithmic
                         && min > 0.0);
                 let wave_rate = node.kind == "wavetable_lfo" && *name == "rate";
@@ -4451,7 +4466,7 @@ impl Rack {
                 let fade_percent = (node.kind == "stock_seq3"
                     && matches!(*name, "tempo_amount" | "steps_amount"))
                     || node.kind == "fade"
-                    || node.kind == "segment_garden"
+                    || matches!(node.kind.as_str(), "segment_garden" | "event_fork")
                     || (node.kind == "tidal_functions" && *name != "frequency")
                     || (node.kind == "random" && !matches!(*name, "rate" | "unipolar" | "seed"));
                 let vco_percent =
@@ -4642,7 +4657,10 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if node.kind == "segment_garden" {
+                let value_center = if node.kind == "event_fork" {
+                    let local = event_fork_value_center(name);
+                    point(local.x, local.y)
+                } else if node.kind == "segment_garden" {
                     let local = segment_garden_value_center(name);
                     point(local.x, local.y)
                 } else if node.kind == "tidal_functions" {
@@ -4722,7 +4740,9 @@ impl Rack {
                 } else {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
-                let readout_width = if node.kind == "segment_garden" {
+                let readout_width = if node.kind == "event_fork" {
+                    100.0
+                } else if node.kind == "segment_garden" {
                     82.0
                 } else if node.kind == "tidal_functions" {
                     88.0
@@ -5087,7 +5107,10 @@ impl Rack {
                         || atlas_voice(&node.kind)
                         || atlas_studio_effect(&node.kind)
                         || atlas_creative_kind(&node.kind)
-                        || matches!(node.kind.as_str(), "tidal_functions" | "segment_garden")
+                        || matches!(
+                            node.kind.as_str(),
+                            "tidal_functions" | "segment_garden" | "event_fork"
+                        )
                         || matches!(
                             node.kind.as_str(),
                             "stock_vco" | "rack264_vco" | "stock_lfo" | "mix6" | "stock_mix"
@@ -5180,6 +5203,8 @@ impl Rack {
                     );
                 } else if node.kind == "svf_filter" {
                     paint_atlas_svf_print(&painter, rect, name, self.zoom);
+                } else if node.kind == "event_fork" {
+                    paint_event_fork_control_print(&painter, rect, name, self.zoom);
                 } else if node.kind == "segment_garden" {
                     paint_segment_garden_control_print(
                         &painter, rect, node, patch, name, self.zoom,
@@ -5265,7 +5290,10 @@ impl Rack {
                     || atlas_voice(&node.kind)
                     || atlas_studio_effect(&node.kind)
                     || atlas_creative_kind(&node.kind)
-                    || matches!(node.kind.as_str(), "tidal_functions" | "segment_garden")
+                    || matches!(
+                        node.kind.as_str(),
+                        "tidal_functions" | "segment_garden" | "event_fork"
+                    )
                     || matches!(
                         node.kind.as_str(),
                         "stock_vco" | "rack264_vco" | "stock_lfo" | "mix6" | "stock_mix"
@@ -5920,6 +5948,20 @@ impl Rack {
         port_index: usize,
         output_point: Pos2,
     ) {
+        if node.kind == "event_fork" {
+            let strength = event_fork_lamp(self.module_lights.get(&node.id), port_index);
+            let center = output_point + vec2(24.0, -1.0) * self.zoom;
+            painter.circle_filled(center, 3.0 * self.zoom, Color32::from_gray(78));
+            self.lighting.circle(
+                painter,
+                center,
+                2.2 * self.zoom,
+                Color32::from_rgb(230, 183, 92).gamma_multiply(0.12 + strength * 0.88),
+                strength,
+                0.12,
+            );
+            return;
+        }
         let light_index = match node.kind.as_str() {
             "logic" | "tidal_functions" => Some(port_index),
             "segment_garden" if port_index < 6 => Some(port_index),
@@ -8880,6 +8922,7 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
                 if input { 341.0 } else { 382.0 },
             );
         }
+        "event_fork" => return event_fork_port(input, index),
         "frame_scene" => return frame_scene_port(input, index),
         "segment_garden" => return segment_garden_port(input, index),
         "tidal_functions" => return tidal_port(input, index),
@@ -9884,6 +9927,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "studio_mixer" => 804.0,
         "modal_resonator" => HP * 32.0,
         "macro_voice" => HP * 20.0,
+        "event_fork" => HP * 20.0,
         "frame_scene" => HP * 36.0,
         "segment_garden" => HP * 48.0,
         "tidal_functions" => HP * 28.0,
@@ -9938,6 +9982,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "blank" => "BLANK",
         "modal_resonator" => "MODAL RESONATOR",
         "macro_voice" => "MACRO VOICE",
+        "event_fork" => "EVENT FORK",
         "frame_scene" => "FRAME SCENE",
         "segment_garden" => "SEGMENT GARDEN",
         "tidal_functions" => "TIDAL FUNCTIONS",
@@ -10149,6 +10194,15 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         return Vec::new();
     };
     let order: &[&str] = match node.kind.as_str() {
+        "event_fork" => &[
+            "probability1",
+            "probability2",
+            "toggle1",
+            "toggle2",
+            "latch1",
+            "latch2",
+            "seed",
+        ],
         "tidal_functions" => &[
             "ramp_mode",
             "output_mode",
@@ -10786,6 +10840,7 @@ fn paint_panel(
                 | "tidal_functions"
                 | "frame_scene"
                 | "segment_garden"
+                | "event_fork"
                 | "multi_vco"
                 | "multi_lfo"
                 | "wavetable_vco"
@@ -10894,6 +10949,7 @@ fn paint_panel(
                 | "tidal_functions"
                 | "frame_scene"
                 | "segment_garden"
+                | "event_fork"
                 | "multi_vco"
                 | "multi_lfo"
                 | "wavetable_vco"
@@ -11063,7 +11119,9 @@ fn paint_jack(
     compact: bool,
     port_scale: f32,
 ) {
-    let label = if kind == "segment_garden" {
+    let label = if kind == "event_fork" {
+        event_fork_port_label(port)
+    } else if kind == "segment_garden" {
         segment_garden_port_label(port)
     } else if kind == "frame_scene" {
         frame_scene_port_label(port)
@@ -11153,6 +11211,7 @@ fn paint_jack(
                 | "tidal_functions"
                 | "frame_scene"
                 | "segment_garden"
+                | "event_fork"
                 | "multi_vco"
                 | "multi_lfo"
                 | "wavetable_vco"
@@ -12189,7 +12248,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            89,
+            90,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -19071,6 +19130,10 @@ mod tests {
     }
     mod frame_scene_ui_tests {
         include!("frame_scene_ui_tests.rs");
+    }
+
+    mod event_fork_ui_tests {
+        include!("event_fork_ui_tests.rs");
     }
 
     mod segment_garden_ui_tests {

@@ -1,0 +1,223 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "guide",
+      "kind": "notes",
+      "content": {
+        "type": "notes",
+        "text": "EVENT FORK\nROUTED DUET\nClock enters GATE 1.\nA and B play two voices.\nP(B) changes the balance.\nTOGGLE switches or stays.\nSection 2 is normalled.\nIts latch holds tone CV.\nSEED repeats the choices."
+      }
+    },
+    {
+      "id": "console",
+      "kind": "studio_mixer",
+      "params": {
+        "channels": 2,
+        "level1": 0.65,
+        "level2": 0.65,
+        "pan1": -0.25,
+        "pan2": 0.25,
+        "master": 0.65
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 1,
+        "dc_block": 1
+      }
+    },
+    {
+      "id": "clock",
+      "kind": "gate",
+      "params": {
+        "frequency": 3,
+        "duty": 0.2
+      }
+    },
+    {
+      "id": "fork",
+      "kind": "event_fork",
+      "params": {
+        "seed": 17,
+        "probability1": 0.45,
+        "probability2": 0.7,
+        "toggle2": 1,
+        "latch2": 1
+      }
+    },
+    {
+      "id": "tone",
+      "kind": "frame_scene",
+      "params": {
+        "level1": 0.1,
+        "level2": 0,
+        "level3": 0,
+        "level4": 0,
+        "offset": 0
+      }
+    },
+    {
+      "id": "vco1",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 98
+      }
+    },
+    {
+      "id": "filter1",
+      "kind": "ladder_vcf",
+      "params": {
+        "cutoff": 180,
+        "resonance": 0.15,
+        "drive": 0.8
+      }
+    },
+    {
+      "id": "env1",
+      "kind": "adsr",
+      "params": {
+        "attack": 0.012,
+        "decay": 0.12,
+        "sustain": 0.3,
+        "release": 0.16
+      }
+    },
+    {
+      "id": "vca1",
+      "kind": "analog_vca",
+      "params": {
+        "gain": 0.7
+      }
+    },
+    {
+      "id": "vco2",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 147
+      }
+    },
+    {
+      "id": "filter2",
+      "kind": "ladder_vcf",
+      "params": {
+        "cutoff": 260,
+        "resonance": 0.15,
+        "drive": 0.8
+      }
+    },
+    {
+      "id": "env2",
+      "kind": "adsr",
+      "params": {
+        "attack": 0.012,
+        "decay": 0.12,
+        "sustain": 0.3,
+        "release": 0.16
+      }
+    },
+    {
+      "id": "vca2",
+      "kind": "analog_vca",
+      "params": {
+        "gain": 0.7
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": "clock",
+      "output": "out",
+      "to": "fork",
+      "input": "gate1"
+    },
+    {
+      "from": "fork",
+      "output": "a2",
+      "to": "tone",
+      "input": "all"
+    },
+    {
+      "from": "fork",
+      "output": "a1",
+      "to": "env1",
+      "input": "gate"
+    },
+    {
+      "from": "vco1",
+      "output": "out",
+      "to": "filter1",
+      "input": "signal"
+    },
+    {
+      "from": "filter1",
+      "output": "out",
+      "to": "vca1",
+      "input": "signal"
+    },
+    {
+      "from": "env1",
+      "output": "out",
+      "to": "vca1",
+      "input": "cv"
+    },
+    {
+      "from": "vca1",
+      "output": "out",
+      "to": "console",
+      "input": "in1"
+    },
+    {
+      "from": "fork",
+      "output": "b1",
+      "to": "env2",
+      "input": "gate"
+    },
+    {
+      "from": "vco2",
+      "output": "out",
+      "to": "filter2",
+      "input": "signal"
+    },
+    {
+      "from": "filter2",
+      "output": "out",
+      "to": "vca2",
+      "input": "signal"
+    },
+    {
+      "from": "env2",
+      "output": "out",
+      "to": "vca2",
+      "input": "cv"
+    },
+    {
+      "from": "vca2",
+      "output": "out",
+      "to": "console",
+      "input": "in2"
+    },
+    {
+      "from": "tone",
+      "output": "out1",
+      "to": "filter2",
+      "input": "cutoff_cv"
+    },
+    {
+      "from": "console",
+      "output": "left",
+      "to": "out",
+      "input": "left"
+    },
+    {
+      "from": "console",
+      "output": "right",
+      "to": "out",
+      "input": "right"
+    }
+  ],
+  "output": "out"
+}

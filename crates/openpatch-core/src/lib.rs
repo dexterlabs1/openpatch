@@ -89,6 +89,7 @@ mod stock_seq3;
 pub use stock_seq3::initial_stock_seq3_state;
 #[doc(hidden)]
 pub use stock_seq3::{StockSeq3Probe, StockSeq3Snapshot};
+mod event_fork;
 mod frame_scene;
 mod segment_garden;
 mod stock_lfo;
@@ -476,6 +477,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(segment_garden::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(event_fork::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
