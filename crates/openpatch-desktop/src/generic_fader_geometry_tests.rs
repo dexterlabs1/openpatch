@@ -276,6 +276,7 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
     // Explicit choices remain independent of the hardware for continuous values.
     for (kind, faders, rotaries, choices) in [
         ("gate", 0, 2, &[][..]),
+        ("gates", 0, 1, &[][..]),
         ("attenuverter", 0, 2, &[][..]),
         ("white_noise", 1, 1, &[][..]),
         ("sample_hold", 0, 1, &[][..]),

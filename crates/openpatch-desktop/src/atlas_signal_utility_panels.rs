@@ -1,9 +1,10 @@
 fn atlas_signal_utility_kind(kind: &str) -> bool {
-    matches!(kind, "fade" | "compare" | "process" | "gate")
+    matches!(kind, "fade" | "compare" | "process" | "gate" | "gates")
 }
 fn atlas_signal_utility_control(kind: &str, name: &str) -> (Pos2, f32) {
     match (kind, name) {
         ("fade", _) => atlas_fade_control(name),
+        ("gates", _) => (pos2(78.0, 189.0), 31.0),
         ("compare", _) => (pos2(120.0, 125.0), 31.0),
         ("process", _) => (pos2(120.0, 116.0), 31.0),
         ("gate", "frequency") => (pos2(75.0, 125.0), 31.0),
@@ -13,6 +14,7 @@ fn atlas_signal_utility_control(kind: &str, name: &str) -> (Pos2, f32) {
 fn atlas_signal_utility_value_center(kind: &str, name: &str) -> Pos2 {
     match (kind, name) {
         ("fade", _) => atlas_fade_value_center(name),
+        ("gates", _) => pos2(78.0, 234.0),
         ("compare", _) => pos2(120.0, 170.0),
         ("process", _) => pos2(120.0, 161.0),
         ("gate", "frequency") => pos2(75.0, 170.0),
@@ -31,6 +33,7 @@ fn paint_atlas_signal_utility_print(
         return;
     }
     let (label, y) = match (kind, name) {
+        ("gates", _) => ("LENGTH", 140.0),
         ("compare", _) => ("B OFFSET", 76.0),
         ("process", _) => ("SLEW", 70.0),
         ("gate", "frequency") => ("FREQUENCY", 76.0),
@@ -63,6 +66,10 @@ fn paint_atlas_signal_utility_configuration(
     };
     match node.kind.as_str() {
         "fade" => paint_atlas_fade_configuration(painter, node, rect, zoom, lighting),
+        "gates" => {
+            text(120.0, 61.0, "TIME = LENGTH × 2^CV", 8.5);
+            text(120.0, 309.0, "LENGTH CV CLAMP: −32…+32 V", 8.5);
+        }
         "compare" => {
             text(120.0, 310.0, "B′ = B + OFFSET · CLIP TO ±|B′|", 8.5);
             text(120.0, 323.0, "LIM = A − CLIP · GATES 0 / 10 V", 8.5);

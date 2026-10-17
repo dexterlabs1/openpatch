@@ -106,8 +106,14 @@ impl FaderFixture {
         let center = self.rack.viewport.unwrap().min
             + self.rack.pan
             + (self.rack.positions["target"].to_vec2() + local.to_vec2()) * self.rack.zoom;
-        (center, self.rack.viewport.unwrap().min + self.rack.pan
-            + (self.rack.positions["target"].to_vec2() + atlas_signal_utility_value_center("gate", "duty").to_vec2()) * self.rack.zoom)
+        (
+            center,
+            self.rack.viewport.unwrap().min
+                + self.rack.pan
+                + (self.rack.positions["target"].to_vec2()
+                    + atlas_signal_utility_value_center("gate", "duty").to_vec2())
+                    * self.rack.zoom,
+        )
     }
     fn oscillator_rotary_center(&self, kind: &str, parameter: &str) -> Pos2 {
         let node = self
@@ -781,6 +787,7 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
         ("compare", "b_offset", 0.0, pos2(120.0, 125.0)),
         ("process", "slew", -4.0, pos2(120.0, 116.0)),
         ("gate", "frequency", 2.0, pos2(75.0, 125.0)),
+        ("gates", "length", 0.1, pos2(78.0, 189.0)),
         ("score_sequencer", "tempo", 120.0, pos2(65.0, 120.0)),
         ("score_sequencer", "swing", 50.0, pos2(185.0, 120.0)),
         ("white_noise", "level", 1.0, pos2(90.0, 135.0)),

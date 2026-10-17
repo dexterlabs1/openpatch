@@ -1072,6 +1072,7 @@ fn committed_rotary_edits_have_a_moving_angular_cursor_without_delaying_values()
         ("compare", "b_offset", -2.0, 3.0),
         ("process", "slew", -4.0, 0.0),
         ("gate", "frequency", 2.0, 4.0),
+        ("gates", "length", 0.1, 0.4),
         ("poly_constant", "v1", -4.0, 8.0),
         ("poly_constant", "v16", -7.25, 3.5),
         ("score_sequencer", "swing", 50.0, 65.0),
@@ -1219,8 +1220,12 @@ fn converted_rotary_cue_tracks_pan_zoom_and_yields_to_human_precision_entry() {
     assert_ne!(anchor.rect, shifted.rect);
 
     // The readout remains a separate exact-entry target after the view change.
-    let (local, layout_radius) = parameter_position(2, 1, module_width(&after.nodes[0]));
-    let readout = moved_center + vec2(0.0, (layout_radius + 15.0) * rack.zoom);
+    let (local, _) = atlas_signal_utility_control("gate", "duty");
+    let readout = rack.viewport.unwrap().min
+        + rack.pan
+        + (rack.positions["target"].to_vec2()
+            + atlas_signal_utility_value_center("gate", "duty").to_vec2())
+            * rack.zoom;
     assert!(
         (moved_center.distance(
             rack.viewport.unwrap().min

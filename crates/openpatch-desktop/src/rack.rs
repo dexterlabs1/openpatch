@@ -28,6 +28,7 @@ include!("atlas_score_panel.rs");
 include!("atlas_poly_panels.rs");
 include!("atlas_fade_panel.rs");
 include!("atlas_signal_utility_panels.rs");
+include!("atlas_manual_panels.rs");
 include!("atlas_poly_constant_panel.rs");
 include!("stock_quantizer_panel.rs");
 include!("quantizer_keyboard.rs");
@@ -98,7 +99,10 @@ fn port_material_scale(kind: &str) -> f32 {
         "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "crossfade"
         | "quantizer" | "stock_quantizer" | "poly_sum" | "mid_side" | "stock_mid_side" | "mix6"
         | "stock_mix" => REDESIGNED_PORT_SCALE,
-        "fade"
+        "logic"
+        | "gates"
+        | "push"
+        | "fade"
         | "compare"
         | "process"
         | "rescale"
@@ -137,6 +141,7 @@ enum JackCaptionPlacement {
 fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPlacement {
     use JackCaptionPlacement::*;
     match (kind, port, output) {
+        ("logic" | "gates" | "push", _, _) => Above(25.0),
         ("stock_lfo" | "stock_vco" | "stock_noise" | "stock_process", _, _) => ExistingEnlarged,
         (
             "seq3",
@@ -6200,6 +6205,9 @@ impl Rack {
         let zoom = self.zoom;
         let painter = ui.painter().clone();
         let point = |x, y| rect.min + vec2(x, y) * zoom;
+        if node.kind == "logic" {
+            paint_atlas_logic_guides(&painter, rect, zoom);
+        }
         let mut action = None;
         if matches!(node.kind.as_str(), "logic" | "process") {
             let (x, y, label, press, release) = if node.kind == "logic" {
@@ -6245,30 +6253,49 @@ impl Rack {
                     format!("{} {} momentary", node.id, label),
                 )
             });
-            painter.rect_filled(
-                button_rect,
-                3.0,
-                if actual {
-                    Color32::from_rgb(224, 195, 104)
-                } else if enabled && response.hovered() {
-                    Color32::from_rgb(239, 241, 232)
-                } else {
-                    Color32::from_rgb(193, 196, 187)
-                },
-            );
-            painter.rect_stroke(
-                button_rect,
-                3.0,
-                Stroke::new(zoom, Color32::from_gray(129)),
-                egui::StrokeKind::Inside,
-            );
-            painter.text(
-                button_rect.center() - vec2(5.0, 0.0) * zoom,
-                Align2::CENTER_CENTER,
-                label,
-                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
-                if enabled { INK } else { MUTED },
-            );
+            if node.kind == "logic" {
+                paint_atlas_manual_button(
+                    &painter,
+                    button_rect,
+                    zoom,
+                    actual,
+                    enabled && response.hovered(),
+                    enabled,
+                    ("", 9.0),
+                );
+                painter.text(
+                    button_rect.center() - vec2(5.0, 0.0) * zoom,
+                    Align2::CENTER_CENTER,
+                    label,
+                    crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
+                    if enabled { INK } else { MUTED },
+                );
+            } else {
+                painter.rect_filled(
+                    button_rect,
+                    3.0,
+                    if actual {
+                        Color32::from_rgb(224, 195, 104)
+                    } else if enabled && response.hovered() {
+                        Color32::from_rgb(239, 241, 232)
+                    } else {
+                        Color32::from_rgb(193, 196, 187)
+                    },
+                );
+                painter.rect_stroke(
+                    button_rect,
+                    3.0,
+                    Stroke::new(zoom, Color32::from_gray(129)),
+                    egui::StrokeKind::Inside,
+                );
+                painter.text(
+                    button_rect.center() - vec2(5.0, 0.0) * zoom,
+                    Align2::CENTER_CENTER,
+                    label,
+                    crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
+                    if enabled { INK } else { MUTED },
+                );
+            }
             paint_signal_light(
                 &painter,
                 button_rect.right_center() - vec2(10.0, 0.0) * zoom,
@@ -6309,324 +6336,6 @@ impl Rack {
                 MUTED,
             );
         }
-        action
-    }
-
-    fn pulses_panel(
-        &mut self,
-        ui: &mut egui::Ui,
-        node: &Node,
-        rect: Rect,
-        allow_press: bool,
-    ) -> Option<RackAction> {
-        let zoom = self.zoom;
-        let painter = ui.painter().clone();
-        let point = |x, y| rect.min + vec2(x, y) * zoom;
-        let enabled = ui.is_enabled()
-            && self.shortcuts_enabled
-            && self.performance_available
-            && !node.bypassed
-            && ui.input(|i| i.focused);
-        for (x, label) in [(92.0, "FIRE"), (155.0, "TRIG"), (205.0, "GATE")] {
-            painter.text(
-                point(x, 80.0),
-                Align2::CENTER_CENTER,
-                label,
-                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
-                MUTED,
-            );
-        }
-        let pressed_mask = self
-            .module_controls
-            .get(&node.id)
-            .map_or(0, |controls| controls.pressed_mask);
-        let mut action = None;
-        for row in 0..10 {
-            let y = 100.0 + row as f32 * 29.0;
-            let active = pressed_mask & (1_u16 << row) != 0;
-            let button_rect = Rect::from_center_size(point(92.0, y), vec2(62.0, 21.0) * zoom);
-            let response = ui.interact(
-                button_rect,
-                ui.id().with((&node.id, "pulse-button", row)),
-                Sense::click_and_drag(),
-            );
-            response.widget_info(|| {
-                egui::WidgetInfo::labeled(
-                    egui::WidgetType::Button,
-                    enabled,
-                    format!(
-                        "PULSES {} row {} momentary trigger and gate",
-                        node.id,
-                        row + 1
-                    ),
-                )
-            });
-            painter.text(
-                point(35.0, y),
-                Align2::CENTER_CENTER,
-                format!("{:02}", row + 1),
-                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
-                MUTED,
-            );
-            painter.rect_filled(
-                button_rect.translate(vec2(0.8, 1.5) * zoom),
-                3.0 * zoom,
-                Color32::from_black_alpha(80),
-            );
-            painter.rect_filled(
-                button_rect,
-                3.0 * zoom,
-                if active {
-                    Color32::from_rgb(212, 166, 86)
-                } else if enabled && response.hovered() {
-                    Color32::from_rgb(246, 237, 210)
-                } else {
-                    Color32::from_rgb(190, 186, 175)
-                },
-            );
-            painter.rect_stroke(
-                button_rect,
-                3.0 * zoom,
-                Stroke::new(zoom, Color32::from_rgb(89, 85, 76)),
-                egui::StrokeKind::Inside,
-            );
-            painter.text(
-                button_rect.center(),
-                Align2::CENTER_CENTER,
-                "PUSH",
-                crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
-                if enabled { INK } else { MUTED },
-            );
-            let brightness = self
-                .module_lights
-                .get(&node.id)
-                .filter(|lights| row < usize::from(lights.count))
-                .map_or(0.0, |lights| lights.brightness[row][0])
-                .clamp(0.0, 1.0);
-            painter.circle_filled(point(132.0, y), 4.0 * zoom, Color32::from_rgb(71, 66, 58));
-            self.lighting.circle(
-                &painter,
-                point(132.0, y),
-                2.8 * zoom,
-                Color32::from_rgb(238, 177, 65).gamma_multiply(0.12 + 0.88 * brightness),
-                brightness,
-                0.12,
-            );
-            if row < 9 {
-                painter.line_segment(
-                    [point(24.0, y + 14.0), point(216.0, y + 14.0)],
-                    Stroke::new(0.55 * zoom, Color32::from_white_alpha(28)),
-                );
-            }
-            if enabled
-                && allow_press
-                && self.held_manual.is_none()
-                && ui.input(|i| i.pointer.button_pressed(PointerButton::Primary))
-            {
-                if response.clicked_by(PointerButton::Primary) {
-                    self.select_primary(node.id.clone());
-                    action = Some(RackAction::ManualClick {
-                        id: node.id.clone(),
-                        press: PULSE_PRESS[row],
-                        release: PULSE_RELEASE[row],
-                    });
-                } else if response.is_pointer_button_down_on() {
-                    self.held_manual = Some(HeldManual {
-                        id: node.id.clone(),
-                        kind: node.kind.clone(),
-                        release: PULSE_RELEASE[row],
-                        button_rect,
-                    });
-                    self.select_primary(node.id.clone());
-                    action = Some(RackAction::Command(
-                        "trigger_module",
-                        json!({"id":node.id,"action":PULSE_PRESS[row]}),
-                    ));
-                }
-            }
-            response.on_hover_text(if enabled {
-                format!(
-                    "Row {}: press for TRIG {}, hold for GATE {}. Moving outside or releasing the button ends the gate.",
-                    row + 1,
-                    row + 1,
-                    row + 1
-                )
-            } else {
-                "Momentary controls require a live audio engine and an active module.".into()
-            });
-        }
-        painter.text(
-            point(120.0, 384.0),
-            Align2::CENTER_CENTER,
-            if node.bypassed {
-                "BYPASSED"
-            } else if !self.module_controls.contains_key(&node.id) {
-                if self.performance_available {
-                    "WAITING FOR ENGINE"
-                } else {
-                    "AUDIO OFFLINE"
-                }
-            } else if !self.performance_available {
-                "LAST ENGINE STATE"
-            } else {
-                "TRIGGER / HELD GATE"
-            },
-            crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
-            MUTED,
-        );
-        action
-    }
-
-    fn push_panel(
-        &mut self,
-        ui: &mut egui::Ui,
-        node: &Node,
-        rect: Rect,
-        allow_press: bool,
-    ) -> Option<RackAction> {
-        let zoom = self.zoom;
-        let painter = ui.painter().clone();
-        let point = |x, y| rect.min + vec2(x, y) * zoom;
-        let enabled = ui.is_enabled()
-            && self.shortcuts_enabled
-            && self.performance_available
-            && !node.bypassed
-            && ui.input(|i| i.focused);
-        for (y, label) in [(78.0, "REMOTE"), (159.0, "MANUAL")] {
-            painter.text(
-                point(90.0, y),
-                Align2::CENTER_CENTER,
-                label,
-                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
-                MUTED,
-            );
-        }
-        let pressed_mask = self
-            .module_controls
-            .get(&node.id)
-            .map_or(0, |controls| controls.pressed_mask);
-        let lights = self.module_lights.get(&node.id).copied();
-        let mut action = None;
-        for (index, x, label, led_label, led_color) in [
-            (0, 49.0, "PUSH", "GATE", Color32::from_rgb(238, 177, 65)),
-            (1, 131.0, "HOLD", "LATCH", Color32::from_rgb(75, 165, 178)),
-        ] {
-            let active = pressed_mask & (1_u16 << index) != 0;
-            let button_rect = Rect::from_center_size(point(x, 209.0), vec2(72.0, 48.0) * zoom);
-            let response = ui.interact(
-                button_rect,
-                ui.id().with((&node.id, "push-button", index)),
-                Sense::click_and_drag(),
-            );
-            response.widget_info(|| {
-                egui::WidgetInfo::labeled(
-                    egui::WidgetType::Button,
-                    enabled,
-                    format!("PUSH {} {} performance button", node.id, label),
-                )
-            });
-            painter.rect_filled(
-                button_rect.translate(vec2(1.3, 2.5) * zoom),
-                4.0 * zoom,
-                Color32::from_black_alpha(95),
-            );
-            painter.rect_filled(
-                button_rect,
-                4.0 * zoom,
-                if active {
-                    Color32::from_rgb(212, 166, 86)
-                } else if enabled && response.hovered() {
-                    Color32::from_rgb(246, 237, 210)
-                } else {
-                    Color32::from_rgb(190, 186, 175)
-                },
-            );
-            painter.rect_stroke(
-                button_rect,
-                4.0 * zoom,
-                Stroke::new(1.2 * zoom, Color32::from_rgb(89, 85, 76)),
-                egui::StrokeKind::Inside,
-            );
-            painter.text(
-                button_rect.center(),
-                Align2::CENTER_CENTER,
-                label,
-                crate::panel_skin::print_font(painter.ctx(), 12.0 * zoom),
-                if enabled { INK } else { MUTED },
-            );
-            let brightness = lights
-                .filter(|state| index < usize::from(state.count))
-                .map_or(0.0, |state| state.brightness[index][0])
-                .clamp(0.0, 1.0);
-            painter.circle_filled(point(x, 265.0), 6.0 * zoom, Color32::from_rgb(71, 66, 58));
-            self.lighting.circle(
-                &painter,
-                point(x, 265.0),
-                4.4 * zoom,
-                led_color.gamma_multiply(0.12 + 0.88 * brightness),
-                brightness,
-                0.12,
-            );
-            painter.text(
-                point(x, 283.0),
-                Align2::CENTER_CENTER,
-                led_label,
-                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
-                MUTED,
-            );
-            if enabled
-                && allow_press
-                && self.held_manual.is_none()
-                && ui.input(|i| i.pointer.button_pressed(PointerButton::Primary))
-            {
-                if response.clicked_by(PointerButton::Primary) {
-                    self.select_primary(node.id.clone());
-                    action = Some(RackAction::ManualClick {
-                        id: node.id.clone(),
-                        press: PUSH_PRESS[index],
-                        release: PUSH_RELEASE[index],
-                    });
-                } else if response.is_pointer_button_down_on() {
-                    self.held_manual = Some(HeldManual {
-                        id: node.id.clone(),
-                        kind: node.kind.clone(),
-                        release: PUSH_RELEASE[index],
-                        button_rect,
-                    });
-                    self.select_primary(node.id.clone());
-                    action = Some(RackAction::Command(
-                        "trigger_module",
-                        json!({"id":node.id,"action":PUSH_PRESS[index]}),
-                    ));
-                }
-            }
-            response.on_hover_text(if enabled {
-                if index == 0 {
-                    "Momentary Push control. Hold can invert the resulting gate. The Gate lamp follows the audio engine. Moving outside or releasing ends the press."
-                } else {
-                    "Press Hold to toggle the runtime latch. The Latch lamp shows the actual latched state; Hold can invert the resulting gate. Moving outside or releasing ends the physical press."
-                }
-            } else {
-                "Performance controls require a live audio engine and an active module. Lamps show the last reported engine state."
-            });
-        }
-        painter.text(
-            point(90.0, 302.0),
-            Align2::CENTER_CENTER,
-            if node.bypassed {
-                "BYPASSED"
-            } else if self.module_controls.contains_key(&node.id) && !self.performance_available {
-                "LAST ENGINE STATE"
-            } else if !self.performance_available {
-                "AUDIO OFFLINE"
-            } else if !self.module_controls.contains_key(&node.id) {
-                "WAITING FOR ENGINE"
-            } else {
-                "HOLD INVERTS GATE"
-            },
-            crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
-            MUTED,
-        );
         action
     }
 
@@ -6673,34 +6382,14 @@ impl Rack {
             crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
             INK,
         );
-        painter.rect_filled(
-            button_rect.translate(vec2(1.2, 2.4) * zoom),
-            4.0 * zoom,
-            Color32::from_black_alpha(95),
-        );
-        painter.rect_filled(
+        paint_atlas_manual_button(
+            &painter,
             button_rect,
-            4.0 * zoom,
-            if active {
-                Color32::from_rgb(212, 166, 86)
-            } else if enabled && response.hovered() {
-                Color32::from_rgb(246, 237, 210)
-            } else {
-                Color32::from_rgb(190, 186, 175)
-            },
-        );
-        painter.rect_stroke(
-            button_rect,
-            4.0 * zoom,
-            Stroke::new(1.2 * zoom, Color32::from_rgb(89, 85, 76)),
-            egui::StrokeKind::Inside,
-        );
-        painter.text(
-            button_rect.center(),
-            Align2::CENTER_CENTER,
-            "RESET",
-            crate::panel_skin::print_font(painter.ctx(), 11.0 * zoom),
-            if enabled { INK } else { MUTED },
+            zoom,
+            active,
+            enabled && response.hovered(),
+            enabled,
+            ("RESET", 11.0),
         );
         painter.text(
             point(184.0, 229.0),
@@ -11104,6 +10793,7 @@ fn paint_panel(
         || atlas_mid_side_kind(&node.kind)
         || atlas_poly_kind(&node.kind)
         || atlas_signal_utility_kind(&node.kind)
+        || atlas_manual_kind(&node.kind)
         || node.kind == "score_sequencer"
         || matches!(
             node.kind.as_str(),
@@ -11198,6 +10888,7 @@ fn paint_panel(
         || atlas_mid_side_kind(&node.kind)
         || atlas_poly_kind(&node.kind)
         || atlas_signal_utility_kind(&node.kind)
+        || atlas_manual_kind(&node.kind)
         || node.kind == "score_sequencer"
         || matches!(
             node.kind.as_str(),
@@ -11488,6 +11179,7 @@ fn paint_jack(
         || atlas_mid_side_kind(kind)
         || atlas_poly_kind(kind)
         || atlas_signal_utility_kind(kind)
+        || atlas_manual_kind(kind)
         || kind == "score_sequencer"
         || matches!(
             kind,
@@ -15186,7 +14878,7 @@ mod tests {
         }))
         .unwrap();
         let (_, output) = frame_output(&ctx, &mut rack, &patch, 0.0, vec![]);
-        let active = Color32::from_rgb(212, 166, 86);
+        let active = Color32::from_rgb(204, 161, 91);
         let row_fill = |row: usize| {
             let center = pos2(116.0, 112.0 + row as f32 * 29.0);
             output.shapes.iter().any(|shape| {
@@ -15376,7 +15068,7 @@ mod tests {
         }))
         .unwrap();
         let (_, output) = frame_output(&ctx, &mut rack, &patch, 0.0, vec![]);
-        let active = Color32::from_rgb(212, 166, 86);
+        let active = Color32::from_rgb(204, 161, 91);
         let active_button = |x: f32| {
             output.shapes.iter().any(|shape| {
                 matches!(&shape.shape, egui::epaint::Shape::Rect(rect)
@@ -15608,7 +15300,7 @@ mod tests {
         assert!(!output.shapes.iter().any(|shape| {
             matches!(&shape.shape, egui::epaint::Shape::Rect(rect)
                 if rect.rect.center() == pos2(208.0, 194.0)
-                && rect.fill == Color32::from_rgb(212, 166, 86))
+                && rect.fill == Color32::from_rgb(204, 161, 91))
         }));
         for (index, channel) in (0..6).flat_map(|index| (0..2).map(move |channel| (index, channel)))
         {
@@ -15637,6 +15329,17 @@ mod tests {
                 "output light {index}, channel {channel}"
             );
         }
+        rack.module_controls.get_mut("manual").unwrap().pressed_mask = 1;
+        let (_, pressed) = frame_output(&ctx, &mut rack, &patch, 0.1, vec![]);
+        assert!(
+            pressed.shapes.iter().any(|shape| {
+                matches!(&shape.shape, egui::epaint::Shape::Rect(cap)
+                if cap.rect.center() == pos2(208.0, 194.0)
+                && (cap.rect.size() - vec2(68.8, 39.8)).length() < 0.01
+                && cap.fill == Color32::from_rgb(204, 161, 91))
+            }),
+            "observed RESET mask must depress the actual cap"
+        );
     }
 
     #[test]
@@ -19287,6 +18990,9 @@ mod tests {
     }
     mod stock_mix_ui_tests {
         include!("stock_mix_ui_tests.rs");
+    }
+    mod manual_atlas_ui_tests {
+        include!("manual_atlas_ui_tests.rs");
     }
     mod atlas_signal_utility_ui_tests {
         include!("atlas_signal_utility_ui_tests.rs");
