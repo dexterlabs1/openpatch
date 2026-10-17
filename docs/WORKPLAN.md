@@ -103,6 +103,23 @@ Reuse this integration checkout. The import evidence is
 `native-test-output/rack-264-voice/STATE.json`. Keep their frozen evidence rather
 than copying or regenerating it for a later module family.
 
+## Existing binary feasibility checkpoint
+
+The separate [actual-binary probe](../scripts/rack_binary_host/README.md) now
+loads the installed ARM Bogaudio 2.6.47 binary with genuine Rack SDK 2.6.6,
+processes real engine cables and restores parameters/custom state in a fresh
+child. All twelve independently anchored observations pass, including mono,
+16-channel signal, gain, operation order and clipping. Exact loaded-image paths
+and unchanged plugin/runtime/SDK input hashes are checked. No plugin source is
+compiled, no UI/audio device is initialized, and the installed app is unchanged.
+This is a bounded feasibility result, not an available application host. Next
+resolve bounded transport, mixed-graph/feedback latency, authoritative state and
+failure containment through the [compatibility gate](COMPATIBILITY_DECISION.md#extensions-and-existing-vcv-binaries).
+The next [application-host milestone](BINARY_HOST_V1.md) is one playable
+native → existing OFFSET binary → native path with shared UI/MCP/history,
+persistent save/reopen and measured delay/failure containment. Its proposed
+128-frame transport contract is not yet implemented or realtime-qualified.
+
 ## Current candidate: Core text and host boundary
 
 Exact Core Notes 2.6.6 now converts into editable native Notes, including legacy
@@ -115,10 +132,10 @@ validates its known source port shape; import reports explain a saved zero level
 [Source contract and boundaries](CORE_TEXT_IMPORT.md).
 
 This is a development follow-up, not installed in 0.2.7. No version bump, package
-or installation is needed. Finish focused checks and one follow-up PR. The next
-compatibility gate remains actual existing ARM plugin load/process/state restore
-in a separate companion, as scoped in the compatibility decision; that is not
-an already proven binary host or a substitute for native Rust module development.
+or installation is needed. Finish one follow-up PR. The first actual existing
+ARM plugin load/process/persistent-restore probe now passes as recorded above.
+The application-host gate remains open; it is not a substitute for native Rust
+module development.
 
 ## Delivered: native sequencing/control workflow
 

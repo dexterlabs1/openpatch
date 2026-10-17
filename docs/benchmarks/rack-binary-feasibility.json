@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "date": "2026-10-17",
+  "status": "passed bounded local feasibility; application host unimplemented",
+  "platform": "macOS ARM64",
+  "plugin": "Bogaudio 2.6.47 / Bogaudio-Offset",
+  "expected_source_commit": "656eaae458e045602dc974bae82e15a11e104958",
+  "rack_runtime": "2.6.6",
+  "probe_sha256": "2c161541ac11359b98a122571611c3c12103be94b72eb8fc2a2462a81bb8deae",
+  "input_sha256": {
+    "plugin.dylib": "264e55e1389274c3873439372c5c51f48f63168bd6c98fb2c6ffec170224b6f6",
+    "plugin.json": "07730b48ad1cdc140cb75183af152871bab2f1e44c3c2f9008ad3c238ed97d65",
+    "libRack.dylib": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c",
+    "probe.cpp": "8de611e4fc5bf993d346c92cbb26659302d3746618326bf2765c990abde104bf",
+    "run.py": "49befc5972810b4ffdff52177089d9afdf806729f8e1d58aa6a4bed1a578e9ff"
+  },
+  "fresh_processes": 2,
+  "observations": [
+    {
+      "name": "saved_mono",
+      "voltages": [
+        4.0625
+      ],
+      "width": 1
+    },
+    {
+      "name": "saved_poly16",
+      "voltages": [
+        -1.5625,
+        -0.9375,
+        -0.3125,
+        0.3125,
+        0.9375,
+        1.5625,
+        2.1875,
+        2.8125,
+        3.4375,
+        4.0625,
+        4.6875,
+        5.3125,
+        5.9375,
+        6.5625,
+        7.1875,
+        7.8125
+      ],
+      "width": 16
+    },
+    {
+      "name": "saved_unlimited",
+      "voltages": [
+        64.0625
+      ],
+      "width": 1
+    },
+    {
+      "name": "order_changed",
+      "voltages": [
+        5.0
+      ],
+      "width": 1
+    },
+    {
+      "name": "limit_enabled",
+      "voltages": [
+        12.0
+      ],
+      "width": 1
+    },
+    {
+      "name": "gain_changed",
+      "voltages": [
+        5.0
+      ],
+      "width": 1
+    }
+  ],
+  "state": {
+    "data": {
+      "disableOutputLimit": true,
+      "offset_first": true
+    },
+    "id": 2,
+    "model": "Bogaudio-Offset",
+    "params": [
+      {
+        "id": 0,
+        "value": 0.25
+      },
+      {
+        "id": 1,
+        "value": 0.25
+      }
+    ],
+    "plugin": "Bogaudio",
+    "version": "2.6.47"
+  },
+  "local_evidence": "native-test-output/rack-control-import/binary-host/attempt-cl27y60t",
+  "review": "Independent read-only SDK/source and adversarial lifecycle/identity/state review; no gate blocker found",
+  "retained_failures": [
+    "attempt-zqiy4vkp: adapter passed entire manifest to modulesFromJson; corrected to actual modules array",
+    "attempt-eh5liudg: restore needed plugin registered in Rack process registry; corrected without global plugin scan"
+  ],
+  "limitations": [
+    "No official distributed-build authentication",
+    "Persistent params/custom state only, no transient DSP continuation",
+    "No OpenPatch graph integration, shared-memory transfer or deadline qualification",
+    "No widgets, audio devices, general plugin compatibility or performance claim",
+    "Internal Engine APIs; plugin registry/library retained until child exit",
+    "Process isolation is not a security sandbox"
+  ]
+}
