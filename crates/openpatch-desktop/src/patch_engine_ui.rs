@@ -25,9 +25,6 @@ const INK: Color32 = Color32::from_rgb(235, 233, 226);
 const DIM: Color32 = Color32::from_rgb(146, 149, 143);
 const AMBER: Color32 = Color32::from_rgb(229, 186, 106);
 const DARK_INK: Color32 = Color32::from_rgb(24, 24, 22);
-const IVORY: Color32 = Color32::from_rgb(231, 225, 209);
-const IVORY_INK: Color32 = Color32::from_rgb(40, 38, 33);
-const IVORY_LINE: Color32 = Color32::from_rgb(190, 183, 169);
 
 fn face(ui: &egui::Ui, size: f32) -> FontId { crate::panel_skin::heading_font(ui.ctx(), size) }
 
@@ -126,6 +123,7 @@ pub(crate) struct Panel {
     prepare_sent: bool,
     just_launched: bool,
     face_family: egui::FontFamily,
+    details: bool,
 }
 
 /// A build waiting for the app to start a fresh document (which asks about unsaved changes first).
@@ -165,7 +163,7 @@ impl Default for Panel {
             interval_ms: 120, autoplay: true, rng: now | 1, pending: None, started: None, elapsed: None, building: false,
             plan_steps: vec![], done: 0, total: 0, label: String::new(), remaining: None, info: None, error: None,
             history: vec![], last_poll: None, cursor: 0, demo: Demo::from_env(),
-            light: cfg!(target_os = "linux"), first_frame: true, armed: None, prepare_sent: false, just_launched: false, face_family: egui::FontFamily::Proportional,
+            light: cfg!(target_os = "linux"), first_frame: true, armed: None, prepare_sent: false, just_launched: false, face_family: egui::FontFamily::Proportional, details: false,
         }
     }
 }
@@ -459,11 +457,25 @@ impl Panel {
                                           info["chords"].as_array().into_iter().flatten().filter_map(|c| c.as_str()).collect::<Vec<_>>().join("  ")),
                     None => "Choose a genre, a mood and a texture.".into(),
                 };
-                let height = galley.size().y + 42.0;
-                let (screen, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
-                ui.painter().rect(screen, 9.0_f32, WELL, egui::Stroke::new(1.0_f32, Color32::from_rgb(44, 47, 46)), egui::StrokeKind::Inside);
+                // tap the display for the recipe details (description, layers, size, seed)
+                let details = self.info.as_ref().filter(|_| self.details).map(|info| {
+                    let notes: Vec<&str> = info["notes"].as_array().into_iter().flatten().filter_map(|n| n.as_str()).collect();
+                    let text = format!("{}\n{}  ·  {} modules  ·  {} cables  ·  seed {}", info["description"].as_str().unwrap_or(""), notes.join("  ·  "),
+                                       info["modules"], info["cables"], info["seed"]);
+                    ui.painter().layout(text, face(ui, 13.0), Color32::from_rgb(170, 172, 165), width - 24.0)
+                });
+                let height = galley.size().y + 42.0 + details.as_ref().map_or(0.0, |d| d.size().y + 8.0);
+                let (screen, screen_resp) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click());
+                ui.painter().rect(screen, 9.0_f32, WELL, egui::Stroke::new(1.0_f32, if screen_resp.hovered() && self.info.is_some() { LINE } else { Color32::from_rgb(44, 47, 46) }), egui::StrokeKind::Inside);
+                let sentence_h = galley.size().y;
                 ui.painter().galley(screen.left_top() + egui::vec2(12.0, 10.0), galley, INK);
-                ui.painter().text(screen.left_bottom() + egui::vec2(12.0, -10.0), egui::Align2::LEFT_BOTTOM, caption, face(ui, 13.0), DIM);
+                let caption_y = screen.top() + 10.0 + sentence_h + 6.0;
+                ui.painter().text(egui::pos2(screen.left() + 12.0, caption_y), egui::Align2::LEFT_TOP, caption, face(ui, 13.0), DIM);
+                if self.info.is_some() {
+                    ui.painter().text(egui::pos2(screen.right() - 12.0, caption_y), egui::Align2::RIGHT_TOP, if self.details { "LESS" } else { "MORE" }, face(ui, 12.0), AMBER.gamma_multiply(0.8));
+                }
+                if let Some(d) = details { ui.painter().galley(egui::pos2(screen.left() + 12.0, caption_y + 22.0), d, INK); }
+                if screen_resp.clicked() && self.info.is_some() { self.details = !self.details; }
                 ui.add_space(2.0);
                 // primary action: the build bar doubles as the progress meter
                 let secs = self.elapsed.or_else(|| self.started.filter(|_| self.building || self.pending.is_some()).map(|t| t.elapsed()));
@@ -530,18 +542,6 @@ impl Panel {
                     Self::section(ui, "TEXTURE", "A–K", TEXTURE_COLOR, self.cursor == 2);
                     Self::words(ui, &TEXTURES, &mut self.texture, TEXTURE_COLOR, Some(texture_text));
                     ui.add_space(6.0);
-                    // recipe card, styled like a rack module face
-                    if let Some(info) = &self.info {
-                        egui::Frame::new().fill(IVORY).corner_radius(8.0).stroke(egui::Stroke::new(1.0_f32, IVORY_LINE)).inner_margin(egui::Margin::symmetric(12, 10)).show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
-                            ui.label(RichText::new(info["title"].as_str().unwrap_or("").to_uppercase()).font(face(ui, 16.0)).color(IVORY_INK));
-                            ui.label(RichText::new(info["description"].as_str().unwrap_or("")).font(face(ui, 13.5)).color(IVORY_INK));
-                            let notes: Vec<&str> = info["notes"].as_array().into_iter().flatten().filter_map(|n| n.as_str()).collect();
-                            ui.label(RichText::new(format!("{}  ·  {} modules  ·  {} cables  ·  seed {}", notes.join("  ·  "), info["modules"], info["cables"], info["seed"]))
-                                .font(face(ui, 12.0)).color(Color32::from_rgb(110, 104, 92)));
-                        });
-                    }
                     if self.history.len() > 1 {
                         ui.add_space(4.0);
                         Self::section(ui, "RECENT", "", DIM, false);
@@ -560,7 +560,7 @@ impl Panel {
                 // options, pinned to the bottom of the sheet
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
-                    ui.label(RichText::new("D-PAD ROW / WORD   ·   A BUILD   ·   X SURPRISE   ·   B CLOSE   ·   PGUP/PGDN ZOOM   ·   F11 FULL SCREEN")
+                    ui.label(RichText::new("D-PAD WORDS  ·  A BUILD  ·  X SURPRISE  ·  B CLOSE  ·  PGUP/DN ZOOM")
                         .font(face(ui, 11.0)).color(Color32::from_rgb(92, 96, 92)));
                     ui.horizontal(|ui| {
                         pill(ui, "PLAY", &mut self.autoplay, "Start playback when a build begins");
