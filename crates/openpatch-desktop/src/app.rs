@@ -8463,12 +8463,30 @@ impl eframe::App for OpenPatch {
         self.rack_workspace(ctx, library_action);
         self.mcp_session
             .show(ctx, &self.shared, Path::new(&self.workspace));
-        if let Some(crate::patch_engine_ui::Request::StartPlayback) = self.patch_engine.show(ctx, &self.shared) {
-            if let Some(audio) = &self.audio {
-                if !audio.is_playing() {
-                    audio.set_playing(true);
-                    self.status = "Playing".into();
+        // Steam Deck friendly keys (map them to Deck buttons in Steam Input): F1 Patch Engine, PageUp/PageDown zoom,
+        // Home view, F11 full screen. They work with the Patch Engine open; text fields keep their keys.
+        if !ctx.wants_keyboard_input() {
+            let pressed = |k: egui::Key| ctx.input(|i| i.key_pressed(k) && i.modifiers.is_none());
+            if pressed(egui::Key::F1) { self.patch_engine.toggle(); }
+            if pressed(egui::Key::PageUp) { self.rack.zoom_step(true); }
+            if pressed(egui::Key::PageDown) { self.rack.zoom_step(false); }
+            if pressed(egui::Key::Home) { self.rack.reset_view(); }
+            if pressed(egui::Key::F11) {
+                let full = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
+            }
+        }
+        for request in self.patch_engine.show(ctx, &self.shared) {
+            match request {
+                crate::patch_engine_ui::Request::StartPlayback => {
+                    if let Some(audio) = &self.audio {
+                        if !audio.is_playing() {
+                            audio.set_playing(true);
+                            self.status = "Playing".into();
+                        }
+                    }
                 }
+                crate::patch_engine_ui::Request::ShowPatch => self.rack.reset_view(),
             }
         }
         self.observe_document();

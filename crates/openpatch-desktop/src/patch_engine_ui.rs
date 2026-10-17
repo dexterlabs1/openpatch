@@ -17,7 +17,11 @@ const TEXTURE_COLOR: Color32 = Color32::from_rgb(86, 200, 150);
 enum Mode { Reveal, Showtime, Instant }
 
 /// Requests the app carries out after the panel draws.
-pub(crate) enum Request { StartPlayback }
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Request { StartPlayback, ShowPatch }
+
+/// CPU budget for Light mode (Patch Engine cost units ≈ % of an Apple M-series core); about 60% of a Steam Deck core.
+const LIGHT_BUDGET: f64 = 18.0;
 
 struct Built { info: Value, steps: Vec<Value>, plan: bool }
 
@@ -47,6 +51,8 @@ pub(crate) struct Panel {
     last_poll: Option<Instant>,
     cursor: usize,
     demo: Option<Demo>,
+    light: bool,
+    first_frame: bool,
 }
 
 /// Demo/capture mode for pitches and documentation screenshots, driven by environment variables:
@@ -82,6 +88,7 @@ impl Default for Panel {
             interval_ms: 120, autoplay: true, rng: now | 1, pending: None, started: None, elapsed: None, building: false,
             plan_steps: vec![], done: 0, total: 0, label: String::new(), remaining: None, info: None, error: None,
             history: vec![], last_poll: None, cursor: 0, demo: Demo::from_env(),
+            light: cfg!(target_os = "linux"), first_frame: true,
         }
     }
 }
@@ -114,6 +121,7 @@ impl Panel {
         if !self.keep_seed || self.seed == 0 { self.seed = next_seed(&mut self.rng); }
         let seed = self.seed;
         let (mode, interval) = (self.mode, self.interval_ms);
+        let budget = self.light.then_some(LIGHT_BUDGET);
         self.started = Some(Instant::now());
         self.elapsed = None;
         self.error = None;
@@ -128,7 +136,7 @@ impl Panel {
         self.pending = Some(rx);
         std::thread::spawn(move || {
             let result = (|| -> Result<Built, String> {
-                let r = Recipe::new(GENRES[g], MOODS[m], TEXTURES[t], seed)?;
+                let r = Recipe::with_budget(GENRES[g], MOODS[m], TEXTURES[t], seed, budget)?;
                 let rev = revision(&session)?;
                 execute_shared(&session, "replace_patch", json!({"patch": {"version": 2, "sample_rate": 48000, "nodes": [], "cables": []}, "expected_revision": rev}))?;
                 let title = format!("Patch Engine · {}", r.title);
@@ -304,11 +312,14 @@ impl Panel {
         self.demo = Some(demo);
     }
 
-    pub(crate) fn show(&mut self, ctx: &egui::Context, session: &SharedSession) -> Option<Request> {
+    pub(crate) fn show(&mut self, ctx: &egui::Context, session: &SharedSession) -> Vec<Request> {
+        if std::mem::take(&mut self.first_frame) && ctx.content_rect().height() <= 900.0 {
+            self.open = true;   // small screens (Steam Deck): start with the Patch Engine open
+        }
         let was_idle = !self.building && self.pending.is_none();
         self.run_demo(ctx, session);
         self.poll(session);
-        if !self.open { return None; }
+        if !self.open { return vec![]; }
         if self.building || self.pending.is_some() { ctx.request_repaint_after(Duration::from_millis(50)); }
         self.keyboard(ctx, session);
         let mut open = self.open;
@@ -341,6 +352,7 @@ impl Panel {
                         ui.add(egui::Slider::new(&mut self.interval_ms, 100..=300).suffix(" ms").text("step"));
                     }
                     ui.checkbox(&mut self.autoplay, "Play");
+                    ui.checkbox(&mut self.light, "Light").on_hover_text("Keep the build within a Steam Deck's CPU: optional layers are left out when a song would be too heavy.");
                 });
                 let secs = self.elapsed.or_else(|| self.started.filter(|_| self.building || self.pending.is_some()).map(|t| t.elapsed()));
                 ui.horizontal(|ui| {
@@ -386,10 +398,13 @@ impl Panel {
                     }
                 }
                 ui.add_space(4.0);
-                ui.label(RichText::new("Steam Deck: D-pad up/down picks a row, left/right a word · A builds · X surprises · B closes. Building replaces the rack; Undo brings it back.").small().weak());
+                ui.label(RichText::new("Steam Deck: D-pad picks row/word · A build · X surprise · B close · F1 panel · PgUp/PgDn zoom · Home view · F11 full screen. Building replaces the rack; Undo brings it back.").small().weak());
             });
         self.open = open;
         let started = was_idle && (self.building || self.pending.is_some());
-        (started && self.autoplay).then_some(Request::StartPlayback)
+        let mut requests = vec![];
+        if started && self.autoplay { requests.push(Request::StartPlayback); }
+        if started && ctx.content_rect().height() <= 900.0 { requests.push(Request::ShowPatch); }
+        requests
     }
 }

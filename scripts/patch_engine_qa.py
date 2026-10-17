@@ -50,7 +50,8 @@ def stems_job(args):
     info = engine(g, m, t, seed, "--info"); patch = engine(g, m, t, seed)
     for node in patch["nodes"]:      # calibrate with every song-form layer switched on
         if node["id"] == "seq_drums":
-            for ln in node["score"]["lanes"][:5]:
+            for i, ln in enumerate(node["score"]["lanes"]):
+                if i in (5, 6, 7): continue          # keep the filter sweep, echo throws and key lanes as composed
                 top = max(p["value"] for p in ln["points"])
                 ln["points"] = [{"bar": 0, "value": top, "curve": "hold"}, {"bar": 32, "value": top, "curve": "hold"}]
     out = []
@@ -64,15 +65,38 @@ def stems_job(args):
     return out
 
 
+OFFSET = int(os.environ.get("PE_OFFSET", "0"))  # start the render this many bars into the 64-bar song form (rotates every arrangement lane)
+
+
+def ev(pts, x):
+    prev = pts[0]
+    for p in pts[1:]:
+        if p["bar"] > x:
+            if p["curve"] == "hold" or p["bar"] == prev["bar"]: return prev["value"]
+            t = (x - prev["bar"]) / (p["bar"] - prev["bar"]); return prev["value"] + (p["value"] - prev["value"]) * t
+        prev = p
+    return prev["value"]
+
+
+def rotate(lane, off):
+    L = lane["length_bars"]; pts = lane["points"]; v = ev(pts, off)
+    sh = sorted([dict(p, bar=p["bar"] - off) for p in pts if off < p["bar"] < L] + [dict(p, bar=p["bar"] + L - off) for p in pts if p["bar"] < off], key=lambda p: p["bar"])
+    return dict(lane, points=[{"bar": 0, "value": v, "curve": "hold"}] + [p for p in sh if 0 < p["bar"] < L] + [{"bar": L, "value": v, "curve": "hold"}])
+
+
 def mix_job(args):
     g, m, t, seed = args
-    r = render(engine(g, m, t, seed), f"m{seed}_{os.getpid()}")
+    patch = engine(g, m, t, seed)
+    if OFFSET:
+        for node in patch["nodes"]:
+            if node.get("score", {}).get("lanes"): node["score"]["lanes"] = [rotate(l, OFFSET) for l in node["score"]["lanes"]]
+    r = render(patch, f"m{seed}_{os.getpid()}")
     return {"combo": f"{g}|{m}|{t}|{seed}", "genre": g, **r}
 
 
 if __name__ == "__main__":
     mode, n = sys.argv[1], int(sys.argv[2])
-    rng = random.Random(int(sys.argv[3]) if len(sys.argv) > 3 else 5)
+    rng = random.Random(int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3].isdigit() else 5)
     combos = [(GENRES[i % 8], rng.choice(MOODS), rng.choice(TEXTURES), rng.randrange(1, 99999)) for i in range(n)]
     job = stems_job if mode == "stems" else mix_job
     rows = []
