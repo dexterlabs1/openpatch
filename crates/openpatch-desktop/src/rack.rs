@@ -26,6 +26,8 @@ include!("atlas_sequence_panels.rs");
 include!("atlas_mid_side_panels.rs");
 include!("atlas_score_panel.rs");
 include!("atlas_poly_panels.rs");
+include!("atlas_fade_panel.rs");
+include!("atlas_signal_utility_panels.rs");
 include!("atlas_poly_constant_panel.rs");
 include!("stock_quantizer_panel.rs");
 include!("quantizer_keyboard.rs");
@@ -286,6 +288,7 @@ fn generic_parameter_hardware(
         || atlas_sequence_kind(kind)
         || atlas_mid_side_kind(kind)
         || atlas_poly_kind(kind)
+        || atlas_signal_utility_kind(kind)
         || kind == "score_sequencer"
         || atlas_oscillator(kind)
         || kind == "svf_filter"
@@ -3376,7 +3379,16 @@ impl Rack {
                     action = Some(edit);
                 }
             }
-            if matches!(node.kind.as_str(), "vca_mix" | "fade") {
+            if atlas_signal_utility_kind(&node.kind) {
+                paint_atlas_signal_utility_configuration(
+                    &painter,
+                    node,
+                    rect,
+                    self.zoom,
+                    &self.lighting,
+                );
+            }
+            if node.kind == "vca_mix" {
                 self.mixing_panel(ui, node, rect);
             }
             if node.kind == "rescale" {
@@ -4140,7 +4152,9 @@ impl Rack {
                     "macro_voice" => 8.0,
                     _ => 13.0,
                 };
-                let (knob_position, radius) = if atlas_sequence_kind(&node.kind) {
+                let (knob_position, radius) = if atlas_signal_utility_kind(&node.kind) {
+                    atlas_signal_utility_control(&node.kind, name)
+                } else if atlas_sequence_kind(&node.kind) {
                     atlas_sequence_control(name)
                 } else if node.kind == "audio_stereo" {
                     (pos2(width * 0.5, 130.0 + index as f32 * 120.0), 30.0)
@@ -4428,7 +4442,10 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if atlas_sequence_kind(&node.kind) {
+                let value_center = if atlas_signal_utility_kind(&node.kind) {
+                    let local = atlas_signal_utility_value_center(&node.kind, name);
+                    point(local.x, local.y)
+                } else if atlas_sequence_kind(&node.kind) {
                     let local = atlas_sequence_value_center(name);
                     point(local.x, local.y)
                 } else if node.kind == "poly_constant" {
@@ -4481,7 +4498,13 @@ impl Rack {
                 } else {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
-                let readout_width = if atlas_sequence_kind(&node.kind) {
+                let readout_width = if atlas_signal_utility_kind(&node.kind) {
+                    if node.kind == "fade" {
+                        86.0
+                    } else {
+                        110.0
+                    }
+                } else if atlas_sequence_kind(&node.kind) {
                     if sequence_cell(name).is_some() {
                         54.0
                     } else {
@@ -4804,6 +4827,7 @@ impl Rack {
                         || atlas_sequence_kind(&node.kind)
                         || atlas_mid_side_kind(&node.kind)
                         || atlas_poly_kind(&node.kind)
+                        || atlas_signal_utility_kind(&node.kind)
                         || node.kind == "score_sequencer"
                         || atlas_oscillator(&node.kind)
                         || node.kind == "svf_filter"
@@ -4836,7 +4860,9 @@ impl Rack {
                         self.zoom,
                     );
                 }
-                if atlas_sequence_kind(&node.kind) {
+                if atlas_signal_utility_kind(&node.kind) {
+                    paint_atlas_signal_utility_print(&painter, rect, &node.kind, name, self.zoom);
+                } else if atlas_sequence_kind(&node.kind) {
                     paint_atlas_sequence_print(&painter, rect, &node.kind, name, self.zoom);
                 } else if node.kind == "poly_constant" {
                     paint_atlas_poly_constant_print(&painter, rect, name, self.zoom);
@@ -4938,30 +4964,33 @@ impl Rack {
                         &painter, center, &node.kind, name, radius, self.zoom,
                     );
                 }
-                let paint_readout =
-                    if atlas_sequence_kind(&node.kind) || node.kind == "score_sequencer" {
-                        paint_atlas_sequence_readout
-                    } else if node.kind == "sample_hold"
-                        || atlas_stochastic_kind(&node.kind)
-                        || atlas_voltage_kind(&node.kind)
-                        || atlas_sequence_kind(&node.kind)
-                        || atlas_mid_side_kind(&node.kind)
-                        || atlas_poly_kind(&node.kind)
-                        || node.kind == "score_sequencer"
-                        || atlas_oscillator(&node.kind)
-                        || node.kind == "svf_filter"
-                        || atlas_voice(&node.kind)
-                        || atlas_studio_effect(&node.kind)
-                        || atlas_creative_kind(&node.kind)
-                        || matches!(
-                            node.kind.as_str(),
-                            "stock_vco" | "stock_lfo" | "mix6" | "stock_mix"
-                        )
-                    {
-                        paint_atlas_voice_readout
-                    } else {
-                        crate::panel_skin::readout
-                    };
+                let paint_readout = if atlas_sequence_kind(&node.kind)
+                    || node.kind == "score_sequencer"
+                    || atlas_signal_utility_kind(&node.kind)
+                {
+                    paint_atlas_sequence_readout
+                } else if node.kind == "sample_hold"
+                    || atlas_stochastic_kind(&node.kind)
+                    || atlas_voltage_kind(&node.kind)
+                    || atlas_sequence_kind(&node.kind)
+                    || atlas_mid_side_kind(&node.kind)
+                    || atlas_poly_kind(&node.kind)
+                    || atlas_signal_utility_kind(&node.kind)
+                    || node.kind == "score_sequencer"
+                    || atlas_oscillator(&node.kind)
+                    || node.kind == "svf_filter"
+                    || atlas_voice(&node.kind)
+                    || atlas_studio_effect(&node.kind)
+                    || atlas_creative_kind(&node.kind)
+                    || matches!(
+                        node.kind.as_str(),
+                        "stock_vco" | "stock_lfo" | "mix6" | "stock_mix"
+                    )
+                {
+                    paint_atlas_voice_readout
+                } else {
+                    crate::panel_skin::readout
+                };
                 paint_readout(
                     &painter,
                     value_center,
@@ -11074,6 +11103,7 @@ fn paint_panel(
         || atlas_sequence_kind(&node.kind)
         || atlas_mid_side_kind(&node.kind)
         || atlas_poly_kind(&node.kind)
+        || atlas_signal_utility_kind(&node.kind)
         || node.kind == "score_sequencer"
         || matches!(
             node.kind.as_str(),
@@ -11167,6 +11197,7 @@ fn paint_panel(
         || atlas_sequence_kind(&node.kind)
         || atlas_mid_side_kind(&node.kind)
         || atlas_poly_kind(&node.kind)
+        || atlas_signal_utility_kind(&node.kind)
         || node.kind == "score_sequencer"
         || matches!(
             node.kind.as_str(),
@@ -11456,6 +11487,7 @@ fn paint_jack(
         || atlas_sequence_kind(kind)
         || atlas_mid_side_kind(kind)
         || atlas_poly_kind(kind)
+        || atlas_signal_utility_kind(kind)
         || kind == "score_sequencer"
         || matches!(
             kind,
@@ -12579,6 +12611,10 @@ mod tests {
             "wavetable_vco",
             "wavetable_lfo",
             "poly_viz",
+            "fade",
+            "compare",
+            "process",
+            "gate",
             "poly_sum",
             "poly_split",
             "poly_merge",
@@ -12654,6 +12690,10 @@ mod tests {
                                     } else {
                                         "SEED · 24-BIT"
                                     }
+                                } else if kind == "fade" && name == "law" {
+                                    "LINEAR LAW"
+                                } else if kind == "fade" && name == "cv_amount" {
+                                    "CV AMOUNT"
                                 } else if kind == "score_sequencer" && name == "running" {
                                     "INITIAL RUN"
                                 } else if kind == "poly_merge" && name == "channels" {
@@ -14613,8 +14653,8 @@ mod tests {
                     .collect()
             } else {
                 vec![
-                    (pos2(120.0, 121.0), "position".into()),
-                    (pos2(120.0, 236.0), "cv_amount".into()),
+                    (pos2(65.0, 121.0), "position".into()),
+                    (pos2(175.0, 121.0), "cv_amount".into()),
                 ]
             };
             for (index, (point, parameter)) in controls.iter().enumerate() {
@@ -19247,6 +19287,12 @@ mod tests {
     }
     mod stock_mix_ui_tests {
         include!("stock_mix_ui_tests.rs");
+    }
+    mod atlas_signal_utility_ui_tests {
+        include!("atlas_signal_utility_ui_tests.rs");
+    }
+    mod fade_atlas_ui_tests {
+        include!("fade_atlas_ui_tests.rs");
     }
     mod atlas_poly_ui_tests {
         include!("atlas_poly_ui_tests.rs");

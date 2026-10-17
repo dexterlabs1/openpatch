@@ -601,7 +601,7 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                             let face =
                                 Rect::from_center_size(faces[0].0, Vec2::splat(faces[0].1 * 2.0));
                             let expected_target_and_face = match (kind, control.name.as_str()) {
-                                ("gate", "duty") => Some((60.0, 22.9)),
+                                ("gate", "duty") => Some((60.0, 23.4)),
                                 ("white_noise", "level") => Some((66.0, 26.0)),
                                 ("analog_vco", "pulse_width") => Some((51.0, 19.5)),
                                 ("rescale", "gain") => Some((56.0, 21.66667)),

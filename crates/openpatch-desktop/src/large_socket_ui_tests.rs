@@ -345,7 +345,7 @@ fn assert_large_socket_kind(kind: &str) {
                     assert!(center.x - rim >= bounds.left() && center.x + rim <= bounds.right()
                         && center.y - rim >= bounds.top() && center.y + rim <= bounds.bottom(),
                         "{context}.{}: enlarged rim leaves face", socket.name);
-                    let rim_color = if approved_voice || (matches!(kind, "poly_sum" | "mid_side" | "stock_mid_side" | "attenuverter" | "crossfade" | "rescale" | "quantizer" | "stock_quantizer" | "stock_vcf" | "stock_vca" | "mix6" | "stock_mix" | "stock_delay" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "macro_voice" | "drum_voice" | "svf_filter" | "modal_resonator" | "multi_vco" | "multi_lfo" | "wavetable_vco" | "wavetable_lfo") && !socket.output) { Color32::from_rgb(130, 127, 108) } else if socket.output { crate::panel_skin::INK }
+                    let rim_color = if approved_voice || (matches!(kind, "fade" | "compare" | "process" | "gate" | "poly_sum" | "mid_side" | "stock_mid_side" | "attenuverter" | "crossfade" | "rescale" | "quantizer" | "stock_quantizer" | "stock_vcf" | "stock_vca" | "mix6" | "stock_mix" | "stock_delay" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "macro_voice" | "drum_voice" | "svf_filter" | "modal_resonator" | "multi_vco" | "multi_lfo" | "wavetable_vco" | "wavetable_lfo") && !socket.output) { Color32::from_rgb(130, 127, 108) } else if socket.output { crate::panel_skin::INK }
                         else { Color32::from_rgb(190, 191, 182) };
                     assert!(rack.rings.iter().any(|(painted, radius, color)|
                         painted.distance(center) < 0.02
@@ -1098,4 +1098,9 @@ fn signal_atlas_utility_socket_captions_and_controls_clear_enlarged_rims() {
     for kind in ["crossfade", "quantizer", "stock_quantizer", "poly_sum", "mid_side", "stock_mid_side", "mix6", "stock_mix", "modal_resonator"] {
         assert_large_socket_kind(kind);
     }
+}
+
+#[test]
+fn signal_atlas_signal_utilities_preserve_enlarged_hardware_and_caption_clearance() {
+    for kind in ["fade","compare","process","gate"] { assert_large_socket_kind(kind); }
 }
