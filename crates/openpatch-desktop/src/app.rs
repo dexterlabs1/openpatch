@@ -396,6 +396,7 @@ pub struct OpenPatch {
     catalog: Value,
     start: Instant,
     mcp_session: crate::mcp_session_ui::Panel,
+    patch_engine: crate::patch_engine_ui::Panel,
     construction: crate::construction_ui::Panel,
     smoke_motion_origin: Option<Instant>,
     documents: DocumentState,
@@ -591,6 +592,7 @@ impl OpenPatch {
             catalog: catalog(),
             start: Instant::now(),
             mcp_session: crate::mcp_session_ui::Panel::new(mcp),
+            patch_engine: Default::default(),
             construction: crate::construction_ui::Panel::default(),
             cable_palette: crate::cable_palette::Palette::default(),
             cable_palette_ui: crate::cable_palette_ui::Panel::default(),
@@ -950,6 +952,7 @@ impl OpenPatch {
             && self.file_mode.is_none()
             && !self.shader_open
             && !self.mcp_session.is_open()
+            && !self.patch_engine.is_open()
             && !self.settings_open
             && !self.audio_performance_open
             && !self.recovery_open
@@ -3369,6 +3372,10 @@ impl OpenPatch {
     }
 
     fn global_shortcuts(&mut self, ctx: &egui::Context) {
+        // The Patch Engine panel owns the keyboard while open (arrows, Enter, Space, letters).
+        if self.patch_engine.is_open() {
+            return;
+        }
         if !self.library_enabled()
             || !ctx.input(|i| i.focused)
             || self.rack.annotation_keyboard_active()
@@ -3713,6 +3720,7 @@ impl OpenPatch {
                 && !self.audio_performance_open
                 && !self.shader_open
                 && !self.mcp_session.is_open()
+            && !self.patch_engine.is_open()
                 && !self.cable_palette_ui.keyboard_active()
                 && !(self.browser_open && self.library.keyboard_active())
                 && self.preset_dialog.is_none()
@@ -8455,6 +8463,14 @@ impl eframe::App for OpenPatch {
         self.rack_workspace(ctx, library_action);
         self.mcp_session
             .show(ctx, &self.shared, Path::new(&self.workspace));
+        if let Some(crate::patch_engine_ui::Request::StartPlayback) = self.patch_engine.show(ctx, &self.shared) {
+            if let Some(audio) = &self.audio {
+                if !audio.is_playing() {
+                    audio.set_playing(true);
+                    self.status = "Playing".into();
+                }
+            }
+        }
         self.observe_document();
         self.files_window(ctx);
         self.preset_window(ctx);
@@ -8687,6 +8703,7 @@ mod project_workflow_tests {
             catalog: catalog(),
             start: Instant::now(),
             mcp_session: crate::mcp_session_ui::Panel::new(true),
+            patch_engine: Default::default(),
             construction: crate::construction_ui::Panel::default(),
             cable_palette: crate::cable_palette::Palette::default(),
             cable_palette_ui: crate::cable_palette_ui::Panel::default(),

@@ -19,6 +19,7 @@ mod library;
 mod lighting;
 mod listen_capture;
 mod mcp_session_ui;
+mod patch_engine_ui;
 mod menu_motion;
 mod midi;
 mod panel_skin;

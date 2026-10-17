@@ -780,6 +780,7 @@ impl OpenPatch {
                     ui.label(RichText::new("OPENPATCH").strong().size(13.0).color(TEXT));
                     ui.add_space(10.0);
                     ui.add_enabled_ui(enabled, |ui| self.toolbar_menus(ui));
+                    ui.add_enabled_ui(enabled, |ui| self.patch_engine.toolbar(ui));
                     ui.add_space(12.0);
                     // Reserve each action group before the project gets the remaining width.
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
