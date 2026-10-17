@@ -308,7 +308,7 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
         ("compare", 0, 1, &[][..]),
         ("process", 0, 1, &[][..]),
         ("rescale", 0, 4, &[][..]),
-        ("vca_mix", 5, 0, &[][..]),
+        ("vca_mix", 0, 5, &[][..]),
         ("crossfade", 0, 1, &["law"][..]),
         ("quantizer", 0, 1, &[][..]),
         ("stock_quantizer", 0, 1, &[][..]),

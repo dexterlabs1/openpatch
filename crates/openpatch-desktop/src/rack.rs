@@ -30,6 +30,8 @@ include!("atlas_fade_panel.rs");
 include!("atlas_signal_utility_panels.rs");
 include!("atlas_manual_panels.rs");
 include!("atlas_bank_panels.rs");
+include!("atlas_vca_mix_panel.rs");
+include!("atlas_endpoint_panels.rs");
 include!("atlas_legacy_utility_panels.rs");
 include!("atlas_poly_constant_panel.rs");
 include!("stock_quantizer_panel.rs");
@@ -101,7 +103,9 @@ fn port_material_scale(kind: &str) -> f32 {
         "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "crossfade"
         | "quantizer" | "stock_quantizer" | "poly_sum" | "mid_side" | "stock_mid_side" | "mix6"
         | "stock_mix" => REDESIGNED_PORT_SCALE,
-        "constant" | "octave" => REDESIGNED_PORT_SCALE,
+        "constant" | "octave" | "vca_mix" | "mixer" | "output" | "audio_out" => {
+            REDESIGNED_PORT_SCALE
+        }
         "attenuverter8" => 1.10,
         "cv_mix" => REDESIGNED_PORT_SCALE,
         "logic"
@@ -146,6 +150,8 @@ enum JackCaptionPlacement {
 fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPlacement {
     use JackCaptionPlacement::*;
     match (kind, port, output) {
+        ("mixer" | "output" | "audio_out", _, true) => Right(36.0),
+        ("mixer" | "output" | "audio_out" | "vca_mix", _, _) => Above(25.0),
         ("oscillator", _, true) => Right(36.0),
         ("logic" | "gates" | "push" | "oscillator" | "constant" | "octave", _, _) => Above(25.0),
         ("stock_lfo" | "stock_vco" | "stock_noise" | "stock_process", _, _) => ExistingEnlarged,
@@ -302,6 +308,7 @@ fn generic_parameter_hardware(
         || atlas_signal_utility_kind(kind)
         || atlas_bank_rotary_kind(kind)
         || atlas_legacy_utility_kind(kind)
+        || kind == "vca_mix"
         || kind == "score_sequencer"
         || atlas_oscillator(kind)
         || kind == "svf_filter"
@@ -4174,7 +4181,9 @@ impl Rack {
                     "macro_voice" => 8.0,
                     _ => 13.0,
                 };
-                let (knob_position, radius) = if atlas_legacy_utility_kind(&node.kind) {
+                let (knob_position, radius) = if node.kind == "vca_mix" {
+                    atlas_vca_mix_control(name)
+                } else if atlas_legacy_utility_kind(&node.kind) {
                     atlas_legacy_utility_control(&node.kind, name)
                 } else if atlas_bank_rotary_kind(&node.kind) {
                     atlas_bank_control(&node.kind, name)
@@ -4192,18 +4201,6 @@ impl Rack {
                     atlas_creative_control(&node.kind, name)
                 } else if atlas_studio_effect(&node.kind) {
                     atlas_studio_effect_control(&node.kind, name)
-                } else if node.kind == "vca_mix" {
-                    (
-                        pos2(
-                            if *name == "mix_level" {
-                                345.0
-                            } else {
-                                37.5 + index as f32 * 75.0
-                            },
-                            126.0,
-                        ),
-                        if *name == "mix_level" { 27.0 } else { 22.0 },
-                    )
                 } else if node.kind == "fade" {
                     (
                         pos2(120.0, if *name == "position" { 121.0 } else { 236.0 }),
@@ -4474,7 +4471,10 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if atlas_legacy_utility_kind(&node.kind) {
+                let value_center = if node.kind == "vca_mix" {
+                    let local = atlas_vca_mix_value_center(name);
+                    point(local.x, local.y)
+                } else if atlas_legacy_utility_kind(&node.kind) {
                     let local = atlas_legacy_utility_value_center(&node.kind, name);
                     point(local.x, local.y)
                 } else if atlas_bank_rotary_kind(&node.kind) {
@@ -4536,7 +4536,13 @@ impl Rack {
                 } else {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
-                let readout_width = if atlas_legacy_utility_kind(&node.kind) {
+                let readout_width = if node.kind == "vca_mix" {
+                    if *name == "mix_level" {
+                        74.0
+                    } else {
+                        64.0
+                    }
+                } else if atlas_legacy_utility_kind(&node.kind) {
                     100.0
                 } else if atlas_bank_rotary_kind(&node.kind) {
                     if node.kind == "cv_mix" {
@@ -4610,8 +4616,6 @@ impl Rack {
                     width / 3.0 - 12.0
                 } else if matches!(node.kind.as_str(), "stock_lfo" | "stock_vco") {
                     82.0
-                } else if node.kind == "vca_mix" {
-                    70.0
                 } else if matches!(node.kind.as_str(), "seq3" | "stock_seq3") {
                     if node.kind == "stock_seq3" && sequence_cell(name).is_none() {
                         78.0
@@ -4876,6 +4880,7 @@ impl Rack {
                         || atlas_signal_utility_kind(&node.kind)
                         || atlas_bank_rotary_kind(&node.kind)
                         || atlas_legacy_utility_kind(&node.kind)
+                        || node.kind == "vca_mix"
                         || node.kind == "score_sequencer"
                         || atlas_oscillator(&node.kind)
                         || node.kind == "svf_filter"
@@ -4908,7 +4913,9 @@ impl Rack {
                         self.zoom,
                     );
                 }
-                if atlas_legacy_utility_kind(&node.kind) {
+                if node.kind == "vca_mix" {
+                    paint_atlas_vca_mix_print(&painter, rect, name, self.zoom);
+                } else if atlas_legacy_utility_kind(&node.kind) {
                     paint_atlas_legacy_utility_print(&painter, rect, &node.kind, name, self.zoom);
                 } else if atlas_bank_rotary_kind(&node.kind) {
                     // The shared LEVEL column labels these dense row controls.
@@ -5030,6 +5037,7 @@ impl Rack {
                     || atlas_poly_kind(&node.kind)
                     || atlas_signal_utility_kind(&node.kind)
                     || atlas_bank_rotary_kind(&node.kind)
+                    || node.kind == "vca_mix"
                     || node.kind == "score_sequencer"
                     || atlas_oscillator(&node.kind)
                     || node.kind == "svf_filter"
@@ -5171,14 +5179,8 @@ impl Rack {
                         .on_hover_text("Click to type a value or expression. With multiple type-entry controls, Tab applies and moves to the next one.");
                 }
             }
-            if count == 0 && matches!(node.kind.as_str(), "mixer" | "output" | "audio_out") {
-                paint_center_mark(
-                    &painter,
-                    rect,
-                    &node.kind,
-                    self.zoom,
-                    patch.output.as_ref() == Some(&node.id),
-                );
+            if atlas_endpoint_kind(&node.kind) {
+                paint_atlas_endpoint_configuration(&painter, node, rect, self.zoom, &self.lighting);
             }
             for port in ports.iter().filter_map(Value::as_str) {
                 if !studio_mixer_input_visible(node, port) {
@@ -6134,122 +6136,6 @@ impl Rack {
                 "Active input channels: 0–16. Output meter measures the signed channel sum after LEVEL, relative to 10 V. Opposite voices can cancel. No published telemetry is shown as unavailable.");
     }
 
-    fn mixing_panel(&self, ui: &mut egui::Ui, node: &Node, rect: Rect) {
-        let zoom = self.zoom;
-        let painter = ui.painter();
-        let point = |x, y| rect.min + vec2(x, y) * zoom;
-        if node.kind == "vca_mix" {
-            for x in [75.0, 150.0, 225.0, 300.0] {
-                painter.line_segment(
-                    [point(x, 77.0), point(x, 378.0)],
-                    Stroke::new(
-                        if x == 300.0 { 1.0 } else { 0.5 } * zoom,
-                        Color32::from_gray(178),
-                    ),
-                );
-            }
-            let state = self.module_lights.get(&node.id).filter(|s| s.count >= 4);
-            for channel in 0..4 {
-                let center = point(37.5 + channel as f32 * 75.0, 183.0);
-                let value = state
-                    .map_or(0.0, |s| s.brightness[channel][0])
-                    .clamp(0.0, 1.0);
-                for segment in 0..12 {
-                    let lit = state.is_some() && value > (segment as f32 / 12.0);
-                    let color = if segment >= 10 {
-                        Color32::from_rgb(223, 151, 58)
-                    } else {
-                        Color32::from_rgb(76, 163, 112)
-                    };
-                    self.lighting.rect(
-                        painter,
-                        Rect::from_min_size(
-                            center + vec2(-25.0 + segment as f32 * 4.2, -3.0) * zoom,
-                            vec2(3.1, 6.0) * zoom,
-                        ),
-                        0.5,
-                        color.gamma_multiply(if lit { 1.0 } else { 0.16 }),
-                        if lit { 1.0 } else { 0.0 },
-                        0.16,
-                    );
-                }
-                ui.interact(Rect::from_center_size(center,vec2(54.0,13.0)*zoom),ui.id().with((&node.id,"strip-vu",channel)),Sense::hover()).on_hover_text("DSP strip VU: signed channel sum / 5 V, peak smoothing, -24 to 0 dB brightness. Polyphonic lanes can cancel. This is the signal meter; the fader shows configured gain.");
-            }
-            painter.text(
-                point(150.0, 194.0),
-                Align2::CENTER_CENTER,
-                if state.is_some() {
-                    "POST-CV STRIP VU"
-                } else {
-                    "VU UNAVAILABLE"
-                },
-                crate::panel_skin::print_font(painter.ctx(), 7.0 * zoom),
-                MUTED,
-            );
-            let channel_exp = node.params.get("channel_exp").copied().unwrap_or(0.0) >= 0.5;
-            let mix_exp = node.params.get("mix_exp").copied().unwrap_or(0.0) >= 0.5;
-            painter.text(
-                point(150.0, 254.0),
-                Align2::CENTER_CENTER,
-                if channel_exp {
-                    "CHANNEL CV: EXP"
-                } else {
-                    "CHANNEL CV: LINEAR"
-                },
-                crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
-                MUTED,
-            );
-            painter.text(
-                point(345.0, 215.0),
-                Align2::CENTER_CENTER,
-                "SUM",
-                crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
-                MUTED,
-            );
-            painter.text(
-                point(345.0, 244.0),
-                Align2::CENTER_CENTER,
-                if mix_exp { "EXP CV" } else { "LINEAR CV" },
-                crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
-                MUTED,
-            );
-            painter.text(
-                point(345.0, 182.0),
-                Align2::CENTER_CENTER,
-                "Right-click",
-                crate::panel_skin::print_font(painter.ctx(), 7.0 * zoom),
-                MUTED,
-            );
-            painter.text(
-                point(345.0, 194.0),
-                Align2::CENTER_CENTER,
-                "CV response",
-                crate::panel_skin::print_font(painter.ctx(), 7.0 * zoom),
-                MUTED,
-            );
-        } else {
-            let square_root = node.params.get("law").copied().unwrap_or(0.0) >= 0.5;
-            painter.text(
-                point(120.0, 292.0),
-                Align2::CENTER_CENTER,
-                if square_root {
-                    "SQUARE-ROOT LAW"
-                } else {
-                    "LINEAR LAW"
-                },
-                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
-                MUTED,
-            );
-            painter.text(
-                point(120.0, 177.0),
-                Align2::CENTER_CENTER,
-                "A  <  MORPH  >  B",
-                crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
-                MUTED,
-            );
-        }
-    }
-
     fn signal_panel(
         &mut self,
         ui: &mut egui::Ui,
@@ -6598,7 +6484,7 @@ impl Rack {
                     zoom,
                     muted,
                     response.hovered(),
-                    ui.is_enabled(),
+                    true, // Preview disables interaction, while saved switch ink stays identical.
                     (if muted { "MUTED" } else { "PASS" }, 10.0),
                 );
                 if let Some(cue) = self
@@ -10158,7 +10044,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "lowpass" => "LOW-PASS",
         "mixer" => "MIXER",
         "constant" => "DC",
-        "output" => "AUDIO",
+        "output" => "UNITY",
         other => other,
     }
 }
@@ -10878,6 +10764,8 @@ fn paint_panel(
         || atlas_manual_kind(&node.kind)
         || is_voltage_utility(&node.kind)
         || atlas_legacy_utility_kind(&node.kind)
+        || atlas_endpoint_kind(&node.kind)
+        || node.kind == "vca_mix"
         || node.kind == "score_sequencer"
         || matches!(
             node.kind.as_str(),
@@ -10975,6 +10863,8 @@ fn paint_panel(
         || atlas_manual_kind(&node.kind)
         || is_voltage_utility(&node.kind)
         || atlas_legacy_utility_kind(&node.kind)
+        || atlas_endpoint_kind(&node.kind)
+        || node.kind == "vca_mix"
         || node.kind == "score_sequencer"
         || matches!(
             node.kind.as_str(),
@@ -11051,57 +10941,6 @@ fn paint_panel(
             point(width - 19.0, 20.0),
             3.1 * zoom,
             Color32::from_rgb(55, 154, 100),
-        );
-    }
-}
-
-fn paint_center_mark(painter: &egui::Painter, rect: Rect, kind: &str, zoom: f32, master: bool) {
-    let center = rect.min + vec2(rect.width() / zoom * 0.5, 179.0) * zoom;
-    if kind == "mixer" {
-        painter.line_segment(
-            [
-                center - vec2(21.0, 0.0) * zoom,
-                center + vec2(21.0, 0.0) * zoom,
-            ],
-            Stroke::new(3.0 * zoom, INK),
-        );
-        painter.line_segment(
-            [
-                center - vec2(0.0, 21.0) * zoom,
-                center + vec2(0.0, 21.0) * zoom,
-            ],
-            Stroke::new(3.0 * zoom, INK),
-        );
-        painter.text(
-            center + vec2(0.0, 55.0) * zoom,
-            Align2::CENTER_CENTER,
-            "A + B",
-            crate::panel_skin::print_font(painter.ctx(), 11.0 * zoom),
-            MUTED,
-        );
-    } else {
-        for (i, height) in [14.0, 27.0, 39.0, 22.0, 32.0].iter().enumerate() {
-            let x = center.x + (i as f32 - 2.0) * 11.0 * zoom;
-            painter.rect_filled(
-                Rect::from_center_size(pos2(x, center.y), vec2(5.0, *height * 2.0) * zoom),
-                1.0,
-                if master {
-                    Color32::from_rgb(70, 119, 97)
-                } else {
-                    MUTED
-                },
-            );
-        }
-        painter.text(
-            center + vec2(0.0, 68.0) * zoom,
-            Align2::CENTER_CENTER,
-            if master {
-                "MASTER OUTPUT"
-            } else {
-                "MONO TO DEVICE"
-            },
-            crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
-            MUTED,
         );
     }
 }
@@ -11268,6 +11107,8 @@ fn paint_jack(
         || atlas_manual_kind(kind)
         || is_voltage_utility(kind)
         || atlas_legacy_utility_kind(kind)
+        || atlas_endpoint_kind(kind)
+        || kind == "vca_mix"
         || kind == "score_sequencer"
         || matches!(
             kind,
@@ -14571,10 +14412,7 @@ mod tests {
             )
             .unwrap();
             frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-            let target = pos2(
-                24.0 + x,
-                12.0 + 126.0 + if parameter == "mix_level" { 38.0 } else { 33.0 },
-            );
+            let target = pos2(24.0 + x, 12.0 + atlas_vca_mix_value_center(parameter).y);
             for (time, pressed) in [(1.0, true), (1.04, false)] {
                 frame(
                     &ctx,
@@ -16295,7 +16133,13 @@ mod tests {
         let mut rack = Rack::default();
         let patch = openpatch_core::demo_patch();
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-        let knob = pos2(129.0, 147.0);
+        let knob = rack.viewport.unwrap().min
+            + rack.pan
+            + (rack.positions["tone"].to_vec2()
+                + atlas_legacy_utility_control("oscillator", "frequency")
+                    .0
+                    .to_vec2())
+                * rack.zoom;
         frame(
             &ctx,
             &mut rack,
@@ -16798,7 +16642,13 @@ mod tests {
         assert!(
             matches!(action, Some(RackAction::Command("connect", args)) if args["from"] == "tone" && args["to"] == "vca" && args["input"] == "signal")
         );
-        let knob = pos2(129.0, 147.0);
+        let knob = rack.viewport.unwrap().min
+            + rack.pan
+            + (rack.positions["tone"].to_vec2()
+                + atlas_legacy_utility_control("oscillator", "frequency")
+                    .0
+                    .to_vec2())
+                * rack.zoom;
         frame(
             &ctx,
             &mut rack,
@@ -18053,7 +17903,7 @@ mod tests {
         .is_none());
         assert_eq!(rack.positions, positions);
         assert!(rack.selection.contains("a"));
-        let (knob_position, _) = parameter_position(1, 0, panel_width("constant"));
+        let (knob_position, _) = atlas_legacy_utility_control("constant", "value");
         let knob = rack.viewport.unwrap().min
             + rack.pan
             + (rack.positions["a"].to_vec2() + knob_position.to_vec2()) * rack.zoom;
@@ -19082,6 +18932,9 @@ mod tests {
     }
     mod stock_mix_ui_tests {
         include!("stock_mix_ui_tests.rs");
+    }
+    mod mixer_endpoint_ui_tests {
+        include!("mixer_endpoint_ui_tests.rs");
     }
     mod bank_legacy_ui_tests {
         include!("bank_legacy_ui_tests.rs");

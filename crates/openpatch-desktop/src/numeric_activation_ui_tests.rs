@@ -12,8 +12,13 @@ fn key(key: egui::Key) -> egui::Event {
     }
 }
 fn target() -> Pos2 {
-    let (center, radius) = parameter_position(1, 0, panel_width("constant"));
-    center + vec2(24.0, 12.0 + radius + 15.0)
+    let center = atlas_legacy_utility_value_center("constant", "value");
+    let (rotary, radius) = atlas_legacy_utility_control("constant", "value");
+    assert!(
+        center.distance(rotary) > radius,
+        "numeric activation must target the readout below the actual DC rotary"
+    );
+    pos2(24.0, 12.0) + center.to_vec2()
 }
 
 #[test]

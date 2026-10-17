@@ -789,6 +789,9 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
     for (kind, parameter, initial, local) in [
         ("attenuverter8", "gain1", 0.0, pos2(88.0, 107.0)),
         ("attenuverter8", "gain8", 0.0, pos2(88.0, 352.0)),
+        ("vca_mix", "level1", 1.0, pos2(37.5, 126.0)),
+        ("vca_mix", "level4", 1.0, pos2(262.5, 126.0)),
+        ("vca_mix", "mix_level", 1.0, pos2(345.0, 126.0)),
         ("cv_mix", "level1", 0.0, pos2(88.0, 132.0)),
         ("cv_mix", "level3", 0.0, pos2(88.0, 272.0)),
         ("oscillator", "frequency", 220.0, pos2(60.0, 117.0)),

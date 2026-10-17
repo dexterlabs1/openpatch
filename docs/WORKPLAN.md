@@ -1,6 +1,6 @@
 # Current work plan
 
-Updated 2026-10-16. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
+Updated 2026-10-17. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
 
 ## Stable release
 
@@ -14,15 +14,15 @@ Now use one milestone branch, focused local checks, one PR CI run and one approp
 
 ## Active milestone: complete the approved module design
 
-Follow the approved [01 Signal Atlas reference](../design/concepts/module-panels-20261016-v1/01-signal-atlas.png), [two-panel study](../design/reviews/signal-atlas-two-modules-v1/index.html) and detailed native ADSR/Ladder implementation. **67 panels now have detailed native layouts.** The catalog rollout remains incomplete; this count does not establish VCV parity. [Family previews and validation notes](../design/reviews/signal-atlas-two-modules-v1/README.md) retain the historical checkpoints instead of duplicating them here.
+Follow the approved [01 Signal Atlas reference](../design/concepts/module-panels-20261016-v1/01-signal-atlas.png), [two-panel study](../design/reviews/signal-atlas-two-modules-v1/index.html) and detailed native ADSR/Ladder implementation. **71 panels now have detailed native layouts.** The catalog rollout remains incomplete; this count does not establish VCV parity. [Family previews and validation notes](../design/reviews/signal-atlas-two-modules-v1/README.md) retain the historical checkpoints instead of duplicating them here.
 
 Preserve larger tactile knobs, readable titles/values, meaningful source-backed markings and identical shared rack/browser geometry. Keep existing widths, named sockets, editing, undo and MCP construction behavior. Configured diagrams remain explicitly separate from live measurements. The user rejected broad neon glow: use restrained local halos, readable lenses and honest zero/unavailable state.
 
-Latest: **8VERT, Mutes 10, CV Mix, Sine VCO, DC and Octave**. Dense banks have tactile knobs or saved switches with topology-aware volts/percent entry; Mutes has a visible MCP switch cue that yields to human input. Legacy scalar panels gain larger knobs and calibrated configured guides, preserving their actual units and arithmetic. [Native family](../design/reviews/signal-atlas-two-modules-v1/native-bank-legacy.png) · [dim-room engine snapshots](../design/reviews/signal-atlas-two-modules-v1/native-bank-legacy-dark.png).
+Latest: **VCA Mix, Mixer, Unity and Audio**. VCA Mix restores five tactile rotaries, its real squared-strip/linear-master dB laws and observed meters. The passive panels distinguish summing, raw unity routing and the 10 V audio conversion; static diagrams do not imply playback. [Native family](../design/reviews/signal-atlas-two-modules-v1/native-mixer-endpoints.png) · [dim-room snapshots](../design/reviews/signal-atlas-two-modules-v1/native-mixer-endpoints-dark.png).
 
-**Validation:** 50 focused checks passed across actual Session edits/undo, precise units, normalled versus connected-zero sources, saved mute/cable targets, MCP motion/human interruption, shared rack/browser geometry and text/rim clearance down to 25% zoom. Legacy DC gesture fixtures now exercise its actual rotary; an actual remaining audio fader still verifies absolute endpoint clicks. Strict desktop Clippy/formatting passed; CPU captures were reviewed. Preceding source `9991508` passed full Mac/visualizer CI. This head receives one PR CI run. No DSP/frozen-reference changes or native-window/audio-device qualification.
+**Validation:** 43 focused checks passed: actual Session edits/undo, all mixer cables and dB/infinity entry, MCP rotary motion, measured-meter provenance, all-catalog default rack/browser equality and overview text/rim/target clearance. The preceding `8fd5915` Mac CI found six stale oscillator/DC fixture targets plus a real Mutes preview/rack ink-color mismatch. The fixtures and production color are corrected; all seven failing cases pass their rechecks. Strict desktop Clippy/formatting passed; final light/dim CPU meshes and title-only clearance were reviewed. Current source receives one PR CI run. No DSP/frozen-reference changes or native-window/audio-device qualification.
 
-Keep [PR #28](https://github.com/dexterlabs1/openpatch/pull/28) draft and the installed app stable. Next: remaining mix/routing/end-point layouts, then the visualizer and audio-host panels. Stock Scope remains checkpointed until the catalog design milestone is ready.
+Keep [PR #28](https://github.com/dexterlabs1/openpatch/pull/28) draft and the installed app stable. Next: visualizer/audio-host layouts, Notes/Blank and the final catalog design audit. Stock Scope remains checkpointed until the catalog design milestone is ready.
 
 ## Checkpointed: Stock Scope integration
 
