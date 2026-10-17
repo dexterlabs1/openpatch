@@ -190,3 +190,27 @@ control-side capture, without opening a window/device. Its two one-frame
 callbacks exceeded their processing budgets; a small event callback also overran
 in the runner gate. Neither test certifies tiny callbacks or application playback. Activation and
 live document/UI/MCP/capture integration remain in the application milestone.
+
+## Actual application controller checks
+
+The internal desktop Audio path now owns the real companion on the control
+thread and publishes a fully compiled mixed graph to the callback. With a
+companion already built by the transport gate, run the three explicit local
+checks serially:
+
+```sh
+OPENPATCH_HOSTED_COMPANION=/absolute/path/to/companion \
+OPENPATCH_HOSTED_SDK=/absolute/path/to/Rack-SDK \
+OPENPATCH_HOSTED_PLUGIN=/absolute/path/to/Bogaudio \
+OPENPATCH_HOSTED_ACTIVATION_REVIEW=/absolute/path/to/new-review-directory \
+cargo test -p openpatch-desktop actual_application_ -- --ignored --test-threads=1
+```
+
+The tests open no device or window and use 5 ms callback pacing. They cover exact
+native → binary → native samples, shared Session edits/history without child
+restart, state capture after retirement, unadmitted value changes, pending-edit
+capture refusal, killed-child silence and unread-queue teardown. Callback heap
+checks remain active. They do not qualify realtime device deadlines or complete
+live project saving; the shared live capture path refuses to claim a successful
+save until the native/child barrier exists. Configuration does not discover or
+execute arbitrary installed plugins. See [the application contract](../../docs/BINARY_HOST_V1.md#implemented-application-controller-activation-still-internal).

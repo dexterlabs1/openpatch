@@ -5,6 +5,29 @@ use crate::project_document::{DocumentNode, ProjectDocument};
 use openpatch_core::{
     Cable, Engine, ExternalModuleSpec, Patch, PreparedWaveBanks, ResolvedExternalModule,
 };
+use sha2::{Digest, Sha256};
+
+/// Evidence issued only by compilation of this exact full document. The
+/// resolved handle also binds it to one Engine, even for identical documents.
+pub struct HostedCompilationProof {
+    handle: ResolvedExternalModule,
+    document_fingerprint: [u8; 32],
+}
+impl HostedCompilationProof {
+    pub fn validates(
+        &self,
+        engine: &Engine,
+        document: &ProjectDocument,
+        hosted_id: &str,
+    ) -> Result<bool, String> {
+        Ok(engine.resolve_external_module(hosted_id)? == self.handle
+            && graph_fingerprint(document)? == self.document_fingerprint)
+    }
+}
+fn graph_fingerprint(document: &ProjectDocument) -> Result<[u8; 32], String> {
+    let bytes = serde_json::to_vec(&document.graph).map_err(|error| error.to_string())?;
+    Ok(Sha256::digest(bytes).into())
+}
 
 pub struct HostedGraphPlan {
     native: Patch,
@@ -14,6 +37,7 @@ pub struct HostedGraphPlan {
     output: Option<String>,
     output_port: String,
     input_mask: u32,
+    document_fingerprint: [u8; 32],
 }
 
 impl HostedGraphPlan {
@@ -77,6 +101,7 @@ impl HostedGraphPlan {
             output: document.graph.output.clone(),
             output_port: document.graph.output_port.clone(),
             input_mask,
+            document_fingerprint: graph_fingerprint(document)?,
         })
     }
 
@@ -112,6 +137,18 @@ impl HostedGraphPlan {
         )?;
         let handle = engine.resolve_external_module(&self.hosted_id)?;
         Ok((engine, handle))
+    }
+
+    pub fn compile_attested(
+        &self,
+        banks: &PreparedWaveBanks,
+    ) -> Result<(Engine, ResolvedExternalModule, HostedCompilationProof), String> {
+        let (engine, handle) = self.compile(banks)?;
+        let proof = HostedCompilationProof {
+            handle,
+            document_fingerprint: self.document_fingerprint,
+        };
+        Ok((engine, handle, proof))
     }
 }
 

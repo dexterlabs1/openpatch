@@ -454,5 +454,47 @@
       "coherent during-playback save barrier",
       "general plugin or stacked-host-input compatibility"
     ]
+  },
+  "application_controller": {
+    "status": "implemented and actual-plugin tested; activation remains internal",
+    "evidence": "native-test-output/rack-control-import/binary-host/application-activation-003",
+    "identities": {
+      "plugin": "264e55e1389274c3873439372c5c51f48f63168bd6c98fb2c6ffec170224b6f6",
+      "runtime": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c",
+      "companion": "903faed075237e1f996856572e4aa09fbe00b4967a7653442ea89d40e82a7786",
+      "parent_test_executable": "d19c5930eafc12a4537b8e5cc3e465c0a487ca878408191ec565e4c68b872e45"
+    },
+    "source_manifest_sha256": "9a266a8994d1acdcf08b6365434150d777fccce4b2a71bb760b69441d5c17d49",
+    "checks": {
+      "genuine_application_scenarios": 3,
+      "audio_and_performance_tests": 297,
+      "cli_library_tests": 426,
+      "project_workflow_tests": 236,
+      "strict_all_target_clippy": "passed",
+      "format": "passed"
+    },
+    "frames": 5120,
+    "rate": 48000,
+    "shared_commands": 4,
+    "one_child_across_edits_and_history": true,
+    "exact_audio_samples": true,
+    "callback_allocations": 0,
+    "callback_deallocations": 0,
+    "retired_state_matches_authored": true,
+    "workspace_cleanup": true,
+    "refusal_and_cleanup": [
+      "wrong full document or different Engine with matching external ports",
+      "unadmitted edit cannot reuse unchanged child",
+      "pending edits cannot yield successful retired capture",
+      "live project capture refuses without coherent native/child barrier",
+      "killed child silences execution",
+      "unread queued graph teardown precedes owner cleanup"
+    ],
+    "limits": [
+      "5 ms pacing between 128-frame callbacks; not continuous 48 kHz device validation",
+      "native graph edits currently prepare a fresh child",
+      "hosted Scope selection and coherent live project save unfinished",
+      "no public activation control, device/window test, packaging or installation"
+    ]
   }
 }

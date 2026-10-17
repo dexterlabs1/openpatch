@@ -45,6 +45,16 @@ fn audio_callback(patch: &Patch, enabled: bool) -> (Audio, Callback) {
         submitted_revision: 0,
         accepted_patch: patch.clone(),
         accepted_document: None,
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted_controller: hosted_audio::HostedAudioController::default(),
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted_control: None,
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted_authored_revision: None,
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted_native_intent: Vec::new(),
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        last_hosted_retirement: None,
         port_light_reader: reader(&callback),
     };
     (audio, callback)

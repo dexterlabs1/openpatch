@@ -629,6 +629,13 @@ impl Session {
                 "host layout placement is pending; retry document capture after placement".into(),
             );
         }
+        if self
+            .live_module_events
+            .as_ref()
+            .is_some_and(|backend| backend.requires_hosted_capture_barrier())
+        {
+            return Err("live hosted project capture requires a coherent audio/companion save barrier; no saved baseline was changed".into());
+        }
         if !self.execution_disposition().is_runnable() {
             return Ok(ProjectDocumentSnapshot {
                 document: self.document.clone(),

@@ -58,7 +58,7 @@ mod hosted_callback {
         assert!(audio
             .submit_document(ticket.clone())
             .unwrap_err()
-            .contains("native projection refused"));
+            .contains("OPENPATCH_HOSTED_"));
         assert_eq!(audio.submitted_revision, revision);
         assert!(audio.pending.is_none());
         assert!(audio.accepted_document.is_none());
@@ -66,7 +66,7 @@ mod hosted_callback {
             Audio::new_with_document(ticket, Some("no audio device may be consulted"), false)
                 .err()
                 .unwrap();
-        assert!(error.contains("native projection refused"));
+        assert!(error.contains("OPENPATCH_HOSTED_"));
     }
 
     #[test]
@@ -568,4 +568,5 @@ mod hosted_callback {
             "not_present"
         );
     }
+    include!("audio_hosted_activation_tests.rs");
 }

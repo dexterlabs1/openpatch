@@ -289,6 +289,11 @@ impl HostedControl {
         self.closed.store(true, Ordering::Release);
     }
 
+    /// Lock-free execution lease check for the prepared audio plan.
+    pub fn is_open(&self) -> bool {
+        self.unavailable().is_none()
+    }
+
     fn unavailable(&self) -> Option<ControlFault> {
         ControlFault::from_code(self.failure.load(Ordering::Acquire)).or_else(|| {
             self.closed

@@ -361,6 +361,11 @@ pub trait LiveModuleEvents: Send + Sync {
     fn supports_document_execution(&self) -> bool {
         false
     }
+    /// An application host must supply a coherent native/child cut before a
+    /// playing hosted document can be represented as a live project snapshot.
+    fn requires_hosted_capture_barrier(&self) -> bool {
+        false
+    }
     /// Called before sync_patch at the same revision. Backends fence pending
     /// and acknowledged plans; legacy backends accept native-only documents.
     fn request_document_execution(

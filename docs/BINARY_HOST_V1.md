@@ -1,10 +1,10 @@
 # First application-host milestone
 
-Planning checkpoint, 2026-10-17, following the successful bounded
+Implementation checkpoint, 2026-10-17, following the successful bounded
 [actual-binary test](../scripts/rack_binary_host/README.md) and one focused
 architecture advisory. **User-facing hosted activation is not available.** Process
 ownership, authored document/history/MCP preparation, core mixed graphs and the
-desktop callback adapter are implemented below. The
+desktop callback adapter and application controller are implemented below. The
 installed OpenPatch 0.2.7 remains unchanged. The full
 [compatibility obligation](COMPATIBILITY_DECISION.md#extensions-and-existing-vcv-binaries)
 and native Rust extension API remain separate.
@@ -254,6 +254,48 @@ later route is colocating the necessary native Rust DSP and hosted modules under
 one sample scheduler in the companion. That is provisional: preserve both
 native and Rack behavior and measure it before selecting the final architecture.
 Wrapping Rust modules as Rack modules alone would not prove that contract.
+
+## Implemented application controller; activation still internal
+
+`Audio::new_with_document` and `submit_document` now prepare the complete hosted
+graph through an explicitly configured control-thread controller. Its child
+owners remain outside every callback graph; bounded pending/retired paths return
+the exact endpoint before capture or process cleanup. A sealed compilation proof
+binds permission to both the full document and the exact Engine. Native-only
+preparation cannot obtain this proof or run the omitted native carrier.
+
+Hosted execution has a separate incarnation, running status and acknowledgment;
+native Exact/Partial dispositions remain unchanged. Compatible admitted OFFSET
+edits and undo/redo keep the same child and transport clock. Each prepared graph
+has its own authored-revision receipt, so a newer pending graph cannot acknowledge
+an older one. Explicit equal native assignments still require native preparation.
+A hosted value change that did not pass the live admission channel prepares a
+fresh child rather than falsely reporting that an unchanged child applied it.
+Native graph edits currently also prepare a fresh child; seamless native/hosted
+rebuilds and hosted Scope selection remain unfinished.
+
+The actual installed plugin now passes the real `Audio` submit/service path and
+desktop Callback with shared Session edits, undo and redo: **5,120 frames**, four
+ordered commands, exact expected samples, one unchanged child, zero callback
+heap activity, matching retired state and no leftover process workspace. Separate
+actual-child tests cover unadmitted edits, refusal of capture with unacknowledged
+commands, killed-child silence and unread queued-graph shutdown. These tests use
+5 ms pacing between 128-frame callbacks; they do **not** qualify continuous 48 kHz
+device deadlines, native-window interaction or sustained representative load.
+
+Retired child capture alone is not a coherent playing-project save. Until a
+native/child audio-boundary barrier is implemented, the shared Session explicitly
+refuses live document capture while the application holds a hosted binding; a
+refused capture cannot advance the saved baseline. Authored-only documents without
+such a binding retain their existing save/reopen behavior.
+
+Launch configuration is explicit (`OPENPATCH_HOSTED_COMPANION`,
+`OPENPATCH_HOSTED_SDK`, `OPENPATCH_HOSTED_PLUGIN`, optional
+`OPENPATCH_HOSTED_WORKSPACE`). There is no automatic plugin discovery or public
+activation control yet. The device start path requests 48 kHz / fixed 128-frame
+buffers and validates the actual callback; that path has not been device-qualified.
+The installed app remains 0.2.7 build 9. Next implement the coherent save barrier,
+active shared controls and Mac device qualification before exposing activation.
 
 ## Protocol and authority
 

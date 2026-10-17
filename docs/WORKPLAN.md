@@ -170,6 +170,17 @@ checks and graph compilation; the built-in schemas and model equations are
 unchanged. Continue with the actual Audio controller/full hosted execution gate,
 then active panel controls and the coherent live save barrier. No installation.
 
+The full-document `Audio` controller is now connected, with explicit process
+ownership, exact-Engine compilation proof and separate hosted execution
+acknowledgment. A paced actual-plugin application test passes 5,120 exact samples
+and four shared edit/history commands without restarting the child or allocating
+in the callback. Actual-child failure, unadmitted edits, pending-capture refusal
+and unread-queue shutdown also pass. Ordinary live capture now refuses to claim
+a coherent save while a hosted binding exists. Next implement the native/child
+save barrier, seamless graph/Scope rebuilding and active controls, then qualify
+the real Mac device. Internal startup requests 48 kHz/fixed 128; no public
+activation, device claim, packaging or installation follows this checkpoint.
+
 ## Delivered: Core text and host boundary
 
 Exact Core Notes 2.6.6 now converts into editable native Notes, including legacy
