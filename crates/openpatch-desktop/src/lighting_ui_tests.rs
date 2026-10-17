@@ -381,13 +381,10 @@ fn darkroom_active_inline_editors_keep_text_background_caret_and_typed_actions()
     for (kind, parameter, local, typed, expected) in [
         (
             "poly_constant",
-            "v1",
-            Rect::from_min_size(
-                pos2(40.0, 127.0),
-                vec2((panel_width("poly_constant") - 40.0) / 4.0 - 24.0, 24.0),
-            ),
-            "-4.25",
-            -4.25,
+            "channels",
+            Rect::from_min_size(pos2(260.0,62.0),vec2(75.0,24.0)),
+            "4",
+            4.0,
         ),
         ("scope", "time", scope_control_rect(2), "0.125", 0.125),
     ] {

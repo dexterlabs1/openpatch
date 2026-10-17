@@ -25,6 +25,8 @@ include!("sequence_panel.rs");
 include!("atlas_sequence_panels.rs");
 include!("atlas_mid_side_panels.rs");
 include!("atlas_score_panel.rs");
+include!("atlas_poly_panels.rs");
+include!("atlas_poly_constant_panel.rs");
 include!("stock_quantizer_panel.rs");
 include!("quantizer_keyboard.rs");
 include!("stock_vca_mix_panel.rs");
@@ -91,8 +93,9 @@ fn port_material_scale(kind: &str) -> f32 {
         "stock_seq3" => 1.07,
         "stock_delay" => 1.20, // y380 sockets must remain inside the 396-point panel.
         "modal_resonator" => REDESIGNED_PORT_SCALE,
-        "score_sequencer" | "crossfade" | "quantizer" | "stock_quantizer" | "poly_sum"
-        | "mid_side" | "stock_mid_side" | "mix6" | "stock_mix" => REDESIGNED_PORT_SCALE,
+        "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "crossfade"
+        | "quantizer" | "stock_quantizer" | "poly_sum" | "mid_side" | "stock_mid_side" | "mix6"
+        | "stock_mix" => REDESIGNED_PORT_SCALE,
         "fade"
         | "compare"
         | "process"
@@ -139,7 +142,7 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
             true,
         ) => Above(22.0),
         ("seq3", _, _) => Above(23.0),
-        ("score_sequencer", _, _) => Above(25.0),
+        ("score_sequencer" | "poly_split" | "poly_merge", _, _) => Above(25.0),
         ("mult", _, _) => Above(25.0),
         ("switch_1to4" | "switch_4to1", "clock" | "reset", false) => Above(25.0),
         ("switch_1to4" | "switch_4to1", _, false) => Left(34.0),
@@ -168,7 +171,7 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
             false,
         ) => Above(21.0),
         ("mid_side" | "stock_mid_side", _, true) => Above(24.0),
-        ("poly_sum", _, true) => Right(30.0),
+        ("poly_sum" | "poly_constant", _, true) => Right(30.0),
         ("crossfade" | "quantizer" | "stock_quantizer" | "mix6" | "stock_mix", _, true) => {
             Right(36.0)
         }
@@ -282,6 +285,7 @@ fn generic_parameter_hardware(
         || atlas_voltage_kind(kind)
         || atlas_sequence_kind(kind)
         || atlas_mid_side_kind(kind)
+        || atlas_poly_kind(kind)
         || kind == "score_sequencer"
         || atlas_oscillator(kind)
         || kind == "svf_filter"
@@ -3419,11 +3423,18 @@ impl Rack {
             let count = parameters.len();
             if node.kind == "poly_constant" {
                 painter.text(
-                    point(20.0, 93.0),
+                    point(20.0, 74.0),
                     Align2::LEFT_CENTER,
-                    "CHANNELS",
+                    "CONFIGURED CHANNELS",
                     crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
                     INK,
+                );
+                painter.text(
+                    point(187.0, 74.0),
+                    Align2::CENTER_CENTER,
+                    "−16 TO +16 V",
+                    crate::panel_skin::print_font(painter.ctx(), 9.0 * self.zoom),
+                    MUTED,
                 );
                 if let Some(spec) = module.and_then(|module| module["params"].get("channels")) {
                     if let Some(edit) = self.compact_parameter(
@@ -3431,65 +3442,21 @@ impl Rack {
                         node,
                         "channels",
                         spec,
-                        Rect::from_min_size(
-                            point(width - 100.0, 81.0),
-                            vec2(75.0, 24.0) * self.zoom,
-                        ),
+                        Rect::from_min_size(point(260.0, 62.0), vec2(75.0, 24.0) * self.zoom),
                         "",
                     ) {
                         action = Some(edit);
                     }
                 }
-                for channel in 0..16 {
-                    let parameter = format!("v{}", channel + 1);
-                    let x = 20.0 + (channel % 4) as f32 * (width - 40.0) / 4.0;
-                    let y = 127.0 + (channel / 4) as f32 * 45.0;
-                    painter.text(
-                        point(x, y + 12.0),
-                        Align2::LEFT_CENTER,
-                        format!("{:02}", channel + 1),
-                        crate::panel_skin::print_font(painter.ctx(), 9.0 * self.zoom),
-                        MUTED,
-                    );
-                    if let Some(spec) = module.and_then(|module| module["params"].get(&parameter)) {
-                        if let Some(edit) = self.compact_parameter(
-                            ui,
-                            node,
-                            &parameter,
-                            spec,
-                            Rect::from_min_size(
-                                point(x + 20.0, y),
-                                vec2((width - 40.0) / 4.0 - 24.0, 24.0) * self.zoom,
-                            ),
-                            " V",
-                        ) {
-                            action = Some(edit);
-                        }
-                    }
-                }
-                let channels = node
-                    .params
-                    .get("channels")
-                    .copied()
-                    .or_else(|| {
-                        module
-                            .and_then(|module| module["params"]["channels"]["default"].as_f64())
-                            .map(|value| value as f32)
-                    })
-                    .unwrap_or(0.0);
-                painter.text(
-                    point(width * 0.5, 313.0),
-                    Align2::CENTER_CENTER,
-                    format!("Configured: {} channels", channels as u32),
-                    crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
-                    MUTED,
-                );
             }
             if node.kind == "stock_lfo" {
                 self.stock_lfo_lights(ui, node, rect);
             }
             if node.kind == "stock_vco" {
                 self.stock_vco_lights(ui, node, rect);
+            }
+            if atlas_poly_kind(&node.kind) {
+                paint_atlas_poly_guide(&painter, rect, &node.kind, self.zoom);
             }
             if node.kind == "poly_split" {
                 self.split_panel(ui, node, rect);
@@ -3819,7 +3786,7 @@ impl Rack {
                     }
                     continue;
                 }
-                if node.kind == "poly_constant" {
+                if node.kind == "poly_constant" && *name == "channels" {
                     continue;
                 }
                 if node.kind == "poly_merge" && *name == "channels" {
@@ -4202,8 +4169,10 @@ impl Rack {
                         pos2(120.0, if *name == "position" { 121.0 } else { 236.0 }),
                         if *name == "position" { 31.0 } else { 24.0 },
                     )
+                } else if node.kind == "poly_constant" {
+                    atlas_poly_constant_control(name)
                 } else if node.kind == "poly_sum" {
-                    (pos2(width * 0.5, 145.0), 29.0)
+                    (pos2(width * 0.5, 145.0), 31.0)
                 } else if node.kind == "compare" {
                     (pos2(width * 0.5, 125.0), 27.0)
                 } else if node.kind == "process" {
@@ -4462,6 +4431,11 @@ impl Rack {
                 let value_center = if atlas_sequence_kind(&node.kind) {
                     let local = atlas_sequence_value_center(name);
                     point(local.x, local.y)
+                } else if node.kind == "poly_constant" {
+                    let local = atlas_poly_constant_value_center(name);
+                    point(local.x, local.y)
+                } else if node.kind == "poly_sum" {
+                    point(75.0, 192.0)
                 } else if node.kind == "score_sequencer" {
                     let local = atlas_score_value_center(name);
                     point(local.x, local.y)
@@ -4513,6 +4487,10 @@ impl Rack {
                     } else {
                         78.0
                     }
+                } else if node.kind == "poly_constant" {
+                    62.0
+                } else if node.kind == "poly_sum" {
+                    110.0
                 } else if atlas_mid_side_kind(&node.kind) {
                     82.0
                 } else if atlas_voltage_kind(&node.kind) {
@@ -4825,6 +4803,7 @@ impl Rack {
                         || atlas_voltage_kind(&node.kind)
                         || atlas_sequence_kind(&node.kind)
                         || atlas_mid_side_kind(&node.kind)
+                        || atlas_poly_kind(&node.kind)
                         || node.kind == "score_sequencer"
                         || atlas_oscillator(&node.kind)
                         || node.kind == "svf_filter"
@@ -4859,6 +4838,10 @@ impl Rack {
                 }
                 if atlas_sequence_kind(&node.kind) {
                     paint_atlas_sequence_print(&painter, rect, &node.kind, name, self.zoom);
+                } else if node.kind == "poly_constant" {
+                    paint_atlas_poly_constant_print(&painter, rect, name, self.zoom);
+                } else if node.kind == "poly_sum" {
+                    paint_atlas_poly_sum_print(&painter, rect, self.zoom);
                 } else if node.kind == "score_sequencer" {
                     paint_atlas_score_print(&painter, rect, name, self.zoom);
                 } else if atlas_mid_side_kind(&node.kind) {
@@ -4963,6 +4946,7 @@ impl Rack {
                         || atlas_voltage_kind(&node.kind)
                         || atlas_sequence_kind(&node.kind)
                         || atlas_mid_side_kind(&node.kind)
+                        || atlas_poly_kind(&node.kind)
                         || node.kind == "score_sequencer"
                         || atlas_oscillator(&node.kind)
                         || node.kind == "svf_filter"
@@ -6009,25 +5993,31 @@ impl Rack {
             crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
             MUTED,
         );
-        painter.text(
-            point(75.0, 233.0),
-            Align2::CENTER_CENTER,
-            state.map_or_else(
+        paint_atlas_poly_count(
+            painter,
+            Rect::from_center_size(point(75.0, 233.0), vec2(100.0, 25.0) * zoom),
+            &state.map_or_else(
                 || "— / 16".to_owned(),
                 |s| format!("{} / 16", s.input_channels.unwrap().min(16)),
             ),
-            crate::panel_skin::print_font(painter.ctx(), 18.0 * zoom),
-            INK,
+            state.is_some(),
+            zoom,
+            18.0,
+            &self.lighting,
         );
         painter.text(
             point(75.0, 254.0),
             Align2::CENTER_CENTER,
-            "OUT · 10 V = 0 dB",
+            if state.is_some() {
+                "POST · 10 V = 0 dB"
+            } else {
+                "METER UNAVAILABLE"
+            },
             crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
             MUTED,
         );
         for (band, db) in [0, -3, -6, -12, -24, -36].into_iter().enumerate() {
-            let y = 268.0 + band as f32 * 10.0;
+            let y = 270.0 + band as f32 * 12.0;
             let brightness = state.map_or(0.0, |s| s.brightness[band][0]).clamp(0.0, 1.0);
             let color = if band == 0 {
                 Color32::from_rgb(218, 141, 53)
@@ -6050,17 +6040,6 @@ impl Rack {
                 MUTED,
             );
         }
-        painter.text(
-            point(75.0, 333.0),
-            Align2::CENTER_CENTER,
-            if state.is_some() {
-                "POST-LEVEL"
-            } else {
-                "METER UNAVAILABLE"
-            },
-            crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
-            MUTED,
-        );
         ui.interact(Rect::from_min_max(point(24.0, 204.0), point(130.0, 338.0)),
             ui.id().with((&node.id, "sum-meter")), Sense::hover()).on_hover_text(
                 "Active input channels: 0–16. Output meter measures the signed channel sum after LEVEL, relative to 10 V. Opposite voices can cancel. No published telemetry is shown as unavailable.");
@@ -6942,22 +6921,15 @@ impl Rack {
         // Below the title and above the signal label/socket; the complete
         // 14-point Rajdhani line box fits this 22-point display at every zoom.
         let screen = Rect::from_min_size(point(200.0, 72.0), vec2(75.0, 22.0) * zoom);
-        let screen_start = crate::lighting::next(painter);
-        painter.rect_filled(screen, 2.0 * zoom, Color32::from_rgb(20, 31, 31));
-        painter.text(
-            screen.center(),
-            Align2::CENTER_CENTER,
-            channels.map_or_else(|| "—".to_owned(), |count| count.to_string()),
-            crate::panel_skin::print_font(ui.ctx(), 14.0 * zoom),
-            if channels.is_some() {
-                Color32::from_rgb(155, 220, 197)
-            } else {
-                Color32::from_rgb(135, 145, 138)
-            },
+        paint_atlas_poly_count(
+            painter,
+            screen,
+            &channels.map_or_else(|| "—".to_owned(), |count| count.to_string()),
+            channels.is_some(),
+            zoom,
+            14.0,
+            &self.lighting,
         );
-        if channels.is_some() {
-            self.lighting.preserve(painter, screen_start);
-        }
         ui.interact(screen, ui.id().with((&node.id, "split-input-count")), Sense::hover())
             .on_hover_text(if channels.is_some() {
                 "Measured input channels. Silent active channels count; zero means a valid zero-channel input. All sixteen named outputs remain available."
@@ -6990,22 +6962,15 @@ impl Rack {
             INK,
         );
         let screen = Rect::from_min_size(point(200.0, 345.0), vec2(75.0, 22.0) * zoom);
-        let screen_start = crate::lighting::next(&painter);
-        painter.rect_filled(screen, 2.0 * zoom, Color32::from_rgb(20, 31, 31));
-        painter.text(
-            screen.center(),
-            Align2::CENTER_CENTER,
-            output.map_or_else(|| "—".to_owned(), |count| count.to_string()),
-            crate::panel_skin::print_font(ui.ctx(), 14.0 * zoom),
-            if output.is_some() {
-                Color32::from_rgb(155, 220, 197)
-            } else {
-                Color32::from_rgb(135, 145, 138)
-            },
+        paint_atlas_poly_count(
+            &painter,
+            screen,
+            &output.map_or_else(|| "—".to_owned(), |count| count.to_string()),
+            output.is_some(),
+            zoom,
+            14.0,
+            &self.lighting,
         );
-        if output.is_some() {
-            self.lighting.preserve(&painter, screen_start);
-        }
         ui.interact(screen, ui.id().with((&node.id, "merge-output-count")), Sense::hover())
             .on_hover_text(if output.is_some() {
                 "Measured output channels. Zero means the running engine publishes a zero-channel output."
@@ -11108,6 +11073,7 @@ fn paint_panel(
         || atlas_voltage_kind(&node.kind)
         || atlas_sequence_kind(&node.kind)
         || atlas_mid_side_kind(&node.kind)
+        || atlas_poly_kind(&node.kind)
         || node.kind == "score_sequencer"
         || matches!(
             node.kind.as_str(),
@@ -11200,6 +11166,7 @@ fn paint_panel(
         || atlas_voltage_kind(&node.kind)
         || atlas_sequence_kind(&node.kind)
         || atlas_mid_side_kind(&node.kind)
+        || atlas_poly_kind(&node.kind)
         || node.kind == "score_sequencer"
         || matches!(
             node.kind.as_str(),
@@ -11488,6 +11455,7 @@ fn paint_jack(
         || atlas_voltage_kind(kind)
         || atlas_sequence_kind(kind)
         || atlas_mid_side_kind(kind)
+        || atlas_poly_kind(kind)
         || kind == "score_sequencer"
         || matches!(
             kind,
@@ -12611,6 +12579,10 @@ mod tests {
             "wavetable_vco",
             "wavetable_lfo",
             "poly_viz",
+            "poly_sum",
+            "poly_split",
+            "poly_merge",
+            "poly_constant",
             "score_sequencer",
             "drum_voice",
             "svf_filter",
@@ -12682,6 +12654,12 @@ mod tests {
                                     } else {
                                         "SEED · 24-BIT"
                                     }
+                                } else if kind == "score_sequencer" && name == "running" {
+                                    "INITIAL RUN"
+                                } else if kind == "poly_merge" && name == "channels" {
+                                    "CHANNELS"
+                                } else if kind == "poly_constant" && name == "channels" {
+                                    "CONFIGURED CHANNELS"
                                 } else if kind == "stock_vco" {
                                     stock_vco_parameter_label(name)
                                 } else if kind == "stock_lfo" {
@@ -12691,6 +12669,11 @@ mod tests {
                                 } else {
                                     parameter_label(name)
                                 }
+                                || (kind == "poly_constant"
+                                    && name
+                                        .strip_prefix('v')
+                                        .and_then(|n| n.parse::<usize>().ok())
+                                        .is_some_and(|n| text == &format!("{n:02}")))
                                 || (kind == "sh_asr"
                                     && name == "random"
                                     && text.starts_with("RND "))
@@ -16919,8 +16902,8 @@ mod tests {
         };
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
         for (time, point, name) in [
-            (1.0, pos2(92.0, 151.0), "v1"),
-            (2.0, pos2(332.0, 286.0), "v16"),
+            (1.0, pos2(74.0, 129.0), "v1"),
+            (2.0, pos2(334.0, 330.0), "v16"),
         ] {
             frame(
                 &ctx,
@@ -16934,7 +16917,7 @@ mod tests {
                 &mut rack,
                 &patch,
                 time + 0.1,
-                vec![egui::Event::PointerMoved(point - vec2(20.0, 0.0))],
+                vec![egui::Event::PointerMoved(point + vec2(0.0, 20.0))],
             );
             assert!(
                 matches!(action, Some(RackAction::Command("set_parameter", args)) if args["parameter"] == name && args["value"].as_f64().unwrap().is_finite())
@@ -16944,7 +16927,7 @@ mod tests {
                 &mut rack,
                 &patch,
                 time + 0.2,
-                vec![button(point - vec2(20.0, 0.0), false)],
+                vec![button(point + vec2(0.0, 20.0), false)],
             );
         }
     }
@@ -19264,6 +19247,12 @@ mod tests {
     }
     mod stock_mix_ui_tests {
         include!("stock_mix_ui_tests.rs");
+    }
+    mod atlas_poly_ui_tests {
+        include!("atlas_poly_ui_tests.rs");
+    }
+    mod poly_constant_atlas_ui_tests {
+        include!("poly_constant_atlas_ui_tests.rs");
     }
     mod atlas_score_ui_tests {
         include!("atlas_score_ui_tests.rs");

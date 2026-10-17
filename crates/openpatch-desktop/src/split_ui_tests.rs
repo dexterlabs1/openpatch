@@ -92,7 +92,7 @@ fn split_primitive(shape: &egui::Shape, out: &mut Vec<String>) {
 fn split_screen(shape: &egui::Shape, out: &mut Vec<Rect>) {
     match shape {
         egui::Shape::Vec(shapes) => for shape in shapes { split_screen(shape, out); },
-        egui::Shape::Rect(rect) if rect.fill == Color32::from_rgb(20, 31, 31) => out.push(rect.rect),
+        egui::Shape::Rect(rect) if rect.fill == Color32::from_rgb(15, 24, 18) => out.push(rect.rect),
         _ => {}
     }
 }

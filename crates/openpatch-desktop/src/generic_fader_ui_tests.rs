@@ -856,6 +856,8 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
         ("quantizer", "offset", 0.0, pos2(60.0, 263.0)),
         ("stock_quantizer", "offset", 0.0, pos2(70.0, 307.0)),
         ("poly_sum", "level", 0.5, pos2(75.0, 145.0)),
+        ("poly_constant", "v1", -4.0, pos2(50.0, 117.0)),
+        ("poly_constant", "v16", -7.25, pos2(310.0, 318.0)),
         ("mid_side", "encode_width", 1.0, pos2(75.0, 133.0)),
         ("stock_mid_side", "encode_width", 1.0, pos2(75.0, 133.0)),
         ("mid_side", "decode_width", 1.0, pos2(225.0, 133.0)),
