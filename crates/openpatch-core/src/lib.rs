@@ -42,6 +42,11 @@ mod stock_mid_side;
 mod stock_mix;
 mod stock_octave;
 mod stock_process;
+mod stock_scope;
+#[cfg(test)]
+mod stock_scope_tests;
+#[doc(hidden)]
+pub use stock_scope::{StockScopeDiagnosticBits, StockScopePointBits};
 mod stock_vca_mix;
 #[doc(hidden)]
 pub use stock_mix::StockMixSnapshot;
@@ -140,7 +145,7 @@ mod random_values;
 pub use random_values::{initial_random_values_state, randomize_random_values_state};
 mod scope;
 mod scope_measurement;
-pub use scope::{ScopePoint, ScopeSnapshot, SCOPE_BINS};
+pub use scope::{ScopePoint, ScopeSnapshot, StockScopeMetadata, SCOPE_BINS};
 pub use scope_measurement::{ScopeExtrema, ScopeMeasurements};
 mod saved_state;
 mod sum;
@@ -402,6 +407,10 @@ pub fn catalog() -> Value {
     result["modules"]
         .as_array_mut()
         .unwrap()
+        .push(stock_scope::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
         .push(stock_vca_mix::catalog());
     result["modules"]
         .as_array_mut()
@@ -511,6 +520,9 @@ pub fn catalog() -> Value {
         bypass::annotate(module);
         if module["kind"].as_str() == Some("stock_process") {
             stock_process::annotate_bypass(module);
+        }
+        if module["kind"].as_str() == Some("stock_scope") {
+            stock_scope::annotate_bypass(module);
         }
         parameter_actions::annotate_catalog(module);
         if module["kind"].as_str() == Some("stock_process") {
@@ -1531,6 +1543,71 @@ impl Engine {
             _ => None,
         }
     }
+    /// Lossless actual Stock Scope state for source trace qualification. This
+    /// explicitly requested control-thread diagnostic allocates its point copy;
+    /// the callback and display transport use the borrowed common snapshot.
+    #[doc(hidden)]
+    pub fn stock_scope_diagnostic_bits(
+        &self,
+        handle: ModuleHandle,
+    ) -> Option<StockScopeDiagnosticBits> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.stock_scope_diagnostic_bits(handle.node),
+            _ => None,
+        }
+    }
+    /// Write current raw source Params inside the documented diagnostic finite
+    /// domain, independently of the public quantity clamp/snap policy.
+    #[doc(hidden)]
+    pub fn set_stock_scope_parameter_raw(
+        &mut self,
+        handle: ModuleHandle,
+        parameter: usize,
+        value: f32,
+    ) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => {
+                engine.set_stock_scope_parameter_raw(handle.node, parameter, value)
+            }
+            _ => false,
+        }
+    }
+    #[doc(hidden)]
+    pub fn stock_scope_legacy_data(&self, handle: ModuleHandle) -> Option<Value> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(engine) => engine.stock_scope_legacy_data(handle.node),
+            _ => None,
+        }
+    }
+    #[doc(hidden)]
+    pub fn load_stock_scope_legacy_data(&mut self, handle: ModuleHandle, value: &Value) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.load_stock_scope_legacy_data(handle.node, value),
+            _ => false,
+        }
+    }
+    /// Accepted only for a single Stock Scope plus rate-independent raw sources
+    /// and sinks. Rejected graphs/rates change nothing. No global adoption policy
+    /// is relaxed for unrelated modules.
+    #[doc(hidden)]
+    pub fn stock_scope_sample_rate_event(&mut self, sample_rate: u32) -> bool {
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.stock_scope_sample_rate_event(sample_rate),
+            _ => false,
+        }
+    }
     /// Copy all sixteen actual Process engines and controls without consuming
     /// any output. Inactive voices and disconnected port storage are retained.
     #[doc(hidden)]
@@ -1946,7 +2023,8 @@ impl Engine {
                 let preserve_history = engine
                     .stock_vca_mix_preserves_initialize_history(handle.node)
                     || engine.stock_noise_preserves_reset_history(handle.node)
-                    || engine.stock_process_preserves_initialize_history(handle.node);
+                    || engine.stock_process_preserves_initialize_history(handle.node)
+                    || engine.stock_scope_preserves_initialize_history(handle.node);
                 let initialized = engine.initialize_module_state(handle.node);
                 if initialized && !preserve_history {
                     engine.port_lights.clear_node(handle.node);

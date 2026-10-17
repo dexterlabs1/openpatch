@@ -8851,11 +8851,19 @@ impl eframe::App for OpenPatch {
             let mut lights = BTreeMap::new();
             let mut controls = BTreeMap::new();
             let mut scopes = BTreeMap::new();
+            let mut scope_identities = BTreeMap::new();
             if let Some(audio) = self.audio.as_ref() {
                 for node in &self.patch.nodes {
-                    if node.kind == "scope" {
-                        if let Some(state) = audio.module_scope(&node.id) {
-                            scopes.insert(node.id.clone(), state);
+                    if crate::performance::rack_scope_kind(&node.kind) {
+                        if let Some((kind, token)) = audio.module_scope_identity(&node.id) {
+                            if kind == node.kind {
+                                scope_identities.insert(node.id.clone(), token);
+                            }
+                        }
+                        if let Some(frame) = audio.module_scope_frame(&node.id) {
+                            if scope_identities.get(&node.id) == Some(&frame.token) {
+                                scopes.insert(node.id.clone(), frame.snapshot);
+                            }
                         }
                     }
                     if let Some(state) = audio.module_lights(&node.id) {
@@ -8887,6 +8895,7 @@ impl eframe::App for OpenPatch {
             self.rack.set_shift_register_states(shift_registers);
 
             self.rack.set_module_states(lights, controls);
+            self.rack.set_scope_identities(scope_identities);
             self.rack.set_scope_states(scopes);
         }
         self.sync_midi_cc_states();

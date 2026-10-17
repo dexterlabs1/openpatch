@@ -149,6 +149,7 @@ fn signal_atlas_face_kind(kind: &str) -> bool {
                 | "wavetable_lfo"
                 | "stock_vcf"
                 | "stock_vca"
+                | "stock_scope"
         )
 }
 
@@ -593,6 +594,8 @@ pub struct Rack {
     gesture: u64,
     layout_revision: u64,
     scope_states: BTreeMap<String, Arc<openpatch_core::ScopeSnapshot>>,
+    scope_identities: BTreeMap<String, u64>,
+    stock_scope_views: BTreeMap<String, StockScopeView>,
     sequence_states: BTreeMap<String, ModuleTelemetry>,
     stock_seq3_states: BTreeMap<String, Value>,
     stock_quantizer_states: BTreeMap<String, u16>,
@@ -654,6 +657,8 @@ impl Default for Rack {
             gesture: 0,
             layout_revision: 0,
             scope_states: BTreeMap::new(),
+            scope_identities: BTreeMap::new(),
+            stock_scope_views: BTreeMap::new(),
             sequence_states: BTreeMap::new(),
             stock_seq3_states: BTreeMap::new(),
             stock_quantizer_states: BTreeMap::new(),
@@ -1315,6 +1320,14 @@ impl Rack {
         states: BTreeMap<String, Arc<openpatch_core::ScopeSnapshot>>,
     ) {
         self.scope_states = states;
+    }
+
+    /// A plan-time token keeps a native view preference attached to one module
+    /// incarnation even before its first capture becomes available.
+    pub(crate) fn set_scope_identities(&mut self, identities: BTreeMap<String, u64>) {
+        self.stock_scope_views
+            .retain(|id, view| identities.get(id).is_some_and(|token| *token == view.token));
+        self.scope_identities = identities;
     }
 
     pub fn set_sequence_states(
@@ -3192,7 +3205,7 @@ impl Rack {
                     .unwrap_or("mono");
                 header_response.on_hover_text(format!("{} · {description}\nModel: {model}\nChannel policy: {policy}\nDrag to move the selection. Shift-click headers to toggle modules. Cmd/Ctrl+A selects the rack. Panels snap together to free rack rows.", node.id));
             }
-            if node.kind == "scope" {
+            if matches!(node.kind.as_str(), "scope" | "stock_scope") {
                 if let Some(edit) = self.scope_panel(ui, node, module, rect) {
                     action = Some(edit);
                 }
@@ -3559,7 +3572,7 @@ impl Rack {
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
                 if (node.kind == "random" && *name == "seed")
-                    || node.kind == "scope"
+                    || matches!(node.kind.as_str(), "scope" | "stock_scope")
                     || node.kind == "modal_resonator"
                     || node.kind == "colored_noise"
                     || node.kind == "random_values"
@@ -7260,6 +7273,261 @@ impl Rack {
         action
     }
 
+    fn paint_stock_scope_lamps(&self, ui: &mut egui::Ui, node: &Node, rect: Rect) {
+        let zoom = self.zoom;
+        let painter = ui.painter();
+        let actual = self
+            .module_lights
+            .get(&node.id)
+            .filter(|lights| lights.count >= 2);
+        for (index, label, y, base) in [
+            (0, "XY", 225.0, Color32::from_rgb(242, 199, 59)),
+            (1, "TRIG", 240.0, Color32::from_rgb(62, 155, 238)),
+        ] {
+            let center = rect.min + vec2(554.0, y) * zoom;
+            painter.circle_filled(center, 5.0 * zoom, Color32::from_rgb(45, 49, 48));
+            if let Some(brightness) = actual
+                .map(|lights| lights.brightness[index][0])
+                .filter(|brightness| brightness.is_finite())
+            {
+                let brightness = brightness.clamp(0.0, 1.0);
+                self.lighting.circle(
+                    painter,
+                    center,
+                    2.3 * zoom,
+                    base.gamma_multiply(0.12 + brightness * 0.88),
+                    brightness,
+                    0.1,
+                );
+                painter.circle_stroke(center, 5.0 * zoom, Stroke::new(0.6 * zoom, base));
+            } else {
+                painter.circle_stroke(
+                    center,
+                    5.0 * zoom,
+                    Stroke::new(0.6 * zoom, Color32::from_gray(118)),
+                );
+            }
+            painter.text(
+                center + vec2(9.0, 0.0) * zoom,
+                Align2::LEFT_CENTER,
+                label,
+                FontId::monospace(8.0 * zoom),
+                Color32::from_gray(184),
+            );
+        }
+    }
+
+    fn stock_scope_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        module: Option<&Value>,
+        rect: Rect,
+    ) -> Option<RackAction> {
+        let zoom = self.zoom;
+        let painter = ui.painter().clone();
+        let point = |x, y| rect.min + vec2(x, y) * zoom;
+        let mut action = None;
+        for (index, (name, label, suffix)) in STOCK_SCOPE_CONTROLS.iter().enumerate() {
+            let local = scope_control_rect(index);
+            let control = Rect::from_min_max(
+                point(local.min.x, local.min.y),
+                point(local.max.x, local.max.y),
+            );
+            painter.text(
+                point(local.min.x, local.min.y - 8.0),
+                Align2::LEFT_CENTER,
+                *label,
+                crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
+                INK,
+            );
+            if let Some(spec) = module.and_then(|module| module["params"].get(*name)) {
+                let edit = match *name {
+                    "x_scale" | "y_scale" => {
+                        self.choice_parameter(ui, node, name, spec, control, &SCOPE_SCALE_CHOICES)
+                    }
+                    "xy" => self.choice_parameter(ui, node, name, spec, control, &["TIME", "XY"]),
+                    "trigger_disabled" => self.choice_parameter(
+                        ui,
+                        node,
+                        name,
+                        spec,
+                        control,
+                        &["ENABLED", "DISABLED"],
+                    ),
+                    "time" => self.stock_scope_time_control(ui, node, spec, control),
+                    _ => self.compact_parameter(ui, node, name, spec, control, suffix),
+                };
+                if let Some(edit) = edit {
+                    if matches!(*name, "x_scale" | "y_scale" | "x_offset" | "y_offset") {
+                        if let Some(view) = self.stock_scope_views.get_mut(&node.id) {
+                            view.automatic = false;
+                            view.fitted = None;
+                        }
+                    }
+                    action = Some(stock_scope_parameter_action(edit, self.observed_revision));
+                }
+            }
+        }
+        let local = scope_control_rect(8);
+        let control = Rect::from_min_max(
+            point(local.min.x, local.min.y),
+            point(local.max.x, local.max.y),
+        );
+        painter.text(
+            point(local.min.x, local.min.y - 8.0),
+            Align2::LEFT_CENTER,
+            "VIEW · NATIVE",
+            crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
+            INK,
+        );
+        let token = self.scope_identities.get(&node.id).copied();
+        let enabled = ui.is_enabled() && token.is_some();
+        let automatic = self
+            .stock_scope_views
+            .get(&node.id)
+            .map_or(true, |view| view.automatic);
+        let response = ui.interact(
+            control,
+            ui.id().with((&node.id, "stock-scope-native-view", token)),
+            if enabled {
+                Sense::click()
+            } else {
+                Sense::hover()
+            },
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::Checkbox,
+                enabled,
+                automatic,
+                format!("{} native Scope automatic view", node.id),
+            )
+        });
+        crate::panel_skin::readout(
+            &painter,
+            control.center(),
+            if automatic { "AUTO" } else { "MANUAL" },
+            control.width(),
+            zoom,
+        );
+        if enabled && response.clicked() {
+            if let Some(view) = self.stock_scope_views.get_mut(&node.id) {
+                view.automatic = !view.automatic;
+                view.fitted = None;
+            }
+        }
+        response.on_hover_text("Native view only: AUTO fits completed volts for weak signals. MANUAL uses the saved source ranges and offsets. This switch never edits the source patch.");
+        action
+    }
+
+    fn stock_scope_time_control(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        spec: &Value,
+        rect: Rect,
+    ) -> Option<RackAction> {
+        let min_raw = spec["min"].as_f64().unwrap_or(-50.0_f64.log2()) as f32;
+        let max_raw = spec["max"].as_f64().unwrap_or(-0.005_f64.log2()) as f32;
+        let raw = node
+            .params
+            .get("time")
+            .copied()
+            .unwrap_or(spec["default"].as_f64().unwrap_or(1.0) as f32)
+            .clamp(min_raw, max_raw);
+        let mut millis = stock_scope_nominal_ms(raw);
+        let id = ui.id().with((&node.id, "stock-scope-time"));
+        let response = ui
+            .scope_builder(egui::UiBuilder::new().max_rect(rect).id_salt(id), |ui| {
+                crate::panel_skin::control_style(ui, self.zoom);
+                ui.style_mut().override_font_id =
+                    Some(crate::panel_skin::print_font(ui.ctx(), 10.0 * self.zoom));
+                ui.add_sized(
+                    rect.size(),
+                    egui::DragValue::new(&mut millis)
+                        .range(5.0..=50_000.0)
+                        .speed(1.0)
+                        .max_decimals(3)
+                        .suffix(" ms/screen"),
+                )
+            })
+            .inner;
+        response.widget_info(|| {
+            egui::WidgetInfo::slider(
+                true,
+                millis,
+                format!("{} nominal screen milliseconds", node.id),
+            )
+        });
+        let revision_id = id.with("opening-revision");
+        if response.drag_started() || response.gained_focus() {
+            let revision = self.observed_revision;
+            ui.data_mut(|data| data.insert_temp(revision_id, revision));
+        }
+        if response.drag_started() {
+            self.gesture = self.gesture.wrapping_add(1);
+            ui.data_mut(|data| data.insert_temp(id, format!("rack-value-{}", self.gesture)));
+        }
+        let history_group = if response.dragged() {
+            ui.data(|data| data.get_temp::<String>(id))
+        } else {
+            None
+        };
+        if response.drag_stopped() {
+            ui.data_mut(|data| data.remove::<String>(id));
+        }
+        if let Some(cue) = self
+            .construction_animation
+            .parameter(&node.id, &node.kind, "time")
+        {
+            self.register_construction_anchor(
+                ui,
+                node,
+                "time",
+                crate::construction_motion::Anchor {
+                    rect,
+                    old_text: format!(
+                        "{} ms/screen",
+                        scope_measurement_number(stock_scope_nominal_ms(cue.old))
+                    ),
+                    new_text: format!(
+                        "{} ms/screen",
+                        scope_measurement_number(stock_scope_nominal_ms(cue.new))
+                    ),
+                    marker: None,
+                },
+                &[response.id],
+            );
+        }
+        let action = if response.changed()
+            && millis.is_finite()
+            && (5.0..=50_000.0).contains(&millis)
+        {
+            let value = stock_scope_time_raw(millis).clamp(min_raw, max_raw);
+            if value.to_bits() != raw.to_bits() {
+                self.select_primary(node.id.clone());
+                let revision = ui
+                    .data(|data| data.get_temp::<u64>(revision_id))
+                    .unwrap_or(self.observed_revision);
+                let mut args = json!({"id":node.id,"parameter":"time","value":value,"expected_revision":revision});
+                if let Some(group) = history_group {
+                    args["history_group"] = json!(group);
+                }
+                Some(RackAction::Command("set_parameter", args))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if response.lost_focus() {
+            ui.data_mut(|data| data.remove::<u64>(revision_id));
+        }
+        response.on_hover_text("Nominal source TIME in ms per screen, 5–50,000. Type an exact millisecond value; the stored source control is log2 inverse seconds. Stored bins may span earlier settings.");
+        action
+    }
+
     fn pulses_panel(
         &mut self,
         ui: &mut egui::Ui,
@@ -8416,6 +8684,18 @@ impl Rack {
         module: Option<&Value>,
         rect: Rect,
     ) -> Option<RackAction> {
+        let stock = node.kind == "stock_scope";
+        if stock {
+            if let Some(token) = self.scope_identities.get(&node.id).copied() {
+                let view = self
+                    .stock_scope_views
+                    .entry(node.id.clone())
+                    .or_insert_with(|| StockScopeView::new(token));
+                if view.token != token {
+                    *view = StockScopeView::new(token);
+                }
+            }
+        }
         let zoom = self.zoom;
         let painter = ui.painter().clone();
         let point = |x, y| rect.min + vec2(x, y) * zoom;
@@ -8440,17 +8720,35 @@ impl Rack {
         }
         let trace = painter.with_clip_rect(plot.shrink(1.0));
         if let Some(state) = self.scope_states.get(&node.id) {
-            let auto_range = scope_auto_range_enabled(node);
+            let auto_range = if stock {
+                self.stock_scope_views
+                    .get(&node.id)
+                    .map_or(true, |view| view.automatic)
+            } else {
+                scope_auto_range_enabled(node)
+            };
             let range_id = ui.id().with(("scope-auto-range", &node.id));
-            let previous = ui.data(|data| data.get_temp::<[ScopeDisplayRange; 2]>(range_id));
+            let previous = if stock {
+                self.stock_scope_views
+                    .get(&node.id)
+                    .and_then(|view| view.fitted)
+            } else {
+                ui.data(|data| data.get_temp::<[ScopeDisplayRange; 2]>(range_id))
+            };
             let ranges = scope_display_ranges(state, auto_range, previous);
-            ui.data_mut(|data| {
-                if auto_range {
-                    data.insert_temp(range_id, ranges);
-                } else {
-                    data.remove::<[ScopeDisplayRange; 2]>(range_id);
+            if stock {
+                if let Some(view) = self.stock_scope_views.get_mut(&node.id) {
+                    view.fitted = auto_range.then_some(ranges);
                 }
-            });
+            } else {
+                ui.data_mut(|data| {
+                    if auto_range {
+                        data.insert_temp(range_id, ranges);
+                    } else {
+                        data.remove::<[ScopeDisplayRange; 2]>(range_id);
+                    }
+                });
+            }
             let colors = [
                 Color32::from_rgb(86, 215, 222),
                 Color32::from_rgb(250, 185, 80),
@@ -8504,7 +8802,11 @@ impl Rack {
                     );
                 }
             }
-            if scope_x_trigger_guide(state) {
+            if (if stock {
+                stock_scope_x_trigger_guide(state)
+            } else {
+                scope_x_trigger_guide(state)
+            }) {
                 let trigger_y = voltage_y(state.threshold, ranges[0]);
                 if plot.y_range().contains(trigger_y) {
                     trace.line_segment(
@@ -8536,7 +8838,11 @@ impl Rack {
             painter.text(
                 point(40.0, 89.0),
                 Align2::LEFT_TOP,
-                scope_range_label(auto_range, ranges),
+                if stock {
+                    stock_scope_range_label(auto_range, ranges)
+                } else {
+                    scope_range_label(auto_range, ranges)
+                },
                 FontId::monospace(9.5 * zoom),
                 Color32::from_gray(180),
             );
@@ -8623,7 +8929,11 @@ impl Rack {
                     state.x_channels,
                     state.y_channels,
                     if state.xy { "XY" } else { "TIME" },
-                    scope_trigger_status(state)
+                    if stock {
+                        stock_scope_trigger_status(state)
+                    } else {
+                        scope_trigger_status(state)
+                    }
                 ),
                 FontId::monospace(9.5 * zoom),
                 Color32::from_gray(216),
@@ -8639,6 +8949,10 @@ impl Rack {
         }
         if self.scope_states.contains_key(&node.id) {
             self.lighting.preserve(&painter, screen_start);
+        }
+        if stock {
+            self.paint_stock_scope_lamps(ui, node, rect);
+            return self.stock_scope_controls(ui, node, module, rect);
         }
         let mut action = None;
         for (index, (name, label, suffix)) in SCOPE_CONTROLS.iter().enumerate() {
@@ -10655,7 +10969,7 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
                 363.0,
             )
         }
-        "scope" => {
+        "scope" | "stock_scope" => {
             return pos2(
                 if input {
                     [70.0, 170.0, 285.0][index]
@@ -11725,7 +12039,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "studio_mixer" => 804.0,
         "modal_resonator" => HP * 32.0,
         "macro_voice" => HP * 20.0,
-        "scope" => HP * 42.0,
+        "scope" | "stock_scope" => HP * 42.0,
         "score_sequencer" => HP * 40.0,
         "stereo_delay" | "sidechain_compressor" => HP * 28.0,
         "stereo_reverb" | "drum_voice" => HP * 24.0,
@@ -11774,6 +12088,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "modal_resonator" => "MODAL RESONATOR",
         "macro_voice" => "MACRO VOICE",
         "scope" => "SCOPE",
+        "stock_scope" => "STOCK SCOPE",
         "score_sequencer" => "SCORE",
         "stereo_delay" => "STEREO DELAY",
         "stereo_reverb" => "SPACE",
@@ -13607,6 +13922,21 @@ struct ScopeDisplayRange {
     span: f64,
     offset: f64,
 }
+#[derive(Clone, Copy, Debug)]
+struct StockScopeView {
+    token: u64,
+    automatic: bool,
+    fitted: Option<[ScopeDisplayRange; 2]>,
+}
+impl StockScopeView {
+    fn new(token: u64) -> Self {
+        Self {
+            token,
+            automatic: true,
+            fitted: None,
+        }
+    }
+}
 fn scope_auto_range_enabled(node: &Node) -> bool {
     node.params.get("auto_range").copied().unwrap_or(1.0) >= 0.5
 }
@@ -13721,14 +14051,38 @@ fn scope_calibrated_voltage(volts: f64) -> String {
     format!("{} {unit}", scope_measurement_number(value))
 }
 fn scope_range_label(automatic: bool, ranges: [ScopeDisplayRange; 2]) -> String {
+    scope_range_label_named(if automatic { "AUTO" } else { "MANUAL" }, ranges)
+}
+fn stock_scope_range_label(automatic: bool, ranges: [ScopeDisplayRange; 2]) -> String {
+    scope_range_label_named(
+        if automatic {
+            "AUTO · NATIVE VIEW"
+        } else {
+            "MANUAL · SOURCE RANGE"
+        },
+        ranges,
+    )
+}
+fn scope_range_label_named(prefix: &str, ranges: [ScopeDisplayRange; 2]) -> String {
     format!(
         "{} X {}/screen offset {}  |  Y {}/screen offset {}",
-        if automatic { "AUTO" } else { "MANUAL" },
+        prefix,
         scope_calibrated_voltage(ranges[0].span),
         scope_calibrated_voltage(ranges[0].offset),
         scope_calibrated_voltage(ranges[1].span),
         scope_calibrated_voltage(ranges[1].offset),
     )
+}
+fn stock_scope_parameter_action(action: RackAction, revision: u64) -> RackAction {
+    match action {
+        RackAction::Command("set_parameter", mut args) => {
+            if args.get("expected_revision").is_none() {
+                args["expected_revision"] = json!(revision);
+            }
+            RackAction::Command("set_parameter", args)
+        }
+        other => other,
+    }
 }
 fn scope_parameter_action(node: &Node, action: RackAction, revision: u64) -> RackAction {
     match action {
@@ -13763,6 +14117,37 @@ fn scope_parameter_action(node: &Node, action: RackAction, revision: u64) -> Rac
 }
 fn scope_x_trigger_guide(state: &openpatch_core::ScopeSnapshot) -> bool {
     state.trigger_enabled && !state.xy && state.trigger_input_channels == 0 && state.x_channels > 0
+}
+fn stock_scope_x_trigger_guide(state: &openpatch_core::ScopeSnapshot) -> bool {
+    state
+        .stock
+        .is_some_and(|stock| f32::from_bits(stock.parameter_bits[5]) == 0.0)
+        && scope_x_trigger_guide(state)
+}
+fn stock_scope_trigger_status(state: &openpatch_core::ScopeSnapshot) -> String {
+    let Some(stock) = state.stock else {
+        return "SOURCE STATE UNAVAILABLE".into();
+    };
+    if f32::from_bits(stock.parameter_bits[5]) != 0.0 {
+        if state.xy {
+            "XY · CONTINUOUS · SOURCE TRIGGER BYPASSED".into()
+        } else {
+            "TIME DISPLAY · SOURCE XY CAPTURE · TRIGGER BYPASSED".into()
+        }
+    } else if !state.trigger_enabled {
+        "FREE RUN · SOURCE TRIGGER DISABLED".into()
+    } else {
+        format!(
+            "{} SOURCE TRIGGER · {} V{}",
+            if state.trigger_input_channels > 0 {
+                "EXT"
+            } else {
+                "X"
+            },
+            scope_measurement_number(f64::from(state.threshold)),
+            if state.waiting { " · WAITING" } else { "" },
+        )
+    }
 }
 fn scope_trigger_status(state: &openpatch_core::ScopeSnapshot) -> String {
     if state.xy {
@@ -13833,6 +14218,22 @@ const SCOPE_CONTROLS: [(&str, &str, &str); 9] = [
     ("trigger_enabled", "TRIGGER", ""),
     ("auto_range", "AUTO RANGE", ""),
 ];
+const STOCK_SCOPE_CONTROLS: [(&str, &str, &str); 8] = [
+    ("x_scale", "X RANGE", ""),
+    ("y_scale", "Y RANGE", ""),
+    ("time", "TIME · NOMINAL", ""),
+    ("xy", "DISPLAY", ""),
+    ("x_offset", "X OFFSET", " V"),
+    ("y_offset", "Y OFFSET", " V"),
+    ("threshold", "TRIGGER LEVEL", " V"),
+    ("trigger_disabled", "TRIGGER", ""),
+];
+fn stock_scope_nominal_ms(raw: f32) -> f64 {
+    1000.0 * 2.0_f64.powf(-f64::from(raw))
+}
+fn stock_scope_time_raw(millis: f64) -> f32 {
+    -(millis / 1000.0).log2() as f32
+}
 fn scope_control_rect(index: usize) -> Rect {
     if index == 8 {
         return Rect::from_min_size(pos2(320.0, 353.0), vec2(105.0, 22.0));
@@ -13877,6 +14278,9 @@ mod tests {
     }
     mod scope_visibility_tests {
         include!("scope_visibility_tests.rs");
+    }
+    mod stock_scope_panel_tests {
+        include!("stock_scope_panel_tests.rs");
     }
     mod viz_ui_tests {
         include!("viz_ui_tests.rs");
