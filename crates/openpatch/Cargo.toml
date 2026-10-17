@@ -9,6 +9,10 @@ description = "An agent-controllable modular synthesizer in Rust"
 sha2 = "0.10.9"
 openpatch-core = { path = "../openpatch-core" }
 serde_json = "1"
+serde = { version = "1.0.229", features = ["derive", "rc"] }
+tar = { version = "0.4.46", default-features = false }
+zstd = { version = "0.14.3", default-features = false }
+base64 = "0.22.1"
 
 
 [target.'cfg(unix)'.dependencies]
