@@ -27,6 +27,7 @@ include!("stock_noise_panel.rs");
 include!("studio_mixer_panel.rs");
 include!("resonator_panel.rs");
 include!("atlas_voice_panel.rs");
+include!("atlas_analog_panels.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
 #[path = "agent_follow.rs"]
@@ -49,7 +50,7 @@ const STOCK_PROCESS_PORT_SCALE: f32 = 1.30;
 const REDESIGNED_PORT_SCALE: f32 = 1.30;
 fn port_material_scale(kind: &str) -> f32 {
     match kind {
-        "adsr" | "ladder_vcf" => {
+        "adsr" | "ladder_vcf" | "analog_vco" | "analog_vca" => {
             32.0 * AtlasVoiceLayout {
                 width: panel_width(kind),
             }
@@ -64,8 +65,7 @@ fn port_material_scale(kind: &str) -> f32 {
         "modal_resonator" => REDESIGNED_PORT_SCALE,
         "crossfade" | "quantizer" | "stock_quantizer" | "poly_sum" | "mid_side"
         | "stock_mid_side" | "mix6" | "stock_mix" => REDESIGNED_PORT_SCALE,
-        "analog_vco"
-        | "fade"
+        "fade"
         | "compare"
         | "process"
         | "rescale"
@@ -82,7 +82,6 @@ fn port_material_scale(kind: &str) -> f32 {
         | "lfo"
         | "lowpass"
         | "gain"
-        | "analog_vca"
         | "adsr_eg"
         | "svf_filter"
         | "stereo_delay"
@@ -3583,6 +3582,12 @@ impl Rack {
                     let (min, max, help) = if node.kind == "adsr" {
                         (layout.point(157.0,145.0), layout.point(263.0,390.0),
                          "Configured RC envelope guide at the saved settings. Attack: time to 10 V; decay/release: 99% settling. A sample gate illustrates the hold and release. Stage lenses are inactive; this module has no stage telemetry.")
+                    } else if node.kind == "analog_vca" {
+                        (layout.point(38.0,345.0),layout.point(382.0,457.0),
+                         "Configured static OTA transfer at CV 10 V and 25°C. Horizontal axis: input −10 to +10 V; vertical axis: output −12 to +12 V. Shows the matched-pair saturation law, before oversampling-filter dynamics. Unpatched CV is 10 V; patched CV clamps from 0 to 10 V.")
+                    } else if node.kind == "analog_vco" {
+                        (layout.point(242.0,106.0),layout.point(384.0,276.0),
+                         "Configured nominal saw/pulse shape, ±5 V over one cycle. Frequency and period assume zero pitch and FM voltage. The audio engine applies polynomial BLEP correction at discontinuities; this shape guide is not a live waveform. Pulse width applies only to Pulse.")
                     } else {
                         (layout.point(242.0,106.0), layout.point(384.0,276.0),
                          "Configured zero-CV, small-signal response. Pole frequency is −12 dB at zero resonance. The linearized curve describes the equilibrium; at 100% resonance and above, the nonlinear model can self-oscillate. It is not a live spectrum.")
@@ -4297,24 +4302,25 @@ impl Rack {
                 let slew_min = (node.kind == "process" && *name == "slew").then_some(min);
                 let multiplier = node.params.get("multiplier").copied().unwrap_or(1.0);
                 let scaled_gain = node.kind == "rescale" && *name == "gain";
-                let display_scale =
-                    if atlas_voice(&node.kind) && matches!(*name, "sustain" | "resonance") {
-                        100.0
-                    } else if node.kind == "stock_quantizer" {
-                        12.0
-                    } else if clock_ratio {
-                        0.5
-                    } else if scaled_gain {
-                        if multiplier == 1.0 {
-                            100.0
-                        } else {
-                            multiplier
-                        }
-                    } else if fade_percent || vco_percent {
+                let display_scale = if atlas_voice(&node.kind)
+                    && matches!(*name, "sustain" | "resonance" | "pulse_width")
+                {
+                    100.0
+                } else if node.kind == "stock_quantizer" {
+                    12.0
+                } else if clock_ratio {
+                    0.5
+                } else if scaled_gain {
+                    if multiplier == 1.0 {
                         100.0
                     } else {
-                        1.0
-                    };
+                        multiplier
+                    }
+                } else if fade_percent || vco_percent {
+                    100.0
+                } else {
+                    1.0
+                };
                 let display_value = if atlas_voice(&node.kind) {
                     atlas_voice_value(&node.kind, name, value, spec)
                 } else if node.kind == "stock_quantizer" {
@@ -4454,7 +4460,7 @@ impl Rack {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
                 let readout_width = if atlas_voice(&node.kind) {
-                    AtlasVoiceLayout { width }.value_width()
+                    AtlasVoiceLayout { width }.value_width(&node.kind, name)
                 } else if node.kind == "random" {
                     if *name == "unipolar" {
                         120.0
@@ -10348,7 +10354,7 @@ fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
-        "adsr" | "ladder_vcf" => {
+        "adsr" | "ladder_vcf" | "analog_vco" | "analog_vca" => {
             return AtlasVoiceLayout { width }.point(
                 if input {
                     if index == 0 {
@@ -13894,6 +13900,8 @@ mod tests {
         for kind in [
             "adsr",
             "ladder_vcf",
+            "analog_vco",
+            "analog_vca",
             "macro_voice",
             "mix6",
             "stock_mix",
@@ -18444,27 +18452,9 @@ mod tests {
                     "nodes":[{"id":"voice","kind":kind}]}))
                 .unwrap();
                 frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 17);
-                let target = if kind == "ladder_vcf" {
-                    [pos2(89.5, 105.5), pos2(71.0, 210.0), pos2(187.0, 210.0)][index]
-                } else {
-                    [pos2(129.0, 150.0), pos2(76.5, 264.0), pos2(181.5, 264.0)][index]
-                };
+                let target = [pos2(89.5, 105.5), pos2(71.0, 210.0), pos2(187.0, 210.0)][index];
                 if readout {
-                    let target = target
-                        + vec2(
-                            0.0,
-                            if kind == "ladder_vcf" {
-                                if index == 0 {
-                                    57.65
-                                } else {
-                                    51.65
-                                }
-                            } else if index == 0 {
-                                47.0
-                            } else {
-                                32.0
-                            },
-                        );
+                    let target = target + vec2(0.0, if index == 0 { 57.65 } else { 51.65 });
                     for (time, pressed) in [(1.0, true), (1.04, false), (1.08, true), (1.12, false)]
                     {
                         frame_revision_state(
@@ -18500,7 +18490,7 @@ mod tests {
             "nodes":[{"id":"vco","kind":"analog_vco"}]}))
         .unwrap();
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-        let pulse = pos2(99.75, 264.0);
+        let pulse = pos2(91.5, 210.0);
         frame(
             &ctx,
             &mut rack,
@@ -19896,7 +19886,7 @@ mod tests {
             .unwrap();
             frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 17);
             let target = if step.is_some() {
-                pos2(76.5, 264.0)
+                pos2(71.0, 210.0)
             } else {
                 pos2(99.0, 137.0)
             };

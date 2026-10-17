@@ -12,16 +12,22 @@ The recent process duplicated feature-push/PR CI, required two full capture revi
 
 Now use one milestone branch, focused local checks, one PR CI run and one appropriate review. Default CI targets macOS ARM, with Rust build/dependency caching and cancellation of superseded runs. Full Linux/Windows validation and benchmarks are available through the manual `full_validation` input. Documentation-only changes skip application CI. The installed app is independent of CI artifacts.
 
-## Approved two-panel native integration
+## Active milestone: extend the approved native design
 
-The user rejected the material/control rollout as too far from the [01 Signal Atlas reference](../design/concepts/module-panels-20261016-v1/01-signal-atlas.png). **The broad goal is paused.** The user approved the two-panel preview (“Looks good”), authorizing native integration of analog ADSR and Ladder VCF. Broader catalog rollout remains checkpointed.
+The user rejected the material/control rollout as too far from the [01 Signal Atlas reference](../design/concepts/module-panels-20261016-v1/01-signal-atlas.png). The user approved the two-panel preview (“Looks good”) and resumed work with “continue”. Extend that native design across the catalog in coherent families, retaining the finished ADSR/Ladder panels as the reference.
 
 The [interactive design review](../design/reviews/signal-atlas-two-modules-v1/index.html) contains analog ADSR and Ladder VCF studies. They use the existing modules' controls, ranges and ports, large tactile knobs, functional stage/feedback diagrams, metal sockets and identical scaled thumbnails. The HTML/SVG artifact records the approved direction; native implementation lives in `atlas_voice_panel.rs` and uses the real shared rack/browser renderer. Configured plots are explicitly separate from live audio. No DSP code changed.
 
 - **Native scope:** tactile knobs, warm material, metal sockets, diagrams, static configured RC/linearized filter plots, scaled thumbnails, existing drag/fine/keyboard/numeric/context editing, undo and MCP motion anchors. Existing panel widths and port identities remain stable; the three sockets now share the approved bottom row.
 - **Validation:** actual Session gestures and numeric entry for all seven controls, cable target/label clearance, rack/browser geometry, response-guide contracts, native mesh previews and macOS desktop regression. No native window or physical audio-device qualification is claimed.
 - **Verified:** 1,081 macOS ARM desktop tests passed, 4 ignored; strict desktop Clippy and formatting passed. Native light/dark mesh captures were inspected. [Native panels and thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-preview.png).
-- **Delivery:** publish the native source as a draft development PR. Keep 0.2.5 build 7 installed; no broad catalog conversion or automatic upgrade.
+- **Delivery:** keep one development PR and publish useful family checkpoints. Keep 0.2.5 build 7 installed during development; avoid new releases and repeated full CI runs for individual layout edits.
+
+### Analog voice continuation
+
+The capacitor-ramp VCO and OTA VCA now extend the same native material, hardware and functional diagrams. The VCO shows its nominal ±5 V shape, cycle period, exponential pitch/linear FM path and a pulse-only width control. The VCA shows a configured static saturation curve at CV 10 V, with the 0–10 V CV clamp and unpatched 10 V normal stated on the panel. These are configured model guides, not live waveforms. Existing HP widths, identities, numeric edits, choices, gesture undo and cable/MCP behavior are retained.
+
+[Four-module native voice and browser thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-analog-voice.png). **56 focused checks passed**, covering the updated gestures/units, choices, jack targets, text/geometry, rack/browser identity and OTA DC guide against the actual engine. Strict desktop Clippy and formatting passed. No DSP sources or frozen references changed. Next: modulation/filter utilities, then stock voice/envelope panels, before dense effect/sequencer/mixer families. Other catalog panels retain intermediate styling until their individual pass.
 
 The following catalog batches describe existing development source, not an approved final design.
 

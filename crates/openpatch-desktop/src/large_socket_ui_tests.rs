@@ -65,13 +65,14 @@ fn contract(kind: &str) -> (f32, Vec<SocketSpec>) {
         "drum_voice" => (360.0, vec![S::input("trigger", "TRIG", 120.0, 342.0), S::input("accent", "ACCENT", 240.0, 342.0), S::output("out", "OUT", 180.0, 374.0)]),
         "lfo" => (180.0, vec![S::input("fm", "FM", 90.0, 332.0), S::output("out", "OUT", 90.0, 374.0)]),
         "lowpass" => (180.0, vec![S::input("signal", "IN", 90.0, 332.0), S::output("out", "OUT", 90.0, 374.0)]),
-        "gain" | "analog_vca" => (150.0, vec![S::input("signal", "IN", 50.0, 332.0), S::input("cv", "CV", 100.0, 332.0), S::output("out", "OUT", 75.0, 374.0)]),
+        "analog_vca" => (150.0, vec![S::input("signal", "IN", 31.071428, 335.5), S::input("cv", "CV", 75.0, 335.5), S::output("out", "OUT", 118.92857, 335.5)]),
+        "gain" => (150.0, vec![S::input("signal", "IN", 50.0, 332.0), S::input("cv", "CV", 100.0, 332.0), S::output("out", "OUT", 75.0, 374.0)]),
         "adsr" => (240.0, vec![S::input("gate", "GATE", 49.714287, 335.5), S::input("retrigger", "RETRIG", 120.0, 335.5), S::output("out", "ENV", 190.28572, 335.5)]),
         "svf_filter" => (270.0, vec![S::input("signal", "IN", 90.0, 332.0), S::input("cutoff_cv", "V/OCT", 180.0, 332.0), S::output("low", "LOW", 67.5, 374.0), S::output("band", "BAND", 135.0, 374.0), S::output("high", "HIGH", 202.5, 374.0)]),
         "analog_vco" => (210.0, vec![
-            S::input("pitch", "V/OCT", 70.0, 332.0),
-            S::input("fm", "FM", 140.0, 332.0),
-            S::output("out", "OUT", 105.0, 374.0),
+            S::input("pitch", "V/OCT", 43.5, 335.5),
+            S::input("fm", "FM", 105.0, 335.5),
+            S::output("out", "OUT", 166.5, 335.5),
         ]),
         "ladder_vcf" => (210.0, vec![
             S::input("signal", "IN", 43.5, 335.5),
@@ -208,7 +209,7 @@ fn rendered(kind: &str, value_case: &str, zoom: f32, browser: bool) -> Painted {
         .find(|module| module["kind"] == kind).unwrap();
     let (width, sockets) = contract(kind);
     assert_eq!(panel_width(kind), width, "{kind}: saved face width");
-    assert_eq!(port_material_scale(kind), match kind { "adsr" => 17.6 / 10.3, "ladder_vcf" => 16.0 / 10.3, "stock_delay" => 1.20, _ => 1.30 }, "{kind}: material scale");
+    assert_eq!(port_material_scale(kind), match kind { "adsr" => 17.6 / 10.3, "ladder_vcf" | "analog_vco" | "analog_vca" => 16.0 / 10.3, "stock_delay" => 1.20, _ => 1.30 }, "{kind}: material scale");
     let mut preview = ModulePreview::new(module);
     preview.patch.nodes[0].id = "subject".into();
     preview.renderer.positions.clear();
@@ -299,8 +300,8 @@ fn separated_from_ring(rect: Rect, center: Pos2, radius: f32, margin: f32) -> bo
 
 fn assert_large_socket_kind(kind: &str) {
     let catalog = openpatch_core::catalog();
-    let approved_voice = matches!(kind, "adsr" | "ladder_vcf");
-    let material_scale = match kind { "adsr" => 17.6 / 10.3, "ladder_vcf" => 16.0 / 10.3, "stock_delay" => 1.20, _ => 1.30 };
+    let approved_voice = matches!(kind, "adsr" | "ladder_vcf" | "analog_vco" | "analog_vca");
+    let material_scale = match kind { "adsr" => 17.6 / 10.3, "ladder_vcf" | "analog_vco" | "analog_vca" => 16.0 / 10.3, "stock_delay" => 1.20, _ => 1.30 };
         let (width, sockets) = contract(kind);
         let module = catalog["modules"].as_array().unwrap().iter()
             .find(|module| module["kind"] == kind).unwrap();

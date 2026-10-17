@@ -1,7 +1,7 @@
-// Approved two-panel Signal Atlas design. Design coordinates follow the
+// Signal Atlas analog voice family, extending the approved two-panel design. Design coordinates follow the
 // reviewed 420×720 artwork; existing HP widths and rack height stay unchanged.
 fn atlas_voice(kind: &str) -> bool {
-    matches!(kind, "adsr" | "ladder_vcf")
+    matches!(kind, "adsr" | "ladder_vcf" | "analog_vco" | "analog_vca")
 }
 
 #[derive(Clone, Copy)]
@@ -13,7 +13,7 @@ impl AtlasVoiceLayout {
         pos2(x * self.width / 420.0, y * PANEL_HEIGHT / 720.0)
     }
     fn unit(self) -> f32 {
-        (self.width / 420.0).min(PANEL_HEIGHT / 720.0)
+        (self.width / 420.0).clamp(0.5, PANEL_HEIGHT / 720.0)
     }
     fn control(self, kind: &str, name: &str) -> (Pos2, f32) {
         let (x, y, radius) = match (kind, name) {
@@ -21,7 +21,9 @@ impl AtlasVoiceLayout {
             ("adsr", "decay") => (326.0, 166.0, 45.0),
             ("adsr", "sustain") => (94.0, 360.0, 45.0),
             ("adsr", _) => (326.0, 360.0, 45.0),
-            (_, "cutoff") => (131.0, 170.0, 57.0),
+            ("analog_vca", _) => (210.0, 180.0, 70.0),
+            ("analog_vco", "frequency") | (_, "cutoff") => (131.0, 170.0, 57.0),
+            ("analog_vco", "waveform") => (94.0, 360.0, 45.0),
             (_, "resonance") => (94.0, 360.0, 45.0),
             _ => (326.0, 360.0, 45.0),
         };
@@ -31,14 +33,19 @@ impl AtlasVoiceLayout {
         let (center, radius) = self.control(kind, name);
         center + vec2(0.0, radius + 53.0 * PANEL_HEIGHT / 720.0)
     }
-    fn value_width(self) -> f32 {
-        96.0 * self.width / 420.0
+    fn value_width(self, kind: &str, name: &str) -> f32 {
+        match (kind, name) {
+            ("analog_vca", _) => 68.0,
+            ("analog_vco", "waveform") => 82.0,
+            ("analog_vco", "frequency") => 74.0,
+            _ => 96.0 * self.width / 420.0,
+        }
     }
 }
 fn atlas_voice_value(kind: &str, name: &str, value: f32, spec: &Value) -> String {
     if name == "resonance" || (kind == "adsr" && name == "sustain") {
         format!("{:.0}%", value * 100.0)
-    } else if name == "drive" {
+    } else if matches!(name, "drive" | "gain") {
         format!("{value:.2}×")
     } else {
         parameter_value(name, value, spec)
@@ -329,6 +336,9 @@ fn paint_atlas_voice_socket(
         ("adsr", "out") => "ENV",
         (_, "signal") => "IN",
         (_, "cutoff_cv") => "V/OCT",
+        (_, "pitch") => "V/OCT",
+        (_, "fm") => "FM",
+        (_, "cv") => "CV",
         (_, "gate") => "GATE",
         (_, "retrigger") => "RETRIG",
         _ => "OUT",
@@ -481,6 +491,10 @@ fn paint_atlas_voice_configuration(
         },
         zoom,
     };
+    if matches!(node.kind.as_str(), "analog_vco" | "analog_vca") {
+        paint_atlas_analog_configuration(&draw, node, rate, lighting);
+        return;
+    }
     let quiet = Color32::from_rgb(133, 143, 123);
     let screen_ink = Color32::from_rgb(195, 200, 180);
     let grid = Color32::from_rgb(45, 59, 44);
@@ -736,6 +750,8 @@ fn paint_atlas_voice_control_print(
         "sustain" => "0 – 100%",
         "resonance" => "0 – 110%",
         "drive" => "0 – 4×",
+        "gain" => "0 – 2×",
+        "pulse_width" => "5 – 95%",
         _ => "",
     };
     painter.text(

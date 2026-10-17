@@ -2,7 +2,7 @@
 
 Open [index.html](index.html) locally; no server, dependencies or audio permissions are required. [preview.png](preview.png) shows both full-size panels and their matching browser thumbnails. This isolated HTML/SVG prototype is for visual approval, not a native app build. The installed OpenPatch remains unchanged.
 
-Reference: [01 Signal Atlas](../../concepts/module-panels-20261016-v1/01-signal-atlas.png). Approval covers the material, hardware, typography, grouping, functional diagrams and readability at full size and thumbnail size. The user approved these two prototypes on 2026-10-16. Native integration is limited to these two modules; the wider catalog remains checkpointed.
+Reference: [01 Signal Atlas](../../concepts/module-panels-20261016-v1/01-signal-atlas.png). Approval covers the material, hardware, typography, grouping, functional diagrams and readability at full size and thumbnail size. The user approved these two prototypes on 2026-10-16. The user subsequently resumed catalog work with “continue”; these two panels remain the approved reference.
 
 ## Actual module contracts
 
@@ -24,3 +24,9 @@ Headless Chrome verified font loading, drag, keyboard endpoints, numeric entry, 
 The native configured envelope explicitly samples stage boundaries so even a short attack is represented. Filter frequency labels and plot use the effective sample-rate cap. Passive ADSR stage lenses stay inactive because this legacy module exposes no stage telemetry; port signal lights retain their existing real engine data. Native captures are headless egui mesh renders, not window/device validation. The installed 0.2.5 build 7 is unchanged.
 
 [Native rack/browser capture](native-preview.png): real egui meshes at full and thumbnail sizes. Final macOS ARM desktop regression: **1,081 passed, 4 ignored**; strict desktop Clippy and formatting checks passed. Light/dark native captures were inspected. The regression also caught an earlier quantizer animation assertion that still expected a fader and a small pre-existing resonator axis-label overlap; the assertion and spacing were corrected.
+
+## Analog voice continuation
+
+[Native VCO, Ladder, ADSR and OTA VCA](native-analog-voice.png) shows the four-module voice and matching thumbnails. The new VCO guide illustrates the nominal ±5 V saw/pulse before BLEP correction, with zero-CV cycle period; width applies only to Pulse. Frequency uses geometric travel and pulse-width numeric entry uses percent. The OTA guide is the static matched-pair transfer at 25°C and CV 10 V, before oversampling-filter dynamics; a focused test compares it with the settled actual engine at 15 input/gain combinations. CV clamps to 0–10 V and defaults to 10 V when unpatched.
+
+The new layouts preserve the VCO's 14 HP and VCA's 10 HP widths. All three ports move to the common lower row. The narrower VCA has a larger main knob and readable minimum hardware/type sizes. Native light/dark meshes were inspected. No application was installed.

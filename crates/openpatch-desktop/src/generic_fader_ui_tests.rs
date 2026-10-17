@@ -765,7 +765,9 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
         ("stock_mix", "level", 0.5, pos2(120.0, 125.0)),
         ("lowpass", "cutoff", 1000.0, pos2(90.0, 183.0)),
         ("gain", "gain", 1.0, pos2(75.0, 183.0)),
-        ("analog_vca", "gain", 1.0, pos2(75.0, 183.0)),
+        ("analog_vca", "gain", 1.0, pos2(75.0, 99.0)),
+        ("analog_vco", "frequency", 261.62558, pos2(65.5,93.5)),
+        ("analog_vco", "pulse_width", 0.5, pos2(163.0,198.0)),
         ("adsr", "attack", 0.01, pos2(53.714287, 91.3)),
         ("adsr", "decay", 0.2, pos2(186.28572, 91.3)),
         ("adsr", "sustain", 0.5, pos2(53.714287, 198.0)),
@@ -804,6 +806,10 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
 #[test]
 fn approved_voice_numeric_fields_commit_physical_units_and_undo() {
     for (kind, parameter, initial, local, text, expected) in [
+        ("analog_vco", "frequency", 261.62558, pos2(65.5,151.15), "440", 440.0),
+        ("analog_vco", "pulse_width", 0.5, pos2(163.0,249.65), "25", 0.25),
+        ("analog_vco", "waveform", 0.0, pos2(47.0,249.65), "1", 1.0),
+        ("analog_vca", "gain", 1.0, pos2(75.0,163.15), "1.5", 1.5),
         ("adsr", "attack", 0.01, pos2(53.714287,145.2), "0.075", 0.075),
         ("adsr", "decay", 0.2, pos2(186.28572,145.2), "0.8", 0.8),
         ("adsr", "sustain", 0.5, pos2(53.714287,251.9), "75", 0.75),
