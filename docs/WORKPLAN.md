@@ -125,6 +125,18 @@ oscillator WAV sample-by-sample and measures one Rack routing frame. This debug
 control-driver result does not qualify asynchronous device deadlines or fulfill
 document/UI/MCP/history integration. The installed app remains unchanged.
 
+The next preparation checkpoint adds control-thread process ownership, an owned
+audio endpoint and acknowledged quiescent capture, including actual-plugin
+refusal/cleanup checks. Project document v3 preserves hosted identities, ports and
+immutable full snapshots; older documents migrate unchanged. Shared hosted
+parameter/option commands now support revision guards, undo/redo and full
+save/reopen through MCP and the native headless App. Native edits retain hosted
+routes/state, and compact inspection uses cached state digests. Inactive panels
+explicitly report no host execution. The remaining milestone is the real mixed
+graph, explicit delayed execution permission, active shared controls and measured
+callback/device behavior—not another transport-only demonstration. Installed
+0.2.7 remains unchanged; no packaging or version bump at this checkpoint.
+
 ## Delivered: Core text and host boundary
 
 Exact Core Notes 2.6.6 now converts into editable native Notes, including legacy

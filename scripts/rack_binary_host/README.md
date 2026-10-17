@@ -138,3 +138,20 @@ asynchronous callback scheduling, device latency, deadline sustainability or a
 feedback contract. Those measurements, shared ProjectDocument/UI/MCP/history
 integration and application packaging remain open in
 [the application-host milestone](../../docs/BINARY_HOST_V1.md).
+
+## Process ownership and authored state preparation
+
+The same gate now also exercises the production Rust process owner: explicit
+pinned launch, loaded-image receipt, endpoint movement independently of the
+control-thread supervisor, acknowledged capture/fresh restore and refusal of
+wrong fingerprints, incomplete capture or an unrelated endpoint even with the
+same public fences. Failed ownership/capture paths reap the child and remove
+private staging. These are control-thread lifecycle checks, not device deadline
+measurements.
+
+The portable project model additionally retains hosted identity, ports and full
+immutable snapshots, with shared revision-fenced parameter/option edits,
+history and save/reopen checks through Session, stdio MCP and the native headless
+App. Hosted nodes remain explicitly inactive. This preparation does not connect
+the companion to the application audio graph; see the milestone for remaining
+execution, live-state and active UI work.

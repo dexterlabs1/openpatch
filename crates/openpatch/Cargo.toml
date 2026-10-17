@@ -13,8 +13,6 @@ serde = { version = "1.0.229", features = ["derive", "rc"] }
 tar = { version = "0.4.46", default-features = false }
 zstd = { version = "0.14.3", default-features = false }
 base64 = "0.22.1"
-
-[dev-dependencies]
 tempfile = "=3.27.0"
 
 [target.'cfg(unix)'.dependencies]

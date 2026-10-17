@@ -2,11 +2,13 @@
 //! Waits occur only in the control driver. Instrumented endpoint calls never wait.
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 mod mac {
+    use openpatch::binary_host::process::LaunchConfig;
     use openpatch::binary_host::{
-        Endpoint, Fault, Fence, InputBlock, OutputBlock, ParamEvent, Region, Status, QUANTUM,
-        SAMPLE_RATE,
+        Fault, Fence, InputBlock, OutputBlock, ParamEvent, Region, Status, TransportEndpoint,
+        QUANTUM, SAMPLE_RATE,
     };
     use serde_json::{json, Value};
+    use sha2::{Digest, Sha256};
     use std::alloc::{GlobalAlloc, Layout, System};
     use std::cell::Cell;
     use std::fs::{self, File};
@@ -197,8 +199,8 @@ mod mac {
             )?)?)
         }
     }
-    fn transfer(
-        endpoint: &mut Endpoint<'_>,
+    fn transfer<R: AsRef<Region>>(
+        endpoint: &mut TransportEndpoint<R>,
         input: &InputBlock,
         output: &mut OutputBlock,
     ) -> Result<()> {
@@ -208,6 +210,124 @@ mod mac {
             s => Err(format!("processing stopped {s:?}").into()),
         })?;
         rt(|| endpoint.receive_due(output)).map_err(|e| format!("receive {e:?}"))?;
+        Ok(())
+    }
+    fn managed_config(args: &[PathBuf], seed: &Value, incarnation: u64) -> Result<LaunchConfig> {
+        Ok(LaunchConfig {
+            companion_executable: args[0].clone(),
+            sdk_dir: args[1].clone(),
+            plugin_dir: args[2].clone(),
+            workspace_parent: args[3].clone(),
+            expected_plugin_sha256: format!(
+                "{:x}",
+                Sha256::digest(fs::read(args[2].join("plugin.dylib"))?)
+            ),
+            expected_runtime_sha256: format!(
+                "{:x}",
+                Sha256::digest(fs::read(args[1].join("libRack.dylib"))?)
+            ),
+            fence: Fence {
+                incarnation,
+                generation: 9,
+                revision: 11,
+            },
+            input_mask: 4,
+            snapshot: seed.clone(),
+            startup_timeout: Duration::from_secs(5),
+        })
+    }
+    fn managed_gate(args: &[PathBuf], seed: &Value) -> Result<()> {
+        let mut prepared = managed_config(args, seed, 20)?.launch()?;
+        let workspace = prepared.process.workspace_path().to_path_buf();
+        fs::copy(
+            workspace.join("private-user/identity.json"),
+            args[3].join("managed-identity.json"),
+        )?;
+        let worker = std::thread::spawn(move || -> std::result::Result<_, String> {
+            let mut endpoint = prepared.endpoint;
+            let mut input = InputBlock::silence(4);
+            for frame in &mut input.values[2] {
+                frame[0] = 4.;
+            }
+            let mut output = OutputBlock::default();
+            for block in 0..4 {
+                input.event_count = usize::from(block == 1);
+                input.events[0] = ParamEvent {
+                    sample_offset: 64,
+                    parameter: 1,
+                    value: 0.25,
+                    order: 1,
+                };
+                transfer(&mut endpoint, &input, &mut output).map_err(|e| e.to_string())?;
+                for (frame, values) in output.values.iter().enumerate() {
+                    let expected = if block == 0 && frame == 0 {
+                        0.
+                    } else if block < 1 || (block == 1 && frame < 64) {
+                        10.
+                    } else {
+                        2.5
+                    };
+                    assert_eq!(values[0], expected);
+                }
+            }
+            Ok(endpoint)
+        });
+        assert_eq!(prepared.process.poll_health()?, Status::Ready);
+        while !worker.is_finished() {
+            assert_eq!(prepared.process.poll_health()?, Status::Ready);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let endpoint = worker
+            .join()
+            .map_err(|_| "owned endpoint worker panicked")??;
+        let captured = prepared.process.finish(endpoint)?;
+        let mut expected = seed.clone();
+        expected["params"][1]["value"] = json!(0.25);
+        assert_eq!(captured.state, expected);
+        assert_eq!(
+            captured.fence,
+            Fence {
+                incarnation: 20,
+                generation: 9,
+                revision: 11
+            }
+        );
+        write(&args[3].join("managed-capture.json"), &captured.state)?;
+        assert!(
+            !workspace.exists(),
+            "successful controller must clean private workspace"
+        );
+        let restored = managed_config(args, &captured.state, 21)?.launch()?;
+        assert_eq!(
+            restored.process.finish(restored.endpoint)?.state,
+            captured.state
+        );
+        let mut mismatch = managed_config(args, seed, 22)?;
+        mismatch.expected_plugin_sha256 = "0".repeat(64);
+        assert!(
+            mismatch.launch().is_err(),
+            "wrong fingerprint must never be prepared"
+        );
+        let mut pending = managed_config(args, seed, 23)?.launch()?;
+        let pending_pid = pending.process.id() as i32;
+        let pending_workspace = pending.process.workspace_path().to_path_buf();
+        rt(|| pending.endpoint.submit(&InputBlock::silence(4))).unwrap();
+        assert!(
+            pending.process.finish(pending.endpoint).is_err(),
+            "unreceived block must prevent a successful capture"
+        );
+        assert!(!pending_workspace.exists());
+        assert_eq!(unsafe { libc::kill(pending_pid, 0) }, -1);
+        assert_eq!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::ESRCH)
+        );
+        // Even identical public fences cannot bind capture to another mapping.
+        let first = managed_config(args, seed, 24)?.launch()?;
+        let second = managed_config(args, seed, 24)?.launch()?;
+        assert!(first.process.finish(second.endpoint).is_err());
+        drop(first.endpoint);
+        drop(second.process);
         Ok(())
     }
     fn all_zero(output: &OutputBlock) -> bool {
@@ -548,12 +668,13 @@ mod mac {
             let result = unsafe { libc::kill(orphan_pid, 0) };
             Ok(result < 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH))
         })?;
+        managed_gate(&args, &seed)?;
         let report = json!({"passed":true,"gate":"actual binary transport foundation; application integration pending",
             "build":if cfg!(debug_assertions){"debug"}else{"release"},"quantum":QUANTUM,"rate":SAMPLE_RATE,
             "rack_input_to_observed_output_frames":impulse_frame-16,"proposed_transport_delay_frames":QUANTUM,
             "offline_wav_frames":tone.len(),"offline_wav_rms":rms,"endpoint_heap_allocations":0,"endpoint_heap_deallocations":0,
             "checks":["actual plugin/runtime image identities","mono impulse","settled poly16","within-block channel changes at pinned source cadence","mono offset CV and poly16 bipolar scale CV","sample-offset and simultaneous ordered parameter events","native Rust oscillator waveform and gain through existing plugin offline WAV","quiescent capture/fresh-process restore","SIGSTOP deadline and late-result silence","no endpoint reacquisition","SIGKILL deadline silence","malformed input rejected before processing"],
-            "parent_death_cleanup":true,"realtime_deadlines_qualified":false,"native_window_or_device_test":false,"document_ui_mcp_integration":false});
+            "parent_death_cleanup":true,"production_process_owner_checks":["pinned launch and identity receipt","owned endpoint moved to worker while controller stays on control thread","healthy acknowledged capture and fresh restore","wrong fingerprint refusal","pending capture refusal plus child reap/workspace cleanup","wrong mapping refusal even with identical fences"],"realtime_deadlines_qualified":false,"native_window_or_device_test":false,"document_ui_mcp_integration":false});
         write(&args[3].join("result.json"), &report)?;
         println!("{}", serde_json::to_string(&report)?);
         Ok(())

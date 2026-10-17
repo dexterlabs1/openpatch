@@ -219,7 +219,7 @@ pub fn configured_document_states(project: &ProjectDocument) -> BTreeMap<String,
             DocumentNode::Native { node, .. } => {
                 SavedModuleState::from_node(node).map(|state| (node.id.clone(), state))
             }
-            DocumentNode::Unresolved { .. } => None,
+            DocumentNode::Unresolved { .. } | DocumentNode::Hosted { .. } => None,
         })
         .collect()
 }

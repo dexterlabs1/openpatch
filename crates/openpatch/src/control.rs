@@ -13,6 +13,8 @@ pub use project_saved::{
 #[cfg(test)]
 mod document_tests;
 #[cfg(test)]
+mod hosted_document_tests;
+#[cfg(test)]
 mod rack264_import_tests;
 mod rack_import;
 use crate::project_document::{
@@ -2761,6 +2763,8 @@ pub fn tools() -> Value {
         tool("replace_document", "Explicitly replace the complete project, retaining original Rack records/assets and unresolved modules. Loads in exact mode; unresolved dependencies suspend playback. One undo step.", json!({"document":{"type":"object"},"expected_revision":rev}), &["document"], false),
         tool("load_document", "Load a portable project JSON from workspace, preserving original source data. Migrates native legacy projects. Exact playback is the default.", json!({"filename":s,"expected_revision":rev}), &["filename"], false),
         tool("save_document", "Save a complete portable project inside workspace without overwriting. Preserves original Rack data and unresolved dependencies. Suspended saves use persisted state explicitly, never fabricated live observations.", json!({"filename":s,"expected_revision":rev}), &["filename"], false),
+        tool("set_hosted_parameter", "Edit a supported hosted module's authored parameter through shared undo/redo. Does not start a companion or enable playback. Current capability: Bogaudio OFFSET 2.6.47, offset/scale in -1..1.", json!({"id":s,"parameter":{"type":"string","enum":["offset","scale"]},"value":{"type":"number","minimum":-1,"maximum":1},"expected_revision":rev}), &["id","parameter","value"], false),
+        tool("set_hosted_option", "Edit a supported hosted module's persistent option through shared undo/redo. Does not start a companion or enable playback. Current capability: Bogaudio OFFSET 2.6.47.", json!({"id":s,"option":{"type":"string","enum":["offset_first","disable_output_limit"]},"value":{"type":"boolean"},"expected_revision":rev}), &["id","option","value"], false),
         tool("set_document_playback", "Explicitly choose exact or partial playback. Partial omits unresolved modules and incident routes and changes downstream normaling; inspect the omission report. Permission is undoable and never saved as an automatic load default.", json!({"mode":{"type":"string","enum":["exact","partial"]},"expected_revision":rev}), &["mode"], false),
         tool("inspect_patch","Read the session patch and revision with compact asset metadata. Set include_asset_data for the full portable payload. In desktop MCP mode this is the live patch shown in the native window.",json!({"include_asset_data":{"type":"boolean","default":false}}),&[],true),
         tool("capture_project_patch","Capture a project-save patch with actual SEQ3 Run, Push HOLD, MIDI CC assignments and controller values, and all Random Values and Shift Register held voltages plus next PRNG state overlaid on a cloned graph. All live stateful modules must be available at the current revision and the same callback frame; otherwise retry. Without a backend uses initial/default state. No stateful modules means parameter-only capture without reading the backend. Returns patch, revision, state_id, running, holding, random_values and shift_registers maps, state_source, and frame. Does not change session, history, queue, or runtime.",json!({"expected_revision":rev,"include_asset_data":{"type":"boolean","default":false}}),&[],true),

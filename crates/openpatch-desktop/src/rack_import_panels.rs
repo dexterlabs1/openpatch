@@ -5,7 +5,19 @@ struct UnresolvedPanel {
     plugin: String,
     model: String,
     version: String,
-    ports: Vec<openpatch::project_document::ObservedPort>,
+    hosted: bool,
+    ports: Vec<DeferredPort>,
+}
+#[derive(Clone)]
+struct DeferredPort {
+    direction: openpatch::project_document::PortDirection,
+    key: String,
+    label: String,
+}
+impl DeferredPort {
+    fn key(&self) -> String {
+        self.key.clone()
+    }
 }
 const UNRESOLVED_WIDTH: f32 = 180.0;
 impl Rack {
@@ -20,18 +32,52 @@ impl Rack {
             .graph
             .nodes
             .iter()
-            .filter_map(|node| {
-                let DocumentNode::Unresolved { id, source, ports } = node else {
-                    return None;
-                };
-                let record = document.source_module(source).ok()?;
-                Some(UnresolvedPanel {
+            .filter_map(|node| match node {
+                DocumentNode::Unresolved { id, source, ports } => {
+                    let record = document.source_module(source).ok()?;
+                    Some(UnresolvedPanel {
+                        id: id.clone(),
+                        plugin: record["plugin"].as_str().unwrap_or("Unknown plugin").into(),
+                        model: record["model"].as_str().unwrap_or("Unknown module").into(),
+                        version: record["version"].as_str().unwrap_or("unspecified").into(),
+                        hosted: false,
+                        ports: ports
+                            .iter()
+                            .map(|port| DeferredPort {
+                                direction: port.direction,
+                                key: port.key(),
+                                label: format!(
+                                    "{} #{}",
+                                    if port.direction
+                                        == openpatch::project_document::PortDirection::Input
+                                    {
+                                        "IN"
+                                    } else {
+                                        "OUT"
+                                    },
+                                    port.index
+                                ),
+                            })
+                            .collect(),
+                    })
+                }
+                DocumentNode::Hosted { id, module, .. } => Some(UnresolvedPanel {
                     id: id.clone(),
-                    plugin: record["plugin"].as_str().unwrap_or("Unknown plugin").into(),
-                    model: record["model"].as_str().unwrap_or("Unknown module").into(),
-                    version: record["version"].as_str().unwrap_or("unspecified").into(),
-                    ports: ports.clone(),
-                })
+                    plugin: module.identity.plugin.clone(),
+                    model: module.identity.model.clone(),
+                    version: module.identity.version.clone(),
+                    hosted: true,
+                    ports: module
+                        .ports
+                        .iter()
+                        .map(|port| DeferredPort {
+                            direction: port.direction,
+                            key: port.key.clone(),
+                            label: port.key.replace('_', " ").to_uppercase(),
+                        })
+                        .collect(),
+                }),
+                DocumentNode::Native { .. } => None,
             })
             .collect();
         let unresolved: BTreeSet<_> = self
@@ -86,7 +132,9 @@ impl Rack {
                 let position = *self.positions.get(node.id())?;
                 let width = match node {
                     DocumentNode::Native { node, .. } => module_width(node),
-                    DocumentNode::Unresolved { .. } => UNRESOLVED_WIDTH,
+                    DocumentNode::Unresolved { .. } | DocumentNode::Hosted { .. } => {
+                        UNRESOLVED_WIDTH
+                    }
                 };
                 Some((node.id().to_owned(), position, width, order))
             })
@@ -204,14 +252,22 @@ impl Rack {
             clipped.text(
                 rect.min + vec2(12., 81.) * z,
                 Align2::LEFT_TOP,
-                "UNAVAILABLE",
+                if panel.hosted {
+                    "HOST NOT RUNNING"
+                } else {
+                    "UNAVAILABLE"
+                },
                 FontId::proportional(12. * z),
                 amber,
             );
             clipped.text(
                 rect.min + vec2(12., 103.) * z,
                 Align2::LEFT_TOP,
-                "Source + routing retained",
+                if panel.hosted {
+                    "Settings + routing retained"
+                } else {
+                    "Source + routing retained"
+                },
                 FontId::proportional(10. * z),
                 ink,
             );
@@ -231,15 +287,7 @@ impl Rack {
                 clipped.text(
                     center + vec2(0., 11.) * z,
                     Align2::CENTER_TOP,
-                    format!(
-                        "{} #{}",
-                        if port.direction == PortDirection::Input {
-                            "IN"
-                        } else {
-                            "OUT"
-                        },
-                        port.index
-                    ),
+                    &port.label,
                     FontId::proportional(8. * z),
                     ink,
                 );
@@ -247,7 +295,11 @@ impl Rack {
             clipped.text(
                 rect.min + vec2(12., 360.) * z,
                 Align2::LEFT_TOP,
-                "Click to inspect / repair",
+                if panel.hosted {
+                    "Execution not enabled"
+                } else {
+                    "Click to inspect / repair"
+                },
                 FontId::proportional(10. * z),
                 ink,
             );
@@ -263,10 +315,10 @@ impl Rack {
                 Sense::click(),
             );
             pointer_on_panel |= response.hovered();
-            if response.clicked() {
+            if response.clicked() && !panel.hosted {
                 self.dependency_focus = Some(panel.id.clone());
             }
-            response.on_hover_text(format!("{} / {} ({})\nUnavailable dependency. Its source data and observed port indices are retained. Click to review; this module does not run.",panel.plugin,panel.model,panel.version));
+            response.on_hover_text(if panel.hosted{format!("{} / {} ({})\nHosted settings and routing are retained. External playback is not active; this module produces no signal.",panel.plugin,panel.model,panel.version)}else{format!("{} / {} ({})\nUnavailable dependency. Its source data and observed port indices are retained. Click to review; this module does not run.",panel.plugin,panel.model,panel.version)});
         }
         // Dashed source routes have no signal indication and cannot imply a
         // running module. Their original identities/colors remain in the document.

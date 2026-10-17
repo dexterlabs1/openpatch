@@ -158,5 +158,54 @@
       "transport-tests-001.log: four Rust test float literals lacked integer parts; corrected",
       "transport-clippy-001.log: test explicitly dropped non-Drop endpoint; changed to lexical scope"
     ]
+  },
+  "process_document_preparation": {
+    "status": "passed process ownership and authored document/history/MCP preparation; live application hosting remains incomplete",
+    "local_evidence": "native-test-output/rack-control-import/binary-host/transport-14npwltf",
+    "parent_sha256": "1d95a552ca39e00acf3a20e9477fb5dc8671d3b7c078eb2272540f019d5ae574",
+    "companion_sha256": "903faed075237e1f996856572e4aa09fbe00b4967a7653442ea89d40e82a7786",
+    "artifact_manifest_sha256": "c93f9c73054f111f00eab0030372fbb9992a5c2ee5f63e0cb1f8353262f440a5",
+    "production_process_owner_checks": [
+      "pinned launch and identity receipt",
+      "owned endpoint moved to worker while controller stays on control thread",
+      "healthy acknowledged capture and fresh restore",
+      "wrong fingerprint refusal",
+      "pending capture refusal plus child reap/workspace cleanup",
+      "wrong mapping refusal even with identical fences"
+    ],
+    "endpoint_heap_allocations": 0,
+    "endpoint_heap_deallocations": 0,
+    "authored_workflows": [
+      "document v1/v2 migration into v3 with original sources/assets/layout/scheduling retained",
+      "immutable bounded hosted snapshot with cached SHA-256 and length",
+      "shared native/hosted edit history and save-generation preservation",
+      "stale revision refusal without partial edits",
+      "both custom flags and full identity survive native App/stdio save and reopen",
+      "unknown snapshots retained but unsupported edits refused",
+      "native edits preserve hosted routes/state; exact remains suspended; Partial explicitly omits hosted nodes"
+    ],
+    "validation": {
+      "cli_library": "394 passed, 2 ignored",
+      "desktop_project_workflows": "212 passed, 2 ignored",
+      "desktop_project_acceptance": "18 passed",
+      "default_library_geometry": "1 passed",
+      "actual_stdio_hosted_workflow": "1 passed",
+      "strict_cli_desktop_all_target_clippy": "passed",
+      "affected_inactive_panel": "CPU-rendered and visually inspected; hosted-ui-002/hosted-inactive.png",
+      "actual_stdio_document_regressions": "4 passed, including hosted controls and legacy source/Notes document workflows"
+    },
+    "limits": {
+      "live_application_graph": false,
+      "active_hosted_ui_controls": false,
+      "live_state_capture": false,
+      "device_deadlines_qualified": false,
+      "installed": false
+    },
+    "retained_failures": [
+      "hosted-document-check-003: compact reference macro import missing; corrected",
+      "hosted-workflow-tests-001: new test used wrong overlay API name; corrected",
+      "hosted-desktop-workflow-001: test accessed private rack positions; changed to public layout API",
+      "process-owner-clippy-001: deprecated Atomic fetch_update; replaced with control-thread CAS loop"
+    ]
   }
 }

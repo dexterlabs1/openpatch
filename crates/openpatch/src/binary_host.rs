@@ -12,7 +12,9 @@ use std::os::fd::AsRawFd;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+
+pub mod process;
 
 pub const QUANTUM: usize = 128;
 pub const INPUTS: usize = 3;
@@ -37,6 +39,7 @@ const INPUT_READY: u32 = 1;
 const OUTPUT_READY: u32 = 3;
 const READING: u32 = 4;
 const WRITING: u32 = 5;
+static NEXT_OWNER: AtomicU64 = AtomicU64::new(1);
 
 const _: () = assert!(std::mem::size_of::<AtomicU32>() == 4);
 const _: () = assert!(std::mem::align_of::<AtomicU32>() == 4);
@@ -164,11 +167,62 @@ pub struct Region {
     fence: Fence,
     input_mask: u32,
     endpoint_taken: bool,
+    owner_id: u64,
 }
 
 // A mapping remains valid when ownership moves between parent threads. Region
 // is deliberately not Sync: only one parent endpoint may touch its payloads.
 unsafe impl Send for Region {}
+
+impl AsRef<Region> for Region {
+    fn as_ref(&self) -> &Region {
+        self
+    }
+}
+
+/// Independent header-only control mapping. It cannot access slot payloads or
+/// construct endpoints. The process owner keeps this on its control thread while
+/// the unique OwnedEndpoint moves into a prepared/retired audio plan.
+pub struct ControlView {
+    base: NonNull<u8>,
+    _file: File,
+    owner_id: u64,
+}
+// The only accessible shared bytes are aligned initialized atomic u32 words.
+unsafe impl Send for ControlView {}
+unsafe impl Sync for ControlView {}
+
+impl ControlView {
+    fn atomic(&self, offset: usize) -> &AtomicU32 {
+        unsafe { &*self.base.as_ptr().add(offset).cast::<AtomicU32>() }
+    }
+    pub fn status(&self) -> Status {
+        match self.atomic(STATUS).load(Ordering::Acquire) {
+            0 => Status::Booting,
+            1 => Status::Ready,
+            2 => Status::Fault(self.atomic(ERROR).load(Ordering::Acquire)),
+            3 => Status::Stopped,
+            _ => Status::Invalid,
+        }
+    }
+    pub fn request_stop(&self) {
+        self.atomic(STOP).store(1, Ordering::Release);
+    }
+    pub fn processed_blocks(&self) -> u32 {
+        self.atomic(PROCESSED).load(Ordering::Acquire)
+    }
+    /// Bind capture to this exact mapping even if external fences were reused.
+    pub fn owns_endpoint(&self, endpoint: &OwnedEndpoint) -> bool {
+        self.owner_id == endpoint.region.owner_id
+    }
+}
+impl Drop for ControlView {
+    fn drop(&mut self) {
+        unsafe {
+            libc::munmap(self.base.as_ptr().cast(), HEADER);
+        }
+    }
+}
 
 impl Region {
     /// Control-thread setup only. Creates a new private file; never replaces an
@@ -185,6 +239,21 @@ impl Region {
                 io::ErrorKind::InvalidInput,
                 "unsupported host configuration",
             ));
+        }
+        let mut owner_id = NEXT_OWNER.load(Ordering::Relaxed);
+        loop {
+            let next = owner_id
+                .checked_add(1)
+                .ok_or_else(|| io::Error::other("host mapping identities exhausted"))?;
+            match NEXT_OWNER.compare_exchange_weak(
+                owner_id,
+                next,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(observed) => owner_id = observed,
+            }
         }
         let file = OpenOptions::new()
             .read(true)
@@ -215,6 +284,7 @@ impl Region {
             fence,
             input_mask,
             endpoint_taken: false,
+            owner_id,
         };
         // SAFETY: no child has been launched; all bytes are exclusively owned.
         unsafe {
@@ -291,6 +361,47 @@ impl Region {
         self.atomic(PROCESSED).load(Ordering::Acquire)
     }
 
+    /// Control-thread preparation only; maps just the existing header using an
+    /// independently owned descriptor. No clone of payload ownership is exposed.
+    pub fn control_view(&self) -> io::Result<ControlView> {
+        let file = self._file.try_clone()?;
+        let raw = unsafe {
+            libc::mmap(
+                std::ptr::null_mut(),
+                HEADER,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_SHARED,
+                file.as_raw_fd(),
+                0,
+            )
+        };
+        if raw == libc::MAP_FAILED {
+            return Err(io::Error::last_os_error());
+        }
+        let base = NonNull::new(raw.cast::<u8>()).expect("mmap returned null control mapping");
+        Ok(ControlView {
+            base,
+            _file: file,
+            owner_id: self.owner_id,
+        })
+    }
+
+    /// Move the sole payload owner into an audio plan, with no self-reference to
+    /// the control process owner. Retire/drop it on a control thread, not inside
+    /// the callback. A previously borrowed endpoint cannot be reset this way.
+    pub fn into_endpoint(mut self) -> Option<OwnedEndpoint> {
+        if self.endpoint_taken {
+            return None;
+        }
+        self.endpoint_taken = true;
+        Some(TransportEndpoint {
+            region: self,
+            next_submit: 0,
+            next_receive: 0,
+            fault: None,
+        })
+    }
+
     /// One endpoint for the entire mapping lifetime; dropping it does not reset
     /// sequence ownership or allow another endpoint to replay old slot contents.
     pub fn take_endpoint(&mut self) -> Option<Endpoint<'_>> {
@@ -316,30 +427,46 @@ impl Drop for Region {
     }
 }
 
-pub struct Endpoint<'a> {
-    region: &'a mut Region,
+pub type Endpoint<'a> = TransportEndpoint<&'a mut Region>;
+pub type OwnedEndpoint = TransportEndpoint<Region>;
+
+pub struct TransportEndpoint<R> {
+    region: R,
     next_submit: u64,
     next_receive: u64,
     fault: Option<Fault>,
 }
 
-impl Endpoint<'_> {
+impl<R: AsRef<Region>> TransportEndpoint<R> {
+    pub fn fence(&self) -> Fence {
+        self.region.as_ref().fence
+    }
+    pub fn submitted_blocks(&self) -> u64 {
+        self.next_submit
+    }
+    pub fn received_blocks(&self) -> u64 {
+        self.next_receive
+    }
+    pub fn is_drained(&self) -> bool {
+        self.next_submit == self.next_receive
+    }
     pub fn fault(&self) -> Option<Fault> {
         self.fault
     }
     pub fn status(&self) -> Status {
-        self.region.status()
+        self.region.as_ref().status()
     }
     pub fn request_stop(&self) {
-        self.region.request_stop();
+        self.region.as_ref().request_stop();
     }
     pub fn processed_blocks(&self) -> u32 {
-        self.region.processed_blocks()
+        self.region.as_ref().processed_blocks()
     }
     pub fn is_output_ready(&self) -> bool {
         self.next_receive < self.next_submit
             && self
                 .region
+                .as_ref()
                 .atomic(HEADER + (self.next_receive % SLOTS as u64) as usize * SLOT)
                 .load(Ordering::Acquire)
                 == OUTPUT_READY
@@ -354,7 +481,7 @@ impl Endpoint<'_> {
         if let Some(fault) = self.fault {
             return Err(fault);
         }
-        match self.region.status() {
+        match self.region.as_ref().status() {
             Status::Ready => Ok(()),
             Status::Fault(code) => self.fail(Fault::CompanionFault(code)),
             _ => self.fail(Fault::CompanionUnavailable),
@@ -365,7 +492,7 @@ impl Endpoint<'_> {
     /// execution failure, never permission to overwrite a child-owned slot.
     pub fn submit(&mut self, input: &InputBlock) -> Result<u64, Fault> {
         self.live()?;
-        if !input.valid(self.region.input_mask) {
+        if !input.valid(self.region.as_ref().input_mask) {
             return self.fail(Fault::InvalidInput);
         }
         let sequence = self.next_submit;
@@ -375,6 +502,7 @@ impl Endpoint<'_> {
         let slot = HEADER + (sequence % SLOTS as u64) as usize * SLOT;
         if self
             .region
+            .as_ref()
             .atomic(slot)
             .compare_exchange(FREE, WRITING, Ordering::Acquire, Ordering::Relaxed)
             .is_err()
@@ -383,31 +511,44 @@ impl Endpoint<'_> {
         }
         // SAFETY: successful ownership claim excludes child/payload readers.
         unsafe {
-            std::ptr::write_bytes(self.region.base.as_ptr().add(slot + 4), 0, SLOT - 4);
-            self.region.write(slot + 8, sequence);
-            self.region.write(slot + 16, self.region.fence.incarnation);
-            self.region.write(slot + 24, self.region.fence.generation);
-            self.region.write(slot + 32, self.region.fence.revision);
-            self.region.write(slot + 40, input.event_count as u32);
+            std::ptr::write_bytes(
+                self.region.as_ref().base.as_ptr().add(slot + 4),
+                0,
+                SLOT - 4,
+            );
+            self.region.as_ref().write(slot + 8, sequence);
+            self.region
+                .as_ref()
+                .write(slot + 16, self.region.as_ref().fence.incarnation);
+            self.region
+                .as_ref()
+                .write(slot + 24, self.region.as_ref().fence.generation);
+            self.region
+                .as_ref()
+                .write(slot + 32, self.region.as_ref().fence.revision);
+            self.region
+                .as_ref()
+                .write(slot + 40, input.event_count as u32);
             std::ptr::copy_nonoverlapping(
                 input.counts.as_ptr().cast::<u8>(),
-                self.region.base.as_ptr().add(slot + COUNTS),
+                self.region.as_ref().base.as_ptr().add(slot + COUNTS),
                 INPUTS * QUANTUM,
             );
             std::ptr::copy_nonoverlapping(
                 input.values.as_ptr().cast::<u8>(),
-                self.region.base.as_ptr().add(slot + INPUT_VALUES),
+                self.region.as_ref().base.as_ptr().add(slot + INPUT_VALUES),
                 INPUTS * QUANTUM * CHANNELS * 4,
             );
             for (index, event) in input.events[..input.event_count].iter().enumerate() {
                 let offset = slot + EVENT_VALUES + index * 16;
-                self.region.write(offset, event.sample_offset);
-                self.region.write(offset + 2, event.parameter);
-                self.region.write(offset + 4, event.value);
-                self.region.write(offset + 8, event.order);
+                self.region.as_ref().write(offset, event.sample_offset);
+                self.region.as_ref().write(offset + 2, event.parameter);
+                self.region.as_ref().write(offset + 4, event.value);
+                self.region.as_ref().write(offset + 8, event.order);
             }
         }
         self.region
+            .as_ref()
             .atomic(slot)
             .store(INPUT_READY, Ordering::Release);
         self.next_submit = next;
@@ -426,6 +567,7 @@ impl Endpoint<'_> {
         let slot = HEADER + (sequence % SLOTS as u64) as usize * SLOT;
         if self
             .region
+            .as_ref()
             .atomic(slot)
             .compare_exchange(OUTPUT_READY, READING, Ordering::Acquire, Ordering::Relaxed)
             .is_err()
@@ -435,25 +577,25 @@ impl Endpoint<'_> {
         // SAFETY: child published all fields and cannot access them again until
         // the parent publishes FREE after copying/validating the entire result.
         let result = unsafe {
-            let fence = self.region.fence;
-            if self.region.read::<u64>(slot + 8) != sequence
-                || self.region.read::<u64>(slot + 16) != fence.incarnation
-                || self.region.read::<u64>(slot + 24) != fence.generation
-                || self.region.read::<u64>(slot + 32) != fence.revision
+            let fence = self.region.as_ref().fence;
+            if self.region.as_ref().read::<u64>(slot + 8) != sequence
+                || self.region.as_ref().read::<u64>(slot + 16) != fence.incarnation
+                || self.region.as_ref().read::<u64>(slot + 24) != fence.generation
+                || self.region.as_ref().read::<u64>(slot + 32) != fence.revision
             {
                 Err(Fault::StaleOutput)
-            } else if self.region.read::<u32>(slot + 4) != 0
-                || (44..64).any(|offset| self.region.read::<u8>(slot + offset) != 0)
+            } else if self.region.as_ref().read::<u32>(slot + 4) != 0
+                || (44..64).any(|offset| self.region.as_ref().read::<u8>(slot + offset) != 0)
             {
                 Err(Fault::InvalidOutput)
             } else {
                 std::ptr::copy_nonoverlapping(
-                    self.region.base.as_ptr().add(slot + OUTPUT_COUNTS),
+                    self.region.as_ref().base.as_ptr().add(slot + OUTPUT_COUNTS),
                     output.counts.as_mut_ptr(),
                     QUANTUM,
                 );
                 std::ptr::copy_nonoverlapping(
-                    self.region.base.as_ptr().add(slot + OUTPUT_VALUES),
+                    self.region.as_ref().base.as_ptr().add(slot + OUTPUT_VALUES),
                     output.values.as_mut_ptr().cast::<u8>(),
                     QUANTUM * CHANNELS * 4,
                 );
@@ -474,7 +616,10 @@ impl Endpoint<'_> {
                 }
             }
         };
-        self.region.atomic(slot).store(FREE, Ordering::Release);
+        self.region
+            .as_ref()
+            .atomic(slot)
+            .store(FREE, Ordering::Release);
         if let Err(fault) = result {
             output.silence();
             return self.fail(fault);

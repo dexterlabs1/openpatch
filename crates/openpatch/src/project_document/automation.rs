@@ -73,7 +73,7 @@ impl ProjectDocument {
                 let reason = match binding.and_then(|target| nodes.get(target.module.as_str())) {
                     None if binding.is_none() => AutomationOmissionReason::UnboundLane,
                     None => AutomationOmissionReason::MissingTarget,
-                    Some(DocumentNode::Unresolved { .. }) => {
+                    Some(DocumentNode::Unresolved { .. } | DocumentNode::Hosted { .. }) => {
                         AutomationOmissionReason::UnresolvedTarget
                     }
                     Some(DocumentNode::Native { .. }) => continue,

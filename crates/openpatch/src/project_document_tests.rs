@@ -338,8 +338,13 @@ fn invalid_digests_and_source_references_fail_without_discarding_retained_conten
                 source: Some(source),
                 ..
             }
+            | DocumentNode::Hosted {
+                source: Some(source),
+                ..
+            }
             | DocumentNode::Unresolved { source, .. } => source.package = package_id.clone(),
-            DocumentNode::Native { source: None, .. } => {}
+            DocumentNode::Native { source: None, .. }
+            | DocumentNode::Hosted { source: None, .. } => {}
         }
     }
     for cable in &mut missing_blob.graph.cables {

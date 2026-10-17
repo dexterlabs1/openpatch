@@ -18,27 +18,61 @@ fn region(directory: &tempfile::TempDir) -> Region {
 
 // Ownership-controlled simulated peer only for malformed-output/parent failure
 // tests. Actual binary processing is exercised separately by the companion gate.
-fn publish(endpoint: &Endpoint<'_>, sequence: u64) -> usize {
+fn publish<R: AsRef<Region>>(endpoint: &TransportEndpoint<R>, sequence: u64) -> usize {
+    let region = endpoint.region.as_ref();
     let slot = HEADER + (sequence % SLOTS as u64) as usize * SLOT;
-    assert!(endpoint
-        .region
+    assert!(region
         .atomic(slot)
         .compare_exchange(INPUT_READY, 2, Ordering::Acquire, Ordering::Relaxed)
         .is_ok());
     unsafe {
         for frame in 0..QUANTUM {
-            endpoint.region.write(slot + OUTPUT_COUNTS + frame, 1u8);
-            endpoint.region.write(
+            region.write(slot + OUTPUT_COUNTS + frame, 1u8);
+            region.write(
                 slot + OUTPUT_VALUES + frame * CHANNELS * 4,
                 sequence as f32 + 0.5,
             );
         }
     }
-    endpoint
-        .region
-        .atomic(slot)
-        .store(OUTPUT_READY, Ordering::Release);
+    region.atomic(slot).store(OUTPUT_READY, Ordering::Release);
     slot
+}
+
+#[test]
+fn owned_endpoint_can_move_while_control_mapping_keeps_its_lifetime() {
+    let directory = tempfile::tempdir().unwrap();
+    let region = region(&directory);
+    let control = region.control_view().unwrap();
+    {
+        let endpoint = region.into_endpoint().unwrap();
+        let mut endpoint = std::thread::spawn(move || {
+            let mut endpoint = endpoint;
+            assert_eq!(endpoint.submit(&InputBlock::silence(4)), Ok(0));
+            endpoint
+        })
+        .join()
+        .unwrap();
+        assert_eq!(
+            endpoint.fence(),
+            Fence {
+                incarnation: 17,
+                generation: 9,
+                revision: 11
+            }
+        );
+        assert_eq!(endpoint.submitted_blocks(), 1);
+        assert!(!endpoint.is_drained());
+        publish(&endpoint, 0);
+        let mut output = OutputBlock::default();
+        assert_eq!(endpoint.receive_due(&mut output), Ok(0));
+        assert_eq!(endpoint.received_blocks(), 1);
+        assert!(endpoint.is_drained());
+        control.request_stop();
+        assert_eq!(endpoint.region.atomic(STOP).load(Ordering::Acquire), 1);
+    }
+    // The payload owner/mapping is gone; the independent header view is valid.
+    assert_eq!(control.status(), Status::Ready);
+    assert_eq!(control.processed_blocks(), 0);
 }
 
 #[test]

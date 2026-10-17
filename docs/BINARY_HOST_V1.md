@@ -2,7 +2,8 @@
 
 Planning checkpoint, 2026-10-17, following the successful bounded
 [actual-binary test](../scripts/rack_binary_host/README.md) and one focused
-architecture advisory. **Application integration is not implemented.** The
+architecture advisory. **Live application hosting is not implemented.** Process
+ownership and authored document/history/MCP preparation are implemented below. The
 installed OpenPatch 0.2.7 remains unchanged. The full
 [compatibility obligation](COMPATIBILITY_DECISION.md#extensions-and-existing-vcv-binaries)
 and native Rust extension API remain separate.
@@ -16,8 +17,45 @@ Rack routing frame in its source/sink harness and verifies a non-silent native
 oscillator WAV sample-by-sample. Actual stall/crash/late/malformed/parent-death
 cases and eight parent boundary tests pass; parent endpoint calls allocate and
 deallocate no heap memory. This is a debug correctness gate, not an application
-or device benchmark. Document/UI/MCP authority, the mixed graph execution plan,
+or device benchmark. Live document/UI/MCP authority, the mixed graph execution plan,
 feedback behavior and sustained realtime deadlines remain the next work.
+
+## Implemented process and document preparation
+
+`binary_host::process::LaunchConfig` prepares a genuine child on the control
+thread. It verifies plugin/runtime fingerprints, actual loaded-image receipts
+and the complete supported snapshot; private staging belongs to the child
+lifetime. An owned transport endpoint can move to the audio thread while the
+process supervisor retains only a separate header view. Capturing persistent
+state consumes that exact drained endpoint, requires acknowledged processing
+and successful stopped-child exit, and reaps the process before staging cleanup.
+Wrong fingerprints, pending capture and a different mapping with identical public
+fences are refused. Drop cleans up without publishing a successful capture.
+No waits, JSON or process operations have moved into endpoint calls.
+
+Project document **version 3** adds an explicit `hosted` node containing binary
+identity, a declared port manifest and the full immutable Rack snapshot. Versions
+1 and 2 migrate without changing their graph scheduling, source data or layout.
+Older OpenPatch builds cannot read the new envelope. Individual hosted snapshots
+are bounded to 1 MiB and total hosted state to 32 MiB. Unknown state remains
+preservable; the supported OFFSET execution/edit capability rejects unknown
+fields rather than discarding them. Cached snapshot hashes keep dirty-state
+observation from serializing opaque state every frame.
+
+`set_hosted_parameter` (`offset`, `scale`) and `set_hosted_option`
+(`offset_first`, `disable_output_limit`) use the same revision-fenced Session
+history as native edits. Parameter/option edits preserve document/save generation
+and layout; native edits retain hosted snapshots and incident cables. Full
+save/reopen preserves both custom flags and binary identity. Compact inspection
+returns state hashes/lengths; full inspection returns the complete snapshot.
+
+These commands do **not** launch a child or enable execution. Exact playback
+remains suspended and explicitly requested Partial playback omits hosted nodes
+and their routes. Inspection and the inactive rack panel report that the host is
+not running. This panel preserves cable locations; it is not the final active
+Signal Atlas hosted control panel. Shared Session, actual stdio MCP and native
+headless App checks cover edits/history/save/reopen. They do not establish live
+hosted controls, coherent live capture, mixed-graph execution or device deadlines.
 
 ## User-visible exit
 
