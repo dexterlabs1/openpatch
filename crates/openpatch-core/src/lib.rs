@@ -54,7 +54,11 @@ pub use rack264_vco::{Rack264VcoProbe, Rack264VcoSnapshot};
 pub use stock_noise::{StockNoiseDrawEvent, StockNoiseSnapshot};
 #[doc(hidden)]
 pub use stock_vco::{StockVcoKernelSnapshot, StockVcoProbe, StockVcoSnapshot};
+mod external;
 mod host_ports;
+pub use external::{
+    ExternalFrameError, ExternalFrameIo, ExternalModuleSpec, ResolvedExternalModule,
+};
 mod native_float;
 mod stock_mid_side;
 mod stock_mix;
@@ -898,6 +902,25 @@ impl Patch {
     /// Compile using control-thread prepared immutable wave banks. Callers that
     /// build revisions should retain a shared cache and prepare before commit.
     pub fn compile_with_wave_banks(&self, banks: &PreparedWaveBanks) -> Result<Engine, String> {
+        self.validate_compilation(banks)?;
+        let inner = match self.version {
+            1 => EngineKind::Legacy(self.compile_legacy()?),
+            2 => EngineKind::Poly(Box::new(poly::PolyEngine::compile_with_wave_banks(
+                self, banks,
+            )?)),
+            version => {
+                return Err(format!(
+                    "unsupported patch version {version} (expected 1 or 2)"
+                ))
+            }
+        };
+        Ok(Engine {
+            inner,
+            identity: NEXT_ENGINE_ID.fetch_add(1, Ordering::Relaxed),
+        })
+    }
+
+    fn validate_compilation(&self, banks: &PreparedWaveBanks) -> Result<(), String> {
         banks.validate(self)?;
         wave_assets::validate_assets(&self.assets)?;
         if self.version != 2 && !self.assets.is_empty() {
@@ -927,21 +950,7 @@ impl Patch {
                 ));
             }
         }
-        let inner = match self.version {
-            1 => EngineKind::Legacy(self.compile_legacy()?),
-            2 => EngineKind::Poly(Box::new(poly::PolyEngine::compile_with_wave_banks(
-                self, banks,
-            )?)),
-            version => {
-                return Err(format!(
-                    "unsupported patch version {version} (expected 1 or 2)"
-                ))
-            }
-        };
-        Ok(Engine {
-            inner,
-            identity: NEXT_ENGINE_ID.fetch_add(1, Ordering::Relaxed),
-        })
+        Ok(())
     }
 
     fn compile_legacy(&self) -> Result<LegacyEngine, String> {

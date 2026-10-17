@@ -14,7 +14,9 @@ use std::path::Path;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
+pub mod graph;
 pub mod process;
+pub mod runner;
 
 pub const QUANTUM: usize = 128;
 pub const INPUTS: usize = 3;
@@ -438,6 +440,9 @@ pub struct TransportEndpoint<R> {
 }
 
 impl<R: AsRef<Region>> TransportEndpoint<R> {
+    pub fn input_mask(&self) -> u32 {
+        self.region.as_ref().input_mask
+    }
     pub fn fence(&self) -> Fence {
         self.region.as_ref().fence
     }

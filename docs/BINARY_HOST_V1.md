@@ -2,8 +2,9 @@
 
 Planning checkpoint, 2026-10-17, following the successful bounded
 [actual-binary test](../scripts/rack_binary_host/README.md) and one focused
-architecture advisory. **Live application hosting is not implemented.** Process
-ownership and authored document/history/MCP preparation are implemented below. The
+architecture advisory. **User-facing hosted activation is not available.** Process
+ownership, authored document/history/MCP preparation, core mixed graphs and the
+desktop callback adapter are implemented below. The
 installed OpenPatch 0.2.7 remains unchanged. The full
 [compatibility obligation](COMPATIBILITY_DECISION.md#extensions-and-existing-vcv-binaries)
 and native Rust extension API remain separate.
@@ -17,8 +18,8 @@ Rack routing frame in its source/sink harness and verifies a non-silent native
 oscillator WAV sample-by-sample. Actual stall/crash/late/malformed/parent-death
 cases and eight parent boundary tests pass; parent endpoint calls allocate and
 deallocate no heap memory. This is a debug correctness gate, not an application
-or device benchmark. Live document/UI/MCP authority, the mixed graph execution plan,
-feedback behavior and sustained realtime deadlines remain the next work.
+or device benchmark. Live document/UI/MCP authority, application activation and
+sustained realtime/device deadlines remain open.
 
 ## Implemented process and document preparation
 
@@ -55,7 +56,56 @@ and their routes. Inspection and the inactive rack panel report that the host is
 not running. This panel preserves cable locations; it is not the final active
 Signal Atlas hosted control panel. Shared Session, actual stdio MCP and native
 headless App checks cover edits/history/save/reopen. They do not establish live
-hosted controls, coherent live capture, mixed-graph execution or device deadlines.
+hosted controls, coherent live capture or device deadlines.
+
+## Implemented mixed graph and callback adapter
+
+The Core engine now compiles explicit external vertices alongside native nodes,
+using the complete cable registry and its existing synchronous transfer rules.
+External vertices are not native catalog aliases. Native IDs, kinds, routing,
+stacking and normaling remain intact. Engine-bound frame exchange supplies every
+external output once and returns the canonical inputs consumed before the
+end-of-sample transfer. Unknown/foreign/duplicate handles or malformed frames
+are refused before mutation. Ordinary processing without a new external frame
+silences that producer after the already-valid previous cable frame; it cannot
+repeat the last external CV indefinitely. External payloads and their incident
+histories do not silently migrate into a replacement runtime.
+
+`HostedGraphPlan` binds the authored document to this full graph. The first
+companion capability still supports one OFFSET, graph v2 at 48 kHz, a connected
+signal input and at most one cable per hosted input. Stacked routes remain
+preserved but execution is refused: wire v1's pre-summed input cannot reproduce
+every raw stacked-input channel/normaling or overflow case. Later island transport
+must carry individual source-edge frames into genuine child cables. Native
+stacking inside the parent engine already retains its normal behavior.
+
+The desktop callback can own `HostedRunner` inside a prepared graph while process
+ownership remains on the control side. Scope, Listen and native events use the
+same engine frame path. Callback profile checks use the actual stream rate and whole buffer before
+internal chunking; the runner also checks its engine rate. Failure silences the buffer, latches suspension and appears
+in `inspect_performance.hosted_runtime`; priming does not masquerade as running.
+Core rejections latch both runner and callback failure. A hosted crossfade donor
+freezes its final audio instead of submitting again.
+Full retirement queues retain the endpoint for control-thread disposal, and stale
+hosted revisions cannot become active. Frame exchange, adoption, failure and
+retirement checks detect no callback allocation/deallocation.
+
+The real installed binary passes the Core mixed-graph gate: a native one-sample
+impulse reaches a native receiver at frame **387**, the declared feedback path
+recurs every **388** frames, and simultaneous ordered parameter events at hosted
+input frame 657 change native output at **1042**. An actual desktop Callback
+fixture also reproduces the single frame-387 impulse, applies both native PUSH
+events, then retires/drains on the control thread and captures the original full
+snapshot. These are paced debug tests without a native window or audio device.
+The desktop fixture includes two one-frame callbacks whose processing exceeded
+their 20.8 µs budgets; one small event callback in the Core runner gate also
+overran. Neither gate qualifies arbitrary tiny callbacks or sustained real-time
+playback. No performance advantage is claimed. [Recorded evidence](benchmarks/rack-binary-mixed-graph.json).
+
+Application launch/configuration, topology-bound delayed permission, active
+Signal Atlas controls, shared live parameter/state publication and coherent
+live save/reopen remain unfinished. The actual Callback fixture explicitly
+injects a prepared graph; it does not override document Exact/Partial permission.
 
 ## User-visible exit
 
@@ -70,23 +120,30 @@ capability, not arbitrary binary or plugin-widget support.
 
 Start with one companion owning the hosted island, its genuine Rack Engine,
 registry and library lifetime. The parent retains the native document/history,
-native graph and audio device callback. A proposed first transport quantum is
-**128 frames at 48 kHz**, introducing a fixed 2.667 ms transport delay plus actual
-Rack routing/adapter effects, which must be measured. Other rates must be
+native graph and audio device callback. The initial qualification profile uses
+**128-frame quanta at 48 kHz**, **384 frames (8 ms) of transport delay** and at most
+**128 frames per actual callback**. This supersedes the earlier proposed n→n+1
+schedule. Other rates must be
 explicitly qualified or refused; do not process them as though they were 48 kHz.
 
 The actual callback size/submission phase must leave a measured child-compute
 window before output is due. A 128-frame transport unit alone establishes no
 such window for every device callback size. Qualify the selected buffer profile
-and startup/partial-block behavior before enabling it; the current offline WAV's
-explicit padding is not a callback-latency qualification.
+and startup/partial-block behavior under representative load before enabling it;
+neither padded WAVs nor short paced debug tests qualify device deadlines.
 
 Preallocated shared-memory slots carry inputs for quantum n and outputs labeled
-for n+1. The callback never waits for the child. Consume only an output with the
+for n+3. Input frames `[128n,128n+127]` supply external outputs at
+`[128n+384,128n+511]`. Four slots suffice when due output is consumed before new
+input is submitted. Partial input blocks persist across callbacks; startup
+outputs silence. The callback never waits for the child. Consume only an output with the
 exact expected quantum and generation; missing/late output is not a reason to
 replay stale CV. Channel counts travel with each frame's voltages, so a
 within-block polyphony change is not silently reduced to one block-wide width.
 Native-only and Rack-internal scheduling retain their own contracts.
+The measured 387-frame native producer→plugin→native receiver path includes two
+native cable frames and one Rack routing frame beyond the 384-frame transport;
+that count excludes device buffering and changes with topology.
 
 The cross-process delay is a deliberate scheduling difference. Neither
 timestamps nor output alignment restores arbitrary sample-scale feedback.

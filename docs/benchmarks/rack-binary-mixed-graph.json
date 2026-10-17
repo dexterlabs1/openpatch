@@ -1,0 +1,166 @@
+{
+  "schema": 1,
+  "date": "2026-10-17",
+  "platform": "macOS ARM64",
+  "status": "production Core graph and desktop Callback correctness pass; user-facing activation and device qualification remain open",
+  "profile": {
+    "rate": 48000,
+    "quantum_frames": 128,
+    "transport_delay_frames": 384,
+    "maximum_actual_callback_frames": 128,
+    "real_time_or_device_qualified": false
+  },
+  "identity": {
+    "model": "Bogaudio-Offset",
+    "plugin": "Bogaudio",
+    "plugin_sha256": "264e55e1389274c3873439372c5c51f48f63168bd6c98fb2c6ffec170224b6f6",
+    "rack_version": "2.6.6",
+    "runtime_sha256": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c",
+    "version": "2.6.47"
+  },
+  "core_runner": {
+    "local_evidence": "native-test-output/rack-control-import/binary-host/transport-6qyx8mlz",
+    "parent_sha256": "bdf321d7b9f0b453b99f3d34e9d107766692b954bb0d98d9e174ffa0b840a2e6",
+    "companion_sha256": "903faed075237e1f996856572e4aa09fbe00b4967a7653442ea89d40e82a7786",
+    "artifact_manifest_sha256": "787669264c481213e052a922d1351e60d69a63ee96c0501d55f1db8c8f1ac9e7",
+    "scenarios": [
+      {
+        "scenario": "impulse",
+        "passed": true,
+        "rendered_frames": 2048,
+        "measured_first_signal_frame": 387,
+        "declared_feedback_cycle_frames": null,
+        "declared_event_input_frame": null,
+        "measured_event_output_frame": null,
+        "callback_count": 16,
+        "callback_lengths_pattern": [
+          128
+        ],
+        "callback_max_duration_ns": 626541,
+        "callback_overruns": 0,
+        "callback_allocations": 0,
+        "callback_deallocations": 0,
+        "capture_matches_expected_params_and_custom_flags": true,
+        "unsubmitted_tail_frames": 0,
+        "sample_trace_sha256": "492d90b33e90a54e2304051884c087f1c66bd1ece17ea907d2121dbe57996edb",
+        "wav_sha256": "536f5a51821a5fb4a5922168bce4cb75b97e33e0b2d32e89da57afee739b9fda"
+      },
+      {
+        "scenario": "feedback",
+        "passed": true,
+        "rendered_frames": 2048,
+        "measured_first_signal_frame": 388,
+        "declared_feedback_cycle_frames": 388,
+        "declared_event_input_frame": null,
+        "measured_event_output_frame": null,
+        "callback_count": 64,
+        "callback_lengths_pattern": [
+          17,
+          63,
+          1,
+          47
+        ],
+        "callback_max_duration_ns": 276959,
+        "callback_overruns": 0,
+        "callback_allocations": 0,
+        "callback_deallocations": 0,
+        "capture_matches_expected_params_and_custom_flags": true,
+        "unsubmitted_tail_frames": 0,
+        "sample_trace_sha256": "5e28f07527da896b7e5d3060017b535fca40a7b7cb24127fea66d0256f6d125d",
+        "wav_sha256": "a1c9486869266f4eb20bd261391e98e043472b4f4b34df81c5e2bd9a2729c46c"
+      },
+      {
+        "scenario": "events",
+        "passed": true,
+        "rendered_frames": 2048,
+        "measured_first_signal_frame": 387,
+        "declared_feedback_cycle_frames": null,
+        "declared_event_input_frame": 657,
+        "measured_event_output_frame": 1042,
+        "callback_count": 64,
+        "callback_lengths_pattern": [
+          3,
+          64,
+          17,
+          44
+        ],
+        "callback_max_duration_ns": 232250,
+        "callback_overruns": 0,
+        "callback_allocations": 0,
+        "callback_deallocations": 0,
+        "capture_matches_expected_params_and_custom_flags": true,
+        "unsubmitted_tail_frames": 0,
+        "sample_trace_sha256": "be06d9763da8d9d53445ef64b749ef374212aede0453258dcf895bc62f4cfadc",
+        "wav_sha256": "0129570524f14a03cea036c17e190f49d95824a0248846165000ad6dece8ef57"
+      }
+    ]
+  },
+  "desktop_callback": {
+    "local_evidence": "native-test-output/rack-control-import/binary-host/actual-callback-003",
+    "test_binary_sha256": "6cc6c7013fce68c30c782bea2782d82cd76f47e22ab0202b6d1f5b79f405521b",
+    "source_manifest_sha256": "cc0a2abc519ea90aec0b4c5b5e90787ee7697c945ed9d2194bdb43c8674d4573",
+    "identity_receipt_sha256": "5031f182e5ba0b552baecbc2d9ccf176094f1b7e20277dc5662b884e43aae8e2",
+    "result_sha256": "cc285debe591135987e913dc99c825c65c12a0a869f49dfb6eb7fc8bde19187c",
+    "passed": true,
+    "frames": 2048,
+    "callbacks": 18,
+    "callback_lengths": [
+      1,
+      1,
+      126,
+      128,
+      128,
+      128,
+      128,
+      128,
+      128,
+      128,
+      128,
+      128,
+      128,
+      128,
+      128,
+      128,
+      128,
+      128
+    ],
+    "first_native_impulse_frame": 387,
+    "impulse_amplitude": 0.78125,
+    "callback_allocations": 0,
+    "callback_deallocations": 0,
+    "observed_callback_budget_overruns": 2,
+    "max_callback_duration_ns": 599084,
+    "native_push_events_applied": 2,
+    "capture_matches_authored_snapshot": true,
+    "activation": "explicit prepared-graph injection in component fixture; document Exact/Partial unchanged"
+  },
+  "validation": {
+    "core": "437 passed, 2 ignored",
+    "cli_library": "400 passed, 2 ignored",
+    "desktop_audio": "240 passed, 2 ignored",
+    "actual_desktop_callback": "1 passed separately with real SDK/plugin",
+    "strict_clippy": "Core/CLI/desktop all targets passed",
+    "formatting": "workspace and included callback tests passed",
+    "review": "Independent read-only callback/runner review found actual-stream-rate guard issue; corrected with a44100-stream/48000-engine rejection test. Local core rejections now latch runner fault across all app paths."
+  },
+  "limitations": [
+    "No native window, audio device, representative sustained load or general compatibility qualification",
+    "Two one-frame desktop callbacks and one small Core runner event callback exceeded their processing budgets; recorded correctness success does not certify realtime performance",
+    "One pinned OFFSET; graph v2 at 48 kHz; one physical cable per hosted input; stacked routes stay saved but are explicitly refused for execution by wire v1",
+    "Application configuration/launch, topology-bound delayed permission, active shared UI/MCP controls, coherent live state/save/reopen and production restart remain unfinished",
+    "Installed OpenPatch 0.2.7 build 9 unchanged; no package/version bump or installation"
+  ],
+  "retained_failures": [
+    "external-core-tests-001: scalar fixtures omitted poly_constant channels:1; corrected while retaining explicit polyphony coverage",
+    "mixed-callback-tests-001: priming status followed frame count before any output was received; corrected to acknowledged output readiness",
+    "mixed-clippy-001: two manual integer multiple checks; corrected to is_multiple_of",
+    "mixed-callback-tests-003: actual stream-rate regression initially still used engine rate; corrected at actual Callback profile check",
+    "Source audit: desktop core rejection now goes through the runner-owned common frame exchange, retaining a latched local fault"
+  ],
+  "retained_timing_observation": {
+    "local_evidence": "native-test-output/rack-control-import/binary-host/transport-ed1fefml",
+    "scenario": "events",
+    "callback_budget_overruns": 1,
+    "note": "Earlier correctness pass retained; final runner pass has zero, desktop tiny-callback overruns remain2. Short runs are not sustained realtime qualification."
+  }
+}

@@ -967,6 +967,7 @@ struct Shared {
     execution_runnable: AtomicBool,
     execution_ack: AtomicU64,
     execution_cancel: AtomicU64,
+    hosted_status: AtomicU32,
     desired: [AtomicU64; MAX_NODES],
     action_epochs: [AtomicU64; MAX_NODES],
     emergency_release_epochs: [AtomicU64; MAX_NODES],
@@ -1011,14 +1012,16 @@ impl Shared {
         (serial == self.execution_serial.load(Ordering::SeqCst)).then_some(request)
     }
     fn execution_available(&self) -> bool {
-        self.execution_request()
-            .is_some_and(|(_, generation, runnable)| {
-                runnable
-                    && self.execution_ack.load(Ordering::SeqCst) == generation
-                    && self
-                        .execution_request()
-                        .is_some_and(|(_, current, runnable)| current == generation && runnable)
-            })
+        matches!(self.hosted_status.load(Ordering::Acquire), 0 | 2)
+            && self
+                .execution_request()
+                .is_some_and(|(_, generation, runnable)| {
+                    runnable
+                        && self.execution_ack.load(Ordering::SeqCst) == generation
+                        && self
+                            .execution_request()
+                            .is_some_and(|(_, current, runnable)| current == generation && runnable)
+                })
     }
     fn publish_frame(&self, frame: u64, publish: impl FnOnce()) {
         self.publish_serial.fetch_add(1, Ordering::SeqCst);
@@ -1542,6 +1545,7 @@ impl Performance {
             execution_runnable: AtomicBool::new(true),
             execution_ack: AtomicU64::new(0),
             execution_cancel: AtomicU64::new(0),
+            hosted_status: AtomicU32::new(0),
             desired: std::array::from_fn(|_| AtomicU64::new(0)),
             action_epochs: std::array::from_fn(|_| AtomicU64::new(0)),
             emergency_release_epochs: std::array::from_fn(|_| AtomicU64::new(0)),
@@ -2683,7 +2687,8 @@ impl LiveModuleEvents for Performance {
                 }),
                 "controls":actual.and_then(|snapshot|snapshot.controls),"lights":actual.and_then(|snapshot|snapshot.lights).and_then(module_lights_value)}))
         }).collect();
-        json!({"audio_timing":self.diagnostics.snapshot(),"available":available,"unavailable_reason":(!available).then_some(if shared.closed.load(Ordering::Acquire) { "audio_device_closed" } else { "document_execution_suspended_or_pending" }),"execution":{
+        let hosted_status = shared.hosted_status.load(Ordering::Acquire);
+        json!({"hosted_runtime":{"status":match hosted_status {0=>"not_present",1=>"priming",2=>"running",_=>"suspended_fault"},"fault_code":(hosted_status>=16).then_some(hosted_status),"reason":match hosted_status {16=>Some("unsupported_callback_profile"),17=>Some("external_boundary_rejected"),18=>Some("sequence_mismatch"),19=>Some("frame_counter_exhausted"),20=>Some("invalid_parameter_event"),32=>Some("companion_unavailable"),33=>Some("companion_fault"),34=>Some("invalid_transport_input"),35=>Some("transport_queue_full"),36=>Some("missed_deadline"),37=>Some("invalid_transport_output"),38=>Some("stale_transport_output"),39=>Some("transport_sequence_exhausted"),_=>None}},"audio_timing":self.diagnostics.snapshot(),"available":available,"unavailable_reason":(!available).then_some(if shared.closed.load(Ordering::Acquire) { "audio_device_closed" } else { "document_execution_suspended_or_pending" }),"execution":{
             "requested_revision":if control.execution.generation == 0 { control.revision } else { control.execution.revision },
             "generation":control.execution.generation,"disposition":control.execution.disposition,
             "acknowledged":available},"coherent":coherent_frame.is_some(),"frame":coherent_frame,"modules":modules,"revision":control.revision,"emergency_release_requests":shared.emergency_release_requests.load(Ordering::Relaxed),"emergency_release_applied":shared.emergency_release_applied.load(Ordering::Relaxed),"queued":queued,"applied":applied,"dropped":dropped,
@@ -2730,6 +2735,77 @@ impl EventReader {
             engine.process_audio_block(output);
         }
     }
+    pub(super) fn clear_hosted_status(&self) {
+        self.shared.hosted_status.store(0, Ordering::Release);
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn fail_hosted_execution(&self, fault: openpatch::binary_host::runner::RunnerFault) {
+        use openpatch::binary_host::{runner::RunnerFault, Fault};
+        let code = match fault {
+            RunnerFault::UnsupportedProfile => 16,
+            RunnerFault::Boundary => 17,
+            RunnerFault::Sequence => 18,
+            RunnerFault::FrameOverflow => 19,
+            RunnerFault::InvalidEvent => 20,
+            RunnerFault::Transport(fault) => match fault {
+                Fault::CompanionUnavailable => 32,
+                Fault::CompanionFault(_) => 33,
+                Fault::InvalidInput => 34,
+                Fault::QueueFull => 35,
+                Fault::MissedDeadline => 36,
+                Fault::InvalidOutput => 37,
+                Fault::StaleOutput => 38,
+                Fault::SequenceExhausted => 39,
+            },
+        };
+        self.shared.hosted_status.store(code, Ordering::Release);
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn process_audio_hosted(
+        &mut self,
+        engine: &mut Engine,
+        plan: &ModulePlan,
+        hosted: &mut openpatch::binary_host::runner::HostedRunner,
+        output: &mut [[f32; 2]],
+        mut taps: Option<ScopeCaptureBuffers<'_>>,
+    ) -> Result<(), openpatch::binary_host::runner::RunnerFault> {
+        let shared = &self.shared;
+        let handle = self.listen.prepare(|target| {
+            let binding = plan.bindings.get(target.slot).copied().flatten()?;
+            (binding.token == target.token
+                && binding.kind == ModuleKind::RackMcpListen
+                && shared.desired[target.slot].load(Ordering::Acquire) == target.token)
+                .then_some(binding.handle)
+        });
+        if let Some(status) = handle.and_then(|handle| engine.listen_status(handle)) {
+            self.listen.observe_status(status);
+        }
+        self.shared
+            .hosted_status
+            .store(if hosted.is_priming() { 1 } else { 2 }, Ordering::Release);
+        for (index, audio) in output.iter_mut().enumerate() {
+            let listen = handle.map(|handle| {
+                (
+                    handle,
+                    &mut self.listen as &mut dyn openpatch_core::ListenSink,
+                )
+            });
+            *audio = if let Some((taps, samples)) = taps.as_mut() {
+                hosted.process_frame_with_taps_and_listen(
+                    engine,
+                    taps,
+                    &mut samples[index],
+                    listen,
+                )?
+            } else {
+                hosted.process_frame_with_taps_and_listen(engine, &[], &mut [], listen)?
+            };
+        }
+        self.shared
+            .hosted_status
+            .store(if hosted.is_priming() { 1 } else { 2 }, Ordering::Release);
+        Ok(())
+    }
     pub(super) fn invalidate_listen(&self) {
         self.listen.invalidate();
     }
@@ -2738,20 +2814,24 @@ impl EventReader {
         self.shared.execution_cancel.load(Ordering::SeqCst)
     }
     pub(super) fn document_suspended(&self) -> bool {
-        self.shared
-            .execution_request()
-            .is_some_and(|(_, _, runnable)| !runnable)
+        self.shared.hosted_status.load(Ordering::Acquire) >= 16
+            || self
+                .shared
+                .execution_request()
+                .is_some_and(|(_, _, runnable)| !runnable)
     }
     pub(super) fn execution_permitted(&self, plan: &ModulePlan) -> bool {
-        self.shared
-            .execution_request()
-            .is_some_and(|(revision, generation, runnable)| {
-                runnable
-                    && (generation == 0
-                        || (plan.execution.generation == generation
-                            && plan.execution.revision == revision
-                            && plan.execution.disposition.is_runnable()))
-            })
+        self.shared.hosted_status.load(Ordering::Acquire) < 16
+            && self
+                .shared
+                .execution_request()
+                .is_some_and(|(revision, generation, runnable)| {
+                    runnable
+                        && (generation == 0
+                            || (plan.execution.generation == generation
+                                && plan.execution.revision == revision
+                                && plan.execution.disposition.is_runnable()))
+                })
     }
     pub(super) fn acknowledge_execution(&self, plan: &ModulePlan) {
         if self.execution_permitted(plan) {

@@ -387,6 +387,8 @@ struct ScopeSetup {
 }
 struct PreparedGraph {
     engine: Engine,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted: Option<openpatch::binary_host::runner::HostedRunner>,
     scope: ScopeSetup,
     modules: ModulePlan,
     revision: u64,
@@ -401,6 +403,8 @@ impl From<Engine> for PreparedGraph {
     fn from(engine: Engine) -> Self {
         Self {
             engine,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted: None,
             scope: ScopeSetup::default(),
             modules: ModulePlan::default(),
             revision: 0,
@@ -486,6 +490,8 @@ fn prepare_graph_for_control(
         .unwrap_or([None; 2]);
     let mut graph = PreparedGraph {
         engine,
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted: None,
         modules: ModulePlan::default(),
         revision: 0,
         contains_rackmcp_sequence: patch
@@ -1120,6 +1126,8 @@ impl Gain {
 }
 
 struct Callback {
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    stream_rate: u32,
     graphs: Exchange<PreparedGraph>,
     shared: Arc<Shared>,
     gain: Gain,
@@ -1162,6 +1170,8 @@ impl Callback {
         let (performance, module_events, timing) = Performance::new(rate);
         let last_active_stereo = engine.output_channels() == 2;
         Self {
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            stream_rate: rate,
             performance,
             module_events,
             timing,
@@ -1268,8 +1278,10 @@ impl Callback {
             .max(self.graphs.active.revision);
         let revision_floor = self.graph_revision_high_water;
         let adopted = self.graphs.poll_if(|active, next| {
-            next.revision >= revision_floor
-                || !(active.contains_rackmcp_sequence || next.contains_rackmcp_sequence)
+            let fenced = active.contains_rackmcp_sequence || next.contains_rackmcp_sequence;
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            let fenced = fenced || active.hosted.is_some() || next.hosted.is_some();
+            next.revision >= revision_floor || !fenced
         });
         self.graph_revision_high_water = self
             .graph_revision_high_water
@@ -1280,6 +1292,7 @@ impl Callback {
             .active
             .sync_port_light_control(control, control_changed);
         if adopted {
+            self.module_events.clear_hosted_status();
             let mut moved = false;
             if let Some(previous) = self.graphs.previous.as_mut() {
                 let active = &mut self.graphs.active;
@@ -1314,7 +1327,16 @@ impl Callback {
                     }
                 }
             }
-            self.frozen_previous = moved.then_some((self.last_active_raw, self.last_active_stereo));
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            let hosted_donor = self
+                .graphs
+                .previous
+                .as_ref()
+                .is_some_and(|graph| graph.hosted.is_some());
+            #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+            let hosted_donor = false;
+            self.frozen_previous =
+                (moved || hosted_donor).then_some((self.last_active_raw, self.last_active_stereo));
             // A donor with transferred Delay state is frozen; ordinary donors
             // still render the fade. Only the active graph runs observers.
             if let Some(previous) = self.graphs.previous.as_mut() {
@@ -1398,6 +1420,26 @@ impl Callback {
         if channels == 0 {
             return (adopted, false);
         }
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if let Some(hosted) = self.graphs.active.hosted.as_mut() {
+            if !output.len().is_multiple_of(channels)
+                || hosted
+                    .validate_callback(self.stream_rate, output.len() / channels)
+                    .is_err()
+            {
+                self.module_events.fail_hosted_execution(
+                    hosted
+                        .fault()
+                        .unwrap_or(openpatch::binary_host::runner::RunnerFault::UnsupportedProfile),
+                );
+                self.freeze_execution(output, channels);
+                return (adopted, false);
+            }
+        }
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let callback_end_frame = self
+            .frame_clock
+            .saturating_add((output.len() / channels) as u64);
         let crossfade = self.graphs.previous.is_some() && output.len() >= channels;
         for chunk in output.chunks_mut(BLOCK_SIZE * channels) {
             let frames = chunk.len() / channels;
@@ -1480,15 +1522,52 @@ impl Callback {
                 });
                 let count = if one_frame { 1 } else { count };
                 let active = &mut self.graphs.active;
-                self.module_events.process_audio(
-                    &mut active.engine,
-                    &active.modules,
-                    &mut current[..count],
-                    active
-                        .scope
-                        .enabled
-                        .then_some((&active.scope.taps, &mut taps[..count])),
-                );
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                {
+                    if let Some(hosted) = active.hosted.as_mut() {
+                        if let Err(fault) = self.module_events.process_audio_hosted(
+                            &mut active.engine,
+                            &active.modules,
+                            hosted,
+                            &mut current[..count],
+                            active
+                                .scope
+                                .enabled
+                                .then_some((&active.scope.taps, &mut taps[..count])),
+                        ) {
+                            self.module_events.fail_hosted_execution(fault);
+                            self.freeze_execution::<T>(&mut [], channels);
+                            self.frame_clock = callback_end_frame;
+                            self.shared
+                                .frame_clock
+                                .store(self.frame_clock, Ordering::Release);
+                            output.fill(T::from_mono(0.));
+                            return (adopted, false);
+                        }
+                    } else {
+                        self.module_events.process_audio(
+                            &mut active.engine,
+                            &active.modules,
+                            &mut current[..count],
+                            active
+                                .scope
+                                .enabled
+                                .then_some((&active.scope.taps, &mut taps[..count])),
+                        );
+                    }
+                }
+                #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+                {
+                    self.module_events.process_audio(
+                        &mut active.engine,
+                        &active.modules,
+                        &mut current[..count],
+                        active
+                            .scope
+                            .enabled
+                            .then_some((&active.scope.taps, &mut taps[..count])),
+                    );
+                }
                 let active_stereo = self.graphs.active.output_channels() == 2;
                 let previous_stereo = self.frozen_previous.map_or_else(
                     || {
@@ -6110,6 +6189,8 @@ mod tests {
     include!("random_audio_tests.rs");
     include!("port_light_host_tests.rs");
     include!("host_lifecycle_audio_tests.rs");
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    include!("audio_hosted_tests.rs");
 }
 
 #[cfg(test)]

@@ -866,6 +866,7 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
 
 #[derive(Debug)]
 enum Model {
+    External(crate::ExternalModuleSpec),
     Annotation,
     HostBridge,
     ColoredNoise(Box<ColoredNoise>),
@@ -1175,6 +1176,21 @@ struct PolyNode {
     connected_mask: u32,
     base_connected_mask: u32,
 }
+impl PolyNode {
+    fn output_port(&self, name: &str) -> Option<usize> {
+        match &self.model {
+            Model::External(spec) => spec.outputs.iter().position(|port| port == name),
+            _ => output_port(&self.kind, name),
+        }
+    }
+    fn input_port(&self, name: &str) -> Option<usize> {
+        match &self.model {
+            Model::External(spec) => spec.inputs.iter().position(|port| port == name),
+            _ => input_port(&self.kind, self.model.template(), name),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Edge {
     source_port: usize,
@@ -1233,6 +1249,9 @@ pub(crate) struct PolyEngine {
     // All logical producer ports, including disconnected ones. Native raw
     // producers retain their own storage and must never enter these spans.
     logical_output_spans: Vec<std::ops::Range<usize>>,
+    // Prepared on the control thread; external payloads authorize one sample.
+    external_nodes: Vec<usize>,
+    external_frame_prepared: bool,
     selected: Option<usize>,
     stereo: bool,
     pub(crate) port_lights: crate::port_lights::Observer,
@@ -1662,8 +1681,8 @@ impl PolyEngine {
             return None;
         }
         match direction {
-            crate::PortDirection::Input => input_port(&node.kind, node.model.template(), name),
-            crate::PortDirection::Output => output_port(&node.kind, name),
+            crate::PortDirection::Input => node.input_port(name),
+            crate::PortDirection::Output => node.output_port(name),
         }
     }
 
@@ -1850,10 +1869,8 @@ impl PolyEngine {
             .ok_or_else(|| format!("module '{id}' does not exist"))?;
         let compiled = &self.nodes[node];
         let local = match direction {
-            crate::PortDirection::Input => {
-                input_port(&compiled.kind, compiled.model.template(), port)
-            }
-            crate::PortDirection::Output => output_port(&compiled.kind, port),
+            crate::PortDirection::Input => compiled.input_port(port),
+            crate::PortDirection::Output => compiled.output_port(port),
         }
         .ok_or_else(|| format!("module '{id}': unknown {direction:?} port '{port}'"))?;
         Ok(self.port_lights.find(node, direction, local))
@@ -2584,7 +2601,8 @@ impl PolyEngine {
             .get(id)
             .ok_or_else(|| format!("tap node '{id}' does not exist"))?;
         let node = &self.nodes[index];
-        let port = output_port(&node.kind, port)
+        let port = node
+            .output_port(port)
             .ok_or_else(|| format!("tap node '{id}': unknown output '{port}'"))?;
         Ok(node.output_start + port)
     }
@@ -2607,13 +2625,30 @@ impl PolyEngine {
         patch: &Patch,
         wave_banks: &PreparedWaveBanks,
     ) -> Result<Self, String> {
+        Self::compile_with_externals(
+            patch,
+            wave_banks,
+            &[],
+            &patch.cables,
+            patch.output.as_deref(),
+            &patch.output_port,
+        )
+    }
+    pub(crate) fn compile_with_externals(
+        patch: &Patch,
+        wave_banks: &PreparedWaveBanks,
+        specs: &[crate::ExternalModuleSpec],
+        routes: &[crate::Cable],
+        output: Option<&str>,
+        selected_port: &str,
+    ) -> Result<Self, String> {
         if !(8000..=192000).contains(&patch.sample_rate) {
             return Err("sample_rate must be in 8000..=192000 Hz".into());
         }
-        if patch.nodes.len() > MAX_NODES {
+        if patch.nodes.len().saturating_add(specs.len()) > MAX_NODES {
             return Err(format!("patch exceeds {MAX_NODES} nodes"));
         }
-        if patch.cables.len() > MAX_CABLES {
+        if routes.len() > MAX_CABLES {
             return Err(format!("patch exceeds {MAX_CABLES} cables"));
         }
         let port_catalog = crate::catalog();
@@ -2742,13 +2777,35 @@ impl PolyEngine {
             }
             output_count += count;
         }
-        let mut edges = Vec::with_capacity(patch.cables.len());
+        for spec in specs {
+            spec.validate()?;
+            let index = nodes.len();
+            if node_lookup.insert(spec.id.clone(), index).is_some() {
+                return Err(format!("duplicate node ID '{}'", spec.id));
+            }
+            nodes.push(PolyNode {
+                kind: "external".into(),
+                model: Model::External(spec.clone()),
+                inputs: [None; MAX_PORTS],
+                output_start: output_count,
+                output_count: spec.outputs.len(),
+                input_count: spec.inputs.len() as u8,
+                physical_input_mask: 0,
+                bypassed: false,
+                bypass_inputs: [None; host_ports::OUTPUT_PORTS],
+                connected_mask: 0,
+                base_connected_mask: 0,
+            });
+            output_count += spec.outputs.len();
+        }
+        let mut edges = Vec::with_capacity(routes.len());
         let mut edge_lookup = BTreeMap::new();
         let mut route_counts = BTreeMap::<EdgeKey, usize>::new();
         let mut unique_legacy_routes = BTreeMap::<EdgeKey, Option<usize>>::new();
         let mut cable_lookup = BTreeMap::new();
         let mut sequence_ownership =
             crate::sequence_ownership::SequenceOwnership::new(&patch.nodes);
+        sequence_ownership.extend_non_writers(nodes.len());
         for (node_index, node) in nodes.iter_mut().enumerate() {
             if let Model::RackMcpSequencer(sequence) = &mut node.model {
                 let mut targets = [None; 8];
@@ -2759,7 +2816,13 @@ impl PolyEngine {
                     let Some(&destination) = node_lookup.get(&source.module) else {
                         continue;
                     };
-                    let kind = &patch.nodes[destination].kind;
+                    let Some(target) = patch.nodes.get(destination) else {
+                        return Err(format!(
+                            "sequence target '{}.{}' has no live native parameter capability",
+                            source.module, source.parameter
+                        ));
+                    };
+                    let kind = &target.kind;
                     let Some(descriptor) =
                         crate::runtime_parameter_descriptor(kind, &source.parameter)
                     else {
@@ -2789,22 +2852,19 @@ impl PolyEngine {
         let mut group_edges = Vec::<Vec<usize>>::new();
         let mut group_destinations = Vec::new();
         let mut legacy_occurrences = BTreeMap::<EdgeKey, usize>::new();
-        for (index, cable) in patch.cables.iter().enumerate() {
+        for (index, cable) in routes.iter().enumerate() {
             let source = *node_lookup
                 .get(&cable.from)
                 .ok_or_else(|| format!("cable source '{}' does not exist", cable.from))?;
             let destination = *node_lookup
                 .get(&cable.to)
                 .ok_or_else(|| format!("cable destination '{}' does not exist", cable.to))?;
-            let port = output_port(&nodes[source].kind, &cable.output).ok_or_else(|| {
+            let port = nodes[source].output_port(&cable.output).ok_or_else(|| {
                 format!("node '{}': unknown output '{}'", cable.from, cable.output)
             })?;
-            let input = input_port(
-                &nodes[destination].kind,
-                nodes[destination].model.template(),
-                &cable.input,
-            )
-            .ok_or_else(|| format!("node '{}': unknown input '{}'", cable.to, cable.input))?;
+            let input = nodes[destination]
+                .input_port(&cable.input)
+                .ok_or_else(|| format!("node '{}': unknown input '{}'", cable.to, cable.input))?;
             let group = *group_lookup.entry((destination, input)).or_insert_with(|| {
                 let index = group_edges.len();
                 group_edges.push(Vec::new());
@@ -2860,20 +2920,18 @@ impl PolyEngine {
             });
             input_edges.extend(members);
         }
-        let selected = patch
-            .output
-            .as_ref()
+        let selected = output
             .map(|id| {
                 let node = *node_lookup
                     .get(id)
                     .ok_or_else(|| format!("output node '{id}' does not exist"))?;
-                let port = output_port(&nodes[node].kind, &patch.output_port).ok_or_else(|| {
-                    format!("node '{id}': unknown output '{}'", patch.output_port)
-                })?;
+                let port = nodes[node]
+                    .output_port(selected_port)
+                    .ok_or_else(|| format!("node '{id}': unknown output '{}'", selected_port))?;
                 Ok::<_, String>(nodes[node].output_start + port)
             })
             .transpose()?;
-        if patch.output.is_none() && patch.output_port != "out" {
+        if output.is_none() && selected_port != "out" {
             return Err("output_port requires a selected output node".into());
         }
         for edge in &edges {
@@ -2928,6 +2986,8 @@ impl PolyEngine {
             host_sources,
             host_input_observations: Vec::new(),
             logical_output_spans,
+            external_nodes: (patch.nodes.len()..nodes.len()).collect(),
+            external_frame_prepared: false,
             port_lights,
             rate: patch.sample_rate,
             nodes,
@@ -2939,17 +2999,17 @@ impl PolyEngine {
             route_counts,
             unique_legacy_routes,
             cable_lookup,
-            edge_frames: vec![PortFrame::default(); patch.cables.len()],
+            edge_frames: vec![PortFrame::default(); routes.len()],
             input_frames: vec![PortFrame::default(); input_groups.len()],
             input_groups,
             input_edges,
             outputs: vec![PortFrame::default(); output_count],
             selected,
-            stereo: patch.output.as_ref().is_some_and(|id| {
+            stereo: output.is_some_and(|id| {
                 patch
                     .nodes
                     .iter()
-                    .any(|n| &n.id == id && n.kind == "audio_stereo")
+                    .any(|n| n.id == id && n.kind == "audio_stereo")
             }),
         };
         for index in 0..engine.nodes.len() {
@@ -2977,6 +3037,46 @@ impl PolyEngine {
             }
         }
     }
+    pub(crate) fn external_layout(&self, id: &str) -> Option<(usize, u8, u8, u16, u32)> {
+        let &index = self.node_lookup.get(id)?;
+        let node = &self.nodes[index];
+        matches!(node.model, Model::External(_)).then_some((
+            index,
+            node.input_count,
+            node.output_count as u8,
+            node.physical_input_mask,
+            node.base_connected_mask,
+        ))
+    }
+    pub(crate) fn external_count(&self) -> usize {
+        self.external_nodes.len()
+    }
+    pub(crate) fn is_external(&self, index: usize) -> bool {
+        self.nodes
+            .get(index)
+            .is_some_and(|node| matches!(node.model, Model::External(_)))
+    }
+    fn reconcile_external_context(&mut self) {
+        if self.host_context_dirty {
+            for index in 0..self.nodes.len() {
+                self.reconcile_host_context(index);
+            }
+            self.host_context_dirty = false;
+        }
+    }
+    pub(crate) fn begin_external_frame(&mut self, frames: &mut [crate::ExternalFrameIo]) {
+        self.reconcile_external_context();
+        for frame in frames {
+            let node = &self.nodes[frame.handle.node];
+            let host = self.host.as_ref().expect("external graph has host ports");
+            for (input, raw) in frame.inputs.iter_mut().zip(&host.inputs[frame.handle.node]) {
+                *input = raw.frame();
+            }
+            self.outputs[node.output_start..node.output_start + node.output_count]
+                .copy_from_slice(&frame.outputs[..node.output_count]);
+        }
+        self.external_frame_prepared = !self.external_nodes.is_empty();
+    }
     pub(crate) fn process_sample(&mut self) -> PortFrame {
         self.process_sample_with_listen_capture(None, None)
     }
@@ -2991,12 +3091,19 @@ impl PolyEngine {
         listen_index: Option<usize>,
         mut sink: Option<&mut dyn ListenSink>,
     ) -> PortFrame {
-        if self.host_context_dirty {
-            for index in 0..self.nodes.len() {
-                self.reconcile_host_context(index);
+        if !self.external_nodes.is_empty() {
+            if !self.external_frame_prepared {
+                for &index in &self.external_nodes {
+                    let node = &self.nodes[index];
+                    self.outputs[node.output_start..node.output_start + node.output_count]
+                        .fill(PortFrame::default());
+                }
             }
-            self.host_context_dirty = false;
+            // Keep the completed outputs readable by taps/meters until the
+            // next sample; an ordinary entry point cannot replay this payload.
+            self.external_frame_prepared = false;
         }
+        self.reconcile_external_context();
         if !self.host_input_observations.is_empty() {
             let host = self
                 .host
@@ -3151,7 +3258,7 @@ impl PolyEngine {
                 .map(|edge| self.input_frames[edge])
                 .unwrap_or_default();
             match &mut node.model {
-                Model::Annotation | Model::HostBridge => {}
+                Model::Annotation | Model::HostBridge | Model::External(_) => {}
                 Model::RackMcpListen(_)
                 | Model::StockMidSide(_)
                 | Model::StockMix(_)
@@ -3951,6 +4058,13 @@ impl PolyEngine {
         preserve_sequence_runtime: &[bool; MAX_NODES],
         copy_delay: bool,
     ) {
+        let mut effective_excluded = *excluded;
+        for (index, node) in self.nodes.iter().enumerate() {
+            if matches!(node.model, Model::External(_)) {
+                effective_excluded[index] = true;
+            }
+        }
+        let excluded = &effective_excluded;
         self.host_context_dirty = true;
         // Ownership survives topology/rate changes by native target and writer
         // identity. Fresh or changed writers acquire only after donor claims
@@ -4047,6 +4161,43 @@ impl PolyEngine {
                     continue;
                 }
                 host.inputs[index] = previous.inputs[old_index];
+                // External processor state has an independent owner. A newly
+                // compiled boundary never inherits its previous cable payloads,
+                // including raw inputs on native consumers of that boundary.
+                for port in 0..usize::from(node.input_count).min(host_ports::PORTS) {
+                    let external_source = |engine: &Self, compiled: &PolyNode| {
+                        compiled.inputs[port].is_some_and(|group| {
+                            let group = &engine.input_groups[group];
+                            engine.input_edges[group.start..group.start + group.len]
+                                .iter()
+                                .any(|&edge| {
+                                    matches!(
+                                        engine.nodes[engine.edges[edge].source_node].model,
+                                        Model::External(_)
+                                    )
+                                })
+                        })
+                    };
+                    // Read the receiving graph's disjoint fields directly to
+                    // keep the host storage mutably borrowed without scratch.
+                    let current_external = node.inputs[port].is_some_and(|group| {
+                        let group = &self.input_groups[group];
+                        self.input_edges[group.start..group.start + group.len]
+                            .iter()
+                            .any(|&edge| {
+                                matches!(
+                                    self.nodes[self.edges[edge].source_node].model,
+                                    Model::External(_)
+                                )
+                            })
+                    });
+                    if current_external || external_source(old, old_node) {
+                        host.inputs[index][port] = HostPortSnapshot {
+                            channels: u8::from(node.physical_input_mask & (1 << port) != 0),
+                            ..HostPortSnapshot::default()
+                        };
+                    }
+                }
                 host.contexts[index] = previous.contexts[old_index];
                 host.outputs[node.output_start..node.output_start + node.output_count]
                     .copy_from_slice(

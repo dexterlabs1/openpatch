@@ -137,6 +137,17 @@ graph, explicit delayed execution permission, active shared controls and measure
 callback/device behavior—not another transport-only demonstration. Installed
 0.2.7 remains unchanged; no packaging or version bump at this checkpoint.
 
+Core external vertices and the desktop callback adapter now preserve native
+routing/normaling while exchanging bounded per-frame hosted data. The actual
+installed OFFSET passes a 387-frame native impulse path, 388-frame feedback cycle
+and ordered parameter-event comparison; a real desktop Callback fixture also
+passes the impulse and control-side capture with no callback heap activity.
+The provisional profile is 48 kHz, Q128, transport delay384, max callback128;
+two one-frame desktop callbacks and one small runner callback overran their budgets, so device/tiny-buffer qualification
+is still open. Callback fault, stale-plan and full-queue donor-retirement tests
+pass. User-facing activation, delayed permission and shared live UI/MCP/save
+remain the next step; these component gates do not make the host available yet.
+
 ## Delivered: Core text and host boundary
 
 Exact Core Notes 2.6.6 now converts into editable native Notes, including legacy

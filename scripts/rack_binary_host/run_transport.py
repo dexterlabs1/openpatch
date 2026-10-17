@@ -21,16 +21,18 @@ ROOT = HERE.parents[1]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--gate", choices=("transport", "mixed-graph"), default="transport", help="production boundary to exercise; neither mode opens a device")
     parser.add_argument("--sdk", type=Path, required=True)
     parser.add_argument("--plugin", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True, help="full module snapshot from the feasibility gate")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     sdk, plugin, seed = args.sdk.resolve(), args.plugin.resolve(), args.state.resolve()
+    parent_example = "binary_host_graph" if args.gate == "mixed-graph" else "binary_host_transport"
     args.output.mkdir(parents=True, exist_ok=True)
     evidence = Path(tempfile.mkdtemp(prefix="transport-", dir=args.output.resolve()))
     os.chdir(ROOT)
-    report = {"passed": False, "stage": "preflight", "evidence": str(evidence)}
+    report = {"passed": False, "stage": "preflight", "gate": args.gate, "evidence": str(evidence)}
     try:
         if platform.system() != "Darwin" or platform.machine() != "arm64":
             raise ValueError("macOS ARM64 only")
@@ -40,7 +42,7 @@ def main():
         for crate in ("openpatch", "openpatch-core"):
             watched.append(ROOT / "crates" / crate / "Cargo.toml")
             watched += sorted((ROOT / "crates" / crate / "src").rglob("*.rs"))
-        watched.append(ROOT / "crates/openpatch/examples/binary_host_transport.rs")
+        watched.append(ROOT / ("crates/openpatch/examples/" + parent_example + ".rs"))
         for directory in (sdk / "include", sdk / "dep/include"):
             watched += sorted(p for p in directory.rglob("*") if p.is_file())
         before = {str(p): digest(p) for p in watched}
@@ -58,11 +60,11 @@ def main():
              "-I" + str(sdk / "dep/include"), str(HERE / "companion.cpp"), "-L" + str(sdk), "-lRack",
              "-Wl,-rpath," + str(sdk), "-o", str(companion)], evidence, "compile-companion", timeout=60)
         report["stage"] = "build Rust control driver"
-        run(["cargo", "build", "--locked", "-p", "openpatch", "--example", "binary_host_transport", "--message-format=json"],
+        run(["cargo", "build", "--locked", "-p", "openpatch", "--example", parent_example, "--message-format=json"],
             evidence, "build-parent", timeout=300)
         artifacts = [json.loads(line) for line in (evidence / "build-parent.stdout").read_text().splitlines()]
         parents = [a["executable"] for a in artifacts if a.get("reason") == "compiler-artifact"
-                   and a.get("target", {}).get("name") == "binary_host_transport" and a.get("executable")]
+                   and a.get("target", {}).get("name") == parent_example and a.get("executable")]
         if len(parents) != 1:
             raise ValueError("Cargo did not identify exactly one built parent example")
         parent = Path(parents[0])

@@ -155,3 +155,31 @@ history and save/reopen checks through Session, stdio MCP and the native headles
 App. Hosted nodes remain explicitly inactive. This preparation does not connect
 the companion to the application audio graph; see the milestone for remaining
 execution, live-state and active UI work.
+
+## Production mixed-graph runner gate
+
+Use the same command with `--gate mixed-graph` to build `binary_host_graph`.
+It constructs authored native/external graphs, uses the production Core boundary
+and hosted runner, and paces callbacks outside tracked processing. Three fresh
+real-plugin children compare every sample of a one-frame native impulse,
+declared delayed feedback and simultaneous ordered parameter events. Retained
+artifacts include full callback timing/heap records, sample traces, non-silent
+WAVs, actual identity receipts and acknowledged full state captures.
+
+The provisional profile uses 48 kHz, Q128, delay384 and actual callbacks no larger
+than128. The measured native impulse path is387 frames, its additional-mixer
+feedback topology cycles every388 frames, and events at input657 change native
+output1042. All tracked processing allocates/deallocates zero heap memory. These
+are short debug correctness tests; sustained load and audio-device qualification
+remain open. Wire v1 currently refuses stacked hosted inputs rather than changing
+their normaling; their routes/state remain saved.
+
+The native desktop additionally has an explicitly ignored real-companion test,
+`hosted_callback_actual_plugin_native_impulse_and_control_capture`. Supply
+`OPENPATCH_HOSTED_COMPANION`, `OPENPATCH_HOSTED_SDK`, `OPENPATCH_HOSTED_PLUGIN`
+and `OPENPATCH_HOSTED_CALLBACK_REVIEW`, then run it with `--ignored`. It exercises
+the actual desktop Callback, native event queue, fault/priming publication and
+control-side capture, without opening a window/device. Its two one-frame
+callbacks exceeded their processing budgets; a small event callback also overran
+in the runner gate. Neither test certifies tiny callbacks or application playback. Activation and
+live document/UI/MCP/capture integration remain in the application milestone.
