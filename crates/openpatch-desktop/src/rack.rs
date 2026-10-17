@@ -29,6 +29,8 @@ include!("atlas_poly_panels.rs");
 include!("atlas_fade_panel.rs");
 include!("atlas_signal_utility_panels.rs");
 include!("atlas_manual_panels.rs");
+include!("atlas_bank_panels.rs");
+include!("atlas_legacy_utility_panels.rs");
 include!("atlas_poly_constant_panel.rs");
 include!("stock_quantizer_panel.rs");
 include!("quantizer_keyboard.rs");
@@ -99,6 +101,9 @@ fn port_material_scale(kind: &str) -> f32 {
         "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "crossfade"
         | "quantizer" | "stock_quantizer" | "poly_sum" | "mid_side" | "stock_mid_side" | "mix6"
         | "stock_mix" => REDESIGNED_PORT_SCALE,
+        "constant" | "octave" => REDESIGNED_PORT_SCALE,
+        "attenuverter8" => 1.10,
+        "cv_mix" => REDESIGNED_PORT_SCALE,
         "logic"
         | "gates"
         | "push"
@@ -141,7 +146,8 @@ enum JackCaptionPlacement {
 fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPlacement {
     use JackCaptionPlacement::*;
     match (kind, port, output) {
-        ("logic" | "gates" | "push", _, _) => Above(25.0),
+        ("oscillator", _, true) => Right(36.0),
+        ("logic" | "gates" | "push" | "oscillator" | "constant" | "octave", _, _) => Above(25.0),
         ("stock_lfo" | "stock_vco" | "stock_noise" | "stock_process", _, _) => ExistingEnlarged,
         (
             "seq3",
@@ -197,7 +203,7 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("multi_vco" | "multi_lfo" | "stock_vcf", _, true) => Right(30.0),
         (
             "analog_vco" | "ladder_vcf" | "fade" | "rescale" | "gate" | "attenuverter"
-            | "white_noise" | "oscillator",
+            | "white_noise",
             _,
             true,
         ) => Right(36.0),
@@ -294,6 +300,8 @@ fn generic_parameter_hardware(
         || atlas_mid_side_kind(kind)
         || atlas_poly_kind(kind)
         || atlas_signal_utility_kind(kind)
+        || atlas_bank_rotary_kind(kind)
+        || atlas_legacy_utility_kind(kind)
         || kind == "score_sequencer"
         || atlas_oscillator(kind)
         || kind == "svf_filter"
@@ -3393,6 +3401,15 @@ impl Rack {
                     &self.lighting,
                 );
             }
+            if atlas_legacy_utility_kind(&node.kind) {
+                paint_atlas_legacy_utility_configuration(
+                    &painter,
+                    node,
+                    rect,
+                    self.zoom,
+                    &self.lighting,
+                );
+            }
             if node.kind == "vca_mix" {
                 self.mixing_panel(ui, node, rect);
             }
@@ -3751,7 +3768,7 @@ impl Rack {
                     || node.kind == "stock_process"
                     || node.kind == "studio_mixer"
                     || matches!(node.kind.as_str(), "midi_cc" | "midi_gate")
-                    || is_voltage_utility(&node.kind)
+                    || node.kind == "mutes10"
                     || (node.kind == "vca_mix" && matches!(*name, "channel_exp" | "mix_exp"))
                     || (node.kind == "fade" && *name == "law")
                     || (node.kind == "rescale"
@@ -4157,7 +4174,11 @@ impl Rack {
                     "macro_voice" => 8.0,
                     _ => 13.0,
                 };
-                let (knob_position, radius) = if atlas_signal_utility_kind(&node.kind) {
+                let (knob_position, radius) = if atlas_legacy_utility_kind(&node.kind) {
+                    atlas_legacy_utility_control(&node.kind, name)
+                } else if atlas_bank_rotary_kind(&node.kind) {
+                    atlas_bank_control(&node.kind, name)
+                } else if atlas_signal_utility_kind(&node.kind) {
                     atlas_signal_utility_control(&node.kind, name)
                 } else if atlas_sequence_kind(&node.kind) {
                     atlas_sequence_control(name)
@@ -4287,7 +4308,9 @@ impl Rack {
                 let slew_min = (node.kind == "process" && *name == "slew").then_some(min);
                 let multiplier = node.params.get("multiplier").copied().unwrap_or(1.0);
                 let scaled_gain = node.kind == "rescale" && *name == "gain";
-                let display_scale = if (atlas_voice(&node.kind)
+                let display_scale = if atlas_bank_rotary_kind(&node.kind) {
+                    atlas_bank_display_scale(patch, node, name)
+                } else if (atlas_voice(&node.kind)
                     && matches!(*name, "sustain" | "resonance" | "pulse_width"))
                     || (node.kind == "svf_filter" && matches!(*name, "drive" | "resonance"))
                 {
@@ -4307,7 +4330,9 @@ impl Rack {
                 } else {
                     1.0
                 };
-                let display_value = if atlas_sequence_kind(&node.kind) && *name == "steps" {
+                let display_value = if atlas_bank_rotary_kind(&node.kind) {
+                    atlas_bank_value(value, display_scale)
+                } else if atlas_sequence_kind(&node.kind) && *name == "steps" {
                     format!("{value:.0} steps")
                 } else if node.kind == "seq3" && name.ends_with("_amount") {
                     format!("{value:.2}×")
@@ -4401,7 +4426,9 @@ impl Rack {
                     },
                     step: step.map(|step| step * display_scale),
                     display_scale,
-                    display_unit: if node.kind == "stock_quantizer" {
+                    display_unit: if atlas_bank_rotary_kind(&node.kind) && display_scale == 10.0 {
+                        "V"
+                    } else if node.kind == "stock_quantizer" {
                         "st"
                     } else if stock_tempo {
                         "BPM"
@@ -4447,7 +4474,13 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if atlas_signal_utility_kind(&node.kind) {
+                let value_center = if atlas_legacy_utility_kind(&node.kind) {
+                    let local = atlas_legacy_utility_value_center(&node.kind, name);
+                    point(local.x, local.y)
+                } else if atlas_bank_rotary_kind(&node.kind) {
+                    let local = atlas_bank_value_center(&node.kind, name);
+                    point(local.x, local.y)
+                } else if atlas_signal_utility_kind(&node.kind) {
                     let local = atlas_signal_utility_value_center(&node.kind, name);
                     point(local.x, local.y)
                 } else if atlas_sequence_kind(&node.kind) {
@@ -4503,7 +4536,15 @@ impl Rack {
                 } else {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
-                let readout_width = if atlas_signal_utility_kind(&node.kind) {
+                let readout_width = if atlas_legacy_utility_kind(&node.kind) {
+                    100.0
+                } else if atlas_bank_rotary_kind(&node.kind) {
+                    if node.kind == "cv_mix" {
+                        68.0
+                    } else {
+                        56.0
+                    }
+                } else if atlas_signal_utility_kind(&node.kind) {
                     if node.kind == "fade" {
                         86.0
                     } else {
@@ -4833,6 +4874,8 @@ impl Rack {
                         || atlas_mid_side_kind(&node.kind)
                         || atlas_poly_kind(&node.kind)
                         || atlas_signal_utility_kind(&node.kind)
+                        || atlas_bank_rotary_kind(&node.kind)
+                        || atlas_legacy_utility_kind(&node.kind)
                         || node.kind == "score_sequencer"
                         || atlas_oscillator(&node.kind)
                         || node.kind == "svf_filter"
@@ -4865,7 +4908,11 @@ impl Rack {
                         self.zoom,
                     );
                 }
-                if atlas_signal_utility_kind(&node.kind) {
+                if atlas_legacy_utility_kind(&node.kind) {
+                    paint_atlas_legacy_utility_print(&painter, rect, &node.kind, name, self.zoom);
+                } else if atlas_bank_rotary_kind(&node.kind) {
+                    // The shared LEVEL column labels these dense row controls.
+                } else if atlas_signal_utility_kind(&node.kind) {
                     paint_atlas_signal_utility_print(&painter, rect, &node.kind, name, self.zoom);
                 } else if atlas_sequence_kind(&node.kind) {
                     paint_atlas_sequence_print(&painter, rect, &node.kind, name, self.zoom);
@@ -4972,6 +5019,7 @@ impl Rack {
                 let paint_readout = if atlas_sequence_kind(&node.kind)
                     || node.kind == "score_sequencer"
                     || atlas_signal_utility_kind(&node.kind)
+                    || atlas_legacy_utility_kind(&node.kind)
                 {
                     paint_atlas_sequence_readout
                 } else if node.kind == "sample_hold"
@@ -4981,6 +5029,7 @@ impl Rack {
                     || atlas_mid_side_kind(&node.kind)
                     || atlas_poly_kind(&node.kind)
                     || atlas_signal_utility_kind(&node.kind)
+                    || atlas_bank_rotary_kind(&node.kind)
                     || node.kind == "score_sequencer"
                     || atlas_oscillator(&node.kind)
                     || node.kind == "svf_filter"
@@ -5021,7 +5070,9 @@ impl Rack {
                         .parameter(&node.id, &node.kind, name)
                     {
                         let old = cue.old;
-                        let old_text = if atlas_sequence_kind(&node.kind) && *name == "steps" {
+                        let old_text = if atlas_bank_rotary_kind(&node.kind) {
+                            atlas_bank_value(old, display_scale)
+                        } else if atlas_sequence_kind(&node.kind) && *name == "steps" {
                             format!("{old:.0} steps")
                         } else if node.kind == "seq3" && name.ends_with("_amount") {
                             format!("{old:.2}×")
@@ -5071,7 +5122,11 @@ impl Rack {
                                 rect: knob_rect.union(value_response.rect),
                                 old_text,
                                 new_text: display_value.clone(),
-                                marker: (step.is_none()
+                                marker: ((step.is_none()
+                                    || matches!(
+                                        hardware,
+                                        GenericParameterHardware::Rotary { .. }
+                                    ))
                                     && !matches!(hardware, GenericParameterHardware::Choice))
                                 .then_some(
                                     if let GenericParameterHardware::Rotary {
@@ -6448,7 +6503,7 @@ impl Rack {
         &mut self,
         ui: &mut egui::Ui,
         node: &Node,
-        module: Option<&Value>,
+        _module: Option<&Value>,
         patch: &Patch,
         rect: Rect,
     ) -> Option<RackAction> {
@@ -6482,10 +6537,10 @@ impl Rack {
             ),
         ] {
             painter.text(
-                point(x, 79.0),
+                point(x, 70.0),
                 Align2::CENTER_CENTER,
                 label,
-                crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 10.0 * zoom),
                 MUTED,
             );
         }
@@ -6496,10 +6551,13 @@ impl Rack {
                 Stroke::new(0.5 * zoom, Color32::from_gray(185)),
             );
             painter.text(
-                point(53.0, y),
+                point(
+                    if node.kind == "cv_mix" { 29.0 } else { 53.0 },
+                    y - if node.kind == "cv_mix" { 30.0 } else { 0.0 },
+                ),
                 Align2::CENTER_CENTER,
                 format!("{:02}", row + 1),
-                crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
+                crate::panel_skin::print_font(painter.ctx(), 9.5 * zoom),
                 MUTED,
             );
             let parameter = format!(
@@ -6516,16 +6574,52 @@ impl Rack {
             let control = Rect::from_min_size(point(70.0, y - 11.0), vec2(92.0, 22.0) * zoom);
             if node.kind == "mutes10" {
                 let muted = node.params.get(&parameter).copied().unwrap_or(0.0) >= 0.5;
-                if panel_button(
-                    ui,
-                    &painter,
+                let response = ui.interact(
                     control,
                     ui.id().with((&node.id, &parameter)),
-                    if muted { "MUTED" } else { "PASS" },
-                    muted,
-                    true,
+                    Sense::click(),
+                );
+                response.widget_info(|| {
+                    egui::WidgetInfo::selected(
+                        egui::WidgetType::Button,
+                        ui.is_enabled(),
+                        muted,
+                        format!(
+                            "{} channel {} {}",
+                            node.id,
+                            row + 1,
+                            if muted { "muted" } else { "passing" }
+                        ),
+                    )
+                });
+                paint_atlas_manual_button(
+                    &painter,
+                    control,
                     zoom,
-                ) {
+                    muted,
+                    response.hovered(),
+                    ui.is_enabled(),
+                    (if muted { "MUTED" } else { "PASS" }, 10.0),
+                );
+                if let Some(cue) = self
+                    .construction_animation
+                    .parameter(&node.id, &node.kind, &parameter)
+                {
+                    let label = |v: f32| if v >= 0.5 { "MUTED" } else { "PASS" };
+                    self.register_construction_anchor(
+                        ui,
+                        node,
+                        &parameter,
+                        crate::construction_motion::Anchor {
+                            rect: control,
+                            marker: None,
+                            old_text: label(cue.old).into(),
+                            new_text: label(cue.new).into(),
+                        },
+                        &[response.id],
+                    );
+                }
+                if response.clicked() {
                     self.select_primary(node.id.clone());
                     action = Some(RackAction::Command(
                         "set_parameter",
@@ -6545,18 +6639,6 @@ impl Rack {
                 );
             } else {
                 let source = utility_source_row(patch, node, row);
-                let (suffix, scale) = if source.is_some() {
-                    (" %", 100.0)
-                } else {
-                    (" V", 10.0)
-                };
-                if let Some(spec) = module.and_then(|m| m["params"].get(&parameter)) {
-                    if let Some(edit) = self.compact_parameter_scaled(
-                        ui, node, &parameter, spec, control, suffix, scale,
-                    ) {
-                        action = Some(edit);
-                    }
-                }
                 let label = source.map_or("10V".into(), |source| {
                     if source == row {
                         "IN".into()
@@ -6572,7 +6654,7 @@ impl Rack {
                         } else {
                             181.0
                         },
-                        y,
+                        y + if node.kind == "cv_mix" { 22.0 } else { 0.0 },
                     ),
                     vec2(32.0, 22.0) * zoom,
                 );
@@ -6592,14 +6674,14 @@ impl Rack {
             }
         }
         let footer = match node.kind.as_str() {
-            "attenuverter8" => "Unpatched: input above; first = +10 V",
-            "mutes10" => "Unpatched: input above; first = 0 V",
-            _ => "Unpatched = +10 V · bipolar sum",
+            "attenuverter8" => "INPUT ABOVE NORMALLED · FIRST +10 V",
+            "mutes10" => "INPUT ABOVE NORMALLED · FIRST 0 V",
+            _ => "UNPATCHED +10 V · BIPOLAR SUM",
         };
         painter.text(
             point(
                 width * 0.5,
-                if node.kind == "cv_mix" { 320.0 } else { 375.0 },
+                if node.kind == "cv_mix" { 320.0 } else { 385.0 },
             ),
             Align2::CENTER_CENTER,
             footer,
@@ -6608,7 +6690,7 @@ impl Rack {
         );
         if node.kind == "cv_mix" {
             painter.text(
-                point(width * 0.5, 347.0),
+                point(width * 0.5, 342.0),
                 Align2::CENTER_CENTER,
                 "SUM OUT",
                 crate::panel_skin::print_font(painter.ctx(), 9.0 * zoom),
@@ -10794,6 +10876,8 @@ fn paint_panel(
         || atlas_poly_kind(&node.kind)
         || atlas_signal_utility_kind(&node.kind)
         || atlas_manual_kind(&node.kind)
+        || is_voltage_utility(&node.kind)
+        || atlas_legacy_utility_kind(&node.kind)
         || node.kind == "score_sequencer"
         || matches!(
             node.kind.as_str(),
@@ -10889,6 +10973,8 @@ fn paint_panel(
         || atlas_poly_kind(&node.kind)
         || atlas_signal_utility_kind(&node.kind)
         || atlas_manual_kind(&node.kind)
+        || is_voltage_utility(&node.kind)
+        || atlas_legacy_utility_kind(&node.kind)
         || node.kind == "score_sequencer"
         || matches!(
             node.kind.as_str(),
@@ -11180,6 +11266,8 @@ fn paint_jack(
         || atlas_poly_kind(kind)
         || atlas_signal_utility_kind(kind)
         || atlas_manual_kind(kind)
+        || is_voltage_utility(kind)
+        || atlas_legacy_utility_kind(kind)
         || kind == "score_sequencer"
         || matches!(
             kind,
@@ -15472,7 +15560,11 @@ mod tests {
                     "{kind} row {} output",
                     row + 1
                 );
-                let control = origin + vec2(116.0, utility_row_y(kind, row));
+                let control = origin
+                    + vec2(
+                        if kind == "mutes10" { 116.0 } else { 88.0 },
+                        utility_row_y(kind, row),
+                    );
                 if kind == "mutes10" {
                     frame(
                         &ctx,
@@ -15499,7 +15591,7 @@ mod tests {
                         time + 20.0,
                         vec![egui::Event::PointerMoved(control), button(control, true)],
                     );
-                    let moved = control + vec2(12.0, 0.0);
+                    let moved = control - vec2(0.0, 12.0);
                     let action = frame(
                         &ctx,
                         &mut rack,
@@ -18990,6 +19082,9 @@ mod tests {
     }
     mod stock_mix_ui_tests {
         include!("stock_mix_ui_tests.rs");
+    }
+    mod bank_legacy_ui_tests {
+        include!("bank_legacy_ui_tests.rs");
     }
     mod manual_atlas_ui_tests {
         include!("manual_atlas_ui_tests.rs");

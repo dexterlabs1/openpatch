@@ -78,16 +78,29 @@ impl FaderFixture {
             .find(|n| n.id == id)
             .unwrap();
         let width = module_width(node);
-        let (local, radius) = parameter_position(1, 0, width);
+        let (local, radius) = match node.kind.as_str() {
+            "constant" => atlas_legacy_utility_control("constant", "value"),
+            "octave" => atlas_legacy_utility_control("octave", "octaves"),
+            "audio_stereo" => (pos2(width * 0.5, 130.0), 30.0),
+            _ => parameter_position(1, 0, width),
+        };
         let center = self.rack.viewport.unwrap().min
             + self.rack.pan
             + (self.rack.positions[id].to_vec2() + local.to_vec2()) * self.rack.zoom;
-        crate::panel_skin::parameter_fader_track(center, radius, self.rack.zoom)
+        if atlas_legacy_utility_kind(&node.kind) {
+            // Rotary motion is relative, with 150 logical points per full range.
+            // This span describes input travel, not painted fader geometry.
+            Rect::from_center_size(center, vec2(radius * 2.0, 150.0) * self.rack.zoom)
+        } else {
+            crate::panel_skin::parameter_fader_track(center, radius, self.rack.zoom)
+        }
     }
     fn readout(&self) -> Pos2 {
-        let track = self.track("target");
-        // Constant's single control has a 42-point radius and a 15-point value gap.
-        track.center() + vec2(0.0, 57.0 * self.rack.zoom)
+        self.rack.viewport.unwrap().min
+            + self.rack.pan
+            + (self.rack.positions["target"].to_vec2()
+                + atlas_legacy_utility_value_center("constant", "value").to_vec2())
+                * self.rack.zoom
     }
     fn gate_duty_rotary(&self) -> (Pos2, Pos2) {
         let node = self
@@ -316,16 +329,16 @@ fn near(actual: f32, expected: f32) {
 #[test]
 fn generic_fader_absolute_track_clicks_reach_limits_at_rack_scales() {
     for zoom in [0.5, 1.0, 2.0] {
-        let mut f = FaderFixture::new("constant", "value", 4.0, zoom);
+        let mut f = FaderFixture::new("audio_stereo", "gain", 1.25, zoom);
         let baseline = f.undo_steps();
         let track = f.track("target");
         f.time = 1.0;
         f.click(pos2(track.center().x, track.top()));
-        assert_eq!(f.value("target", "value"), 16.0);
+        assert_eq!(f.value("target", "gain"), 2.0);
         assert_eq!(f.value("other", "value"), 9.0);
         f.time = 2.0; // independent click, not a double-click reset
         f.click(pos2(track.center().x, track.bottom()));
-        assert_eq!(f.value("target", "value"), -16.0);
+        assert_eq!(f.value("target", "gain"), 0.0);
         assert_eq!(f.undo_steps(), baseline + 2);
     }
 }
@@ -387,7 +400,7 @@ fn multi_and_wavetable_rotaries_click_without_jump_then_drag_through_session() {
 }
 
 #[test]
-fn generic_fader_ctrl_drag_is_fine_and_modifier_transition_uses_current_position() {
+fn scalar_rotary_ctrl_drag_is_fine_and_modifier_transition_uses_current_position() {
     for transition in [false, true] {
         let mut f = FaderFixture::new("constant", "value", 0.0, 1.0);
         let track = f.track("target");
@@ -422,7 +435,7 @@ fn generic_fader_ctrl_drag_is_fine_and_modifier_transition_uses_current_position
 }
 
 #[test]
-fn generic_fader_fine_to_normal_preserves_value_on_stationary_transition_and_mouseup() {
+fn scalar_rotary_fine_to_normal_preserves_value_on_stationary_transition_and_mouseup() {
     let command = egui::Modifiers {
         command: true,
         mac_cmd: true,
@@ -479,14 +492,14 @@ fn generic_fader_fine_to_normal_preserves_value_on_stationary_transition_and_mou
 }
 
 #[test]
-fn generic_fader_ctrl_discrete_drag_accumulates_substeps_without_fractional_edits() {
+fn scalar_rotary_ctrl_discrete_drag_accumulates_substeps_without_fractional_edits() {
     let mut f = FaderFixture::new("octave", "octaves", 0.0, 1.0);
     let start = f.track("target").center();
     let baseline = f.undo_steps();
     f.time = 1.0;
     f.press(start, ctrl());
     let mut updates = 0;
-    for pixel in 1..=70 {
+    for pixel in 1..=120 {
         if let Some(args) = f.move_to(start - vec2(0.0, pixel as f32), ctrl()) {
             assert_eq!(args["parameter"], "octaves");
             assert_eq!(args["value"].as_f64().unwrap().fract(), 0.0);
@@ -496,7 +509,7 @@ fn generic_fader_ctrl_discrete_drag_accumulates_substeps_without_fractional_edit
             assert_eq!(f.value("target", "octaves"), 0.0);
         }
     }
-    f.release(start - vec2(0.0, 70.0), ctrl());
+    f.release(start - vec2(0.0, 120.0), ctrl());
     assert!(
         updates > 0,
         "small fine motions must accumulate past a discrete step"
@@ -507,10 +520,10 @@ fn generic_fader_ctrl_discrete_drag_accumulates_substeps_without_fractional_edit
 }
 
 #[test]
-fn generic_fader_repeated_arrows_retain_focus_and_home_end_select_limits() {
+fn scalar_rotary_repeated_arrows_retain_focus_and_home_end_select_limits() {
     let mut f = FaderFixture::new("constant", "value", 4.0, 1.0);
     let track = f.track("target");
-    let thumb = crate::panel_skin::parameter_fader_thumb(track, 0.625, 1.0);
+    let thumb = Rect::from_center_size(track.center(), Vec2::splat(1.0));
     f.time = 1.0;
     f.click(thumb.center());
     let focus = f.ctx.memory(|m| m.focused()).expect("fader takes focus");
@@ -561,37 +574,37 @@ fn generic_fader_repeated_arrows_retain_focus_and_home_end_select_limits() {
 }
 
 #[test]
-fn generic_fader_drag_has_one_undo_and_double_click_reset_restores_pre_click_value() {
+fn scalar_rotary_drag_has_one_undo_and_double_click_reset_restores_pre_click_value() {
     {
         let mut f = FaderFixture::new("constant", "value", 7.0, 1.0);
         let track = f.track("target");
         let baseline = f.undo_steps();
-        let start = crate::panel_skin::parameter_fader_thumb(track, 23.0 / 32.0, 1.0).center();
+        let start = track.center();
         f.time = 1.0;
         f.press(start, egui::Modifiers::NONE);
-        for fraction in [0.25, 0.5, 0.75] {
-            let point = pos2(track.center().x, track.bottom() - track.height() * fraction);
+        for distance in [10.0, 20.0, 30.0] {
+            let point = start - vec2(0.0, distance);
             f.move_to(point, egui::Modifiers::NONE);
         }
-        let end = pos2(track.center().x, track.bottom() - track.height() * 0.75);
+        let end = start - vec2(0.0, 30.0);
         f.release(end, egui::Modifiers::NONE);
-        near(f.value("target", "value"), 8.0);
+        near(f.value("target", "value"), 13.4);
         assert_eq!(f.undo_steps(), baseline + 1);
         f.session.execute("undo", json!({})).unwrap();
         assert_eq!(f.value("target", "value"), 7.0);
         f.session.execute("redo", json!({})).unwrap();
-        near(f.value("target", "value"), 8.0);
+        near(f.value("target", "value"), 13.4);
     }
     {
         let mut f = FaderFixture::new("constant", "value", 7.0, 1.0);
         let track = f.track("target");
         let baseline = f.undo_steps();
-        let at = pos2(track.center().x, track.bottom() - track.height() * 0.3);
+        let at = track.center();
         f.time = 1.0;
         f.click(at);
-        near(f.value("target", "value"), -6.4);
+        near(f.value("target", "value"), 7.0);
         // Both clicks go through Session, so the test catches a second history
-        // group that would undo to the first click rather than the original 7 V.
+        // group that would undo to the first click rather than the original value 7.
         f.click(at);
         assert_eq!(f.value("target", "value"), 0.0);
         assert_eq!(f.undo_steps(), baseline + 1);
@@ -601,7 +614,7 @@ fn generic_fader_drag_has_one_undo_and_double_click_reset_restores_pre_click_val
 }
 
 #[test]
-fn generic_fader_numeric_entry_context_menu_and_preview_keep_their_separate_authority() {
+fn scalar_rotary_numeric_entry_context_menu_and_preview_keep_their_separate_authority() {
     let mut f = FaderFixture::new("constant", "value", 4.0, 1.0);
     let revision = f.session.revision();
     let history = f.undo_steps();
@@ -656,7 +669,7 @@ fn generic_fader_numeric_entry_context_menu_and_preview_keep_their_separate_auth
         .rack
         .editing
         .as_ref()
-        .expect("right-click fader opens parameter menu");
+        .expect("right-click rotary opens parameter menu");
     assert_eq!(edit.surface, ParameterEditSurface::KnobMenu);
     assert_eq!(f.value("target", "value"), 3.25);
     assert_eq!(f.undo_steps(), history + 1);
@@ -726,7 +739,7 @@ fn generic_fader_numeric_entry_context_menu_and_preview_keep_their_separate_auth
 }
 
 #[test]
-fn generic_fader_disabled_modal_and_removed_target_never_redirect_gestures() {
+fn scalar_rotary_disabled_modal_and_removed_target_never_redirect_gestures() {
     for guard in ["disabled", "modal", "removed"] {
         let mut f = FaderFixture::new("constant", "value", 4.0, 1.0);
         let track = f.track("target");
@@ -737,10 +750,7 @@ fn generic_fader_disabled_modal_and_removed_target_never_redirect_gestures() {
             f.click(f.readout());
             assert!(f.rack.editing.is_some());
         } else {
-            f.press(
-                crate::panel_skin::parameter_fader_thumb(track, 0.625, 1.0).center(),
-                egui::Modifiers::NONE,
-            );
+            f.press(track.center(), egui::Modifiers::NONE);
         }
         if guard == "removed" {
             f.session
@@ -748,7 +758,7 @@ fn generic_fader_disabled_modal_and_removed_target_never_redirect_gestures() {
                 .unwrap();
         }
         let enabled = guard != "disabled";
-        let destination = pos2(other.center().x, other.top());
+        let destination = other.center();
         let mut events = vec![egui::Event::PointerMoved(destination)];
         if guard == "modal" {
             events.push(pointer(destination, true, egui::Modifiers::NONE));
@@ -759,11 +769,7 @@ fn generic_fader_disabled_modal_and_removed_target_never_redirect_gestures() {
             "{guard} gesture must not change another control"
         );
         let action = f.draw(
-            vec![pointer(
-                pos2(other.center().x, other.top()),
-                false,
-                egui::Modifiers::NONE,
-            )],
+            vec![pointer(other.center(), false, egui::Modifiers::NONE)],
             enabled,
         );
         assert!(
@@ -781,6 +787,14 @@ fn generic_fader_disabled_modal_and_removed_target_never_redirect_gestures() {
 #[test]
 fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
     for (kind, parameter, initial, local) in [
+        ("attenuverter8", "gain1", 0.0, pos2(88.0, 107.0)),
+        ("attenuverter8", "gain8", 0.0, pos2(88.0, 352.0)),
+        ("cv_mix", "level1", 0.0, pos2(88.0, 132.0)),
+        ("cv_mix", "level3", 0.0, pos2(88.0, 272.0)),
+        ("oscillator", "frequency", 220.0, pos2(60.0, 117.0)),
+        ("oscillator", "amplitude", 0.2, pos2(60.0, 225.0)),
+        ("constant", "value", 0.0, pos2(60.0, 128.0)),
+        ("octave", "octaves", 0.0, pos2(90.0, 118.0)),
         ("sample_hold", "initial", 0.0, pos2(75.0, 135.0)),
         ("fade", "position", 0.5, pos2(65.0, 121.0)),
         ("fade", "cv_amount", 0.0, pos2(175.0, 121.0)),
@@ -958,12 +972,13 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
             f.press(center, egui::Modifiers::NONE).is_none(),
             "{kind}: no click jump"
         );
-        let first = center - vec2(0.0, 10.0);
+        let travel = if kind == "octave" { 30.0 } else { 10.0 };
+        let first = center - vec2(0.0, travel);
         let edit = f.move_to(first, egui::Modifiers::NONE).expect(kind);
         assert_eq!(edit["parameter"], parameter);
         let after_first = f.value("target", parameter);
         assert!(after_first > initial, "{kind}: first relative move");
-        let second = center - vec2(0.0, 20.0);
+        let second = center - vec2(0.0, travel * 2.0);
         f.move_to(second, egui::Modifiers::NONE).expect(kind);
         let after_second = f.value("target", parameter);
         assert!(
@@ -986,6 +1001,33 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
 #[test]
 fn approved_voice_numeric_fields_commit_physical_units_and_undo() {
     for (kind, parameter, initial, local, text, expected) in [
+        (
+            "attenuverter8",
+            "gain8",
+            0.5,
+            pos2(138.0, 352.0),
+            "-3.5",
+            -0.35,
+        ),
+        ("cv_mix", "level3", 0.5, pos2(162.0, 272.0), "2.5", 0.25),
+        (
+            "oscillator",
+            "frequency",
+            220.0,
+            pos2(60.0, 164.0),
+            "440",
+            440.0,
+        ),
+        (
+            "oscillator",
+            "amplitude",
+            0.2,
+            pos2(60.0, 272.0),
+            "0.4",
+            0.4,
+        ),
+        ("constant", "value", 0.0, pos2(60.0, 176.0), "-3.25", -3.25),
+        ("octave", "octaves", 0.0, pos2(90.0, 166.0), "-2", -2.0),
         (
             "svf_filter",
             "resonance",

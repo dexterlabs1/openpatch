@@ -54,7 +54,7 @@ fn committed_value_is_immediate_while_control_anchor_tracks_pan_zoom_and_human_e
     assert!(text(&output).iter().any(|t| t == "3.000"));
     assert!(text(&output).iter().any(|t| t == "0.000 → 3.000"));
     let anchor = rack.construction_anchors[&("target".into(), "value".into())].clone();
-    assert!(matches!(anchor.marker, Some(Marker::VerticalSlider { .. })));
+    assert!(matches!(anchor.marker, Some(Marker::Rotary { .. })));
     rack.pan += vec2(80.0, 50.0);
     rack.set_zoom(0.85);
     frame_revision_state(&ctx, &mut rack, &after, 0.2, vec![], true, true, 10);
@@ -1071,6 +1071,13 @@ fn committed_rotary_edits_have_a_moving_angular_cursor_without_delaying_values()
         ("fade", "cv_amount", -0.5, 0.5),
         ("compare", "b_offset", -2.0, 3.0),
         ("process", "slew", -4.0, 0.0),
+        ("attenuverter8", "gain1", -0.5, 0.75),
+        ("attenuverter8", "gain8", 0.25, -0.75),
+        ("cv_mix", "level1", -0.5, 0.5),
+        ("cv_mix", "level3", 0.5, -0.5),
+        ("oscillator", "frequency", 220.0, 440.0),
+        ("constant", "value", -4.0, 8.0),
+        ("octave", "octaves", -2.0, 3.0),
         ("gate", "frequency", 2.0, 4.0),
         ("gates", "length", 0.1, 0.4),
         ("poly_constant", "v1", -4.0, 8.0),
@@ -1258,4 +1265,53 @@ fn converted_rotary_cue_tracks_pan_zoom_and_yields_to_human_precision_entry() {
         .editing
         .as_ref()
         .is_some_and(|edit| edit.id == "target" && edit.parameter == "duty"));
+}
+
+#[test]
+fn mutes_saved_switch_cue_tracks_its_actual_cap_and_yields_to_human_press() {
+    let ctx = egui::Context::default();
+    crate::panel_skin::install_fonts(&ctx);
+    let mut rack = Rack::default();
+    let before = patch("mutes10", "mute10", 0.0);
+    let after = patch("mutes10", "mute10", 1.0);
+    frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+    let now = Instant::now();
+    rack.observe_construction_transition_at(
+        &before,
+        &after,
+        9,
+        10,
+        &snapshot(9, 10, "mutes10", "mute10", 0.0, 1.0),
+        MotionMode::Full,
+        now,
+    );
+    rack.set_construction_clock_override(Some(now + Duration::from_millis(140)));
+    frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10);
+    assert_eq!(after.nodes[0].params["mute10"], 1.0);
+    let anchor = rack.construction_anchors[&("target".into(), "mute10".into())].clone();
+    let expected = Rect::from_min_size(
+        rack.viewport.unwrap().min
+            + rack.pan
+            + (rack.positions["target"].to_vec2() + vec2(70.0, utility_row_y("mutes10", 9) - 11.0))
+                * rack.zoom,
+        vec2(92.0, 22.0) * rack.zoom,
+    );
+    assert_eq!(anchor.rect, expected);
+    assert!(anchor.marker.is_none());
+    assert_eq!(
+        (anchor.old_text.as_str(), anchor.new_text.as_str()),
+        ("PASS", "MUTED")
+    );
+    let at = expected.center();
+    frame_revision_state(
+        &ctx,
+        &mut rack,
+        &after,
+        0.2,
+        vec![egui::Event::PointerMoved(at), button(at, true)],
+        true,
+        true,
+        10,
+    );
+    assert!(rack.construction_animation.parameters.is_empty());
 }
