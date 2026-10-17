@@ -2,7 +2,7 @@
 
 OpenPatch can open `.vcv` patches as editable, recoverable projects. Verified mappings become native modules. Unsupported dependencies remain visible placeholders with their original data, assets and cables. Import does not promise that every Rack patch will play.
 
-This workflow is implemented on `work/rack-import`; it is not in the installed 0.2.6 build 8. macOS ARM is the validation target. No native audio-device qualification is implied by headless tests.
+This workflow is merged through [PR #30](https://github.com/dexterlabs1/openpatch/pull/30), runtime source `cc14da0`; it is not in the installed 0.2.6 build 8. macOS ARM is the validation target. No native audio-device qualification is implied by headless tests.
 
 ## Open, review, save
 
@@ -48,4 +48,4 @@ Desktop and MCP use the same Session-owned document. DSP receives a derived nati
 
 The user-supplied “So There I Was” fixture imports as **55 modules and 83 cables: 24 verified native mappings and 31 unresolved dependencies**. Its embedded asset and original JSON bytes survive conversion and native save/reopen; the source file remains unchanged. This proves preservation and the supported subset, not sonic equivalence of the whole patch.
 
-Focused checks cover source/archive limits, repair and undo, native migration/save/recovery/templates, stale UI/MCP edits, layout publication and startup suspension. Headless normal/dim captures use the real shared renderer without opening an audio device. Working logs and captures are recorded in the ignored `native-test-output/rack-import` state; milestone CI and installation remain separate delivery steps.
+Focused checks cover source/archive limits, repair and undo, native migration/save/recovery/templates, stale UI/MCP edits, layout publication and startup suspension. Headless normal/dim captures use the real shared renderer without opening an audio device. Working logs and captures are recorded in the ignored `native-test-output/rack-import` state; [Full macOS CI](https://github.com/dexterlabs1/openpatch/actions/runs/39016180431) passed 2,378 Rust tests and 117 Python/MCP tests plus packaging and visualizer integration. Installation remains a separate delivery step.
