@@ -1301,6 +1301,18 @@ impl Audio {
             .filter(move |packet| available && packet.start_frame >= floor)
     }
 
+    /// A returned capture still owns graph state until serviced/collected.
+    pub(crate) fn hosted_capture_busy(&self) -> bool {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            self.capture.busy()
+        }
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        {
+            false
+        }
+    }
+
     pub fn service(&mut self) {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         self.service_hosted_capture();
@@ -6709,3 +6721,24 @@ mod tests {
 #[cfg(test)]
 #[path = "audio_profile.rs"]
 mod profile;
+
+// Real child + callback driver for app workflow tests, without opening a device.
+#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+impl Audio {
+    pub(crate) fn hosted_save_test_audio(
+        patch: &Patch,
+        workspace: &std::path::Path,
+    ) -> (Self, impl FnMut(usize)) {
+        let (mut audio, callback) = tests::host_test_audio(patch);
+        let mut callback = Box::new(callback);
+        let mut config = hosted_audio::HostedAudioConfig::from_environment().unwrap();
+        config.workspace_parent = workspace.into();
+        audio.hosted_controller.set_config(config);
+        let render = move |frames: usize| {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            let mut output = vec![0.0_f32; frames];
+            tests::without_heap_activity(|| callback.render(&mut output, 1));
+        };
+        (audio, render)
+    }
+}

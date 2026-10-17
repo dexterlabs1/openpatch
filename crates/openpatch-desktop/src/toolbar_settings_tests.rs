@@ -27,7 +27,8 @@ fn frame(
 }
 
 fn rect(ctx: &egui::Context, key: &str) -> egui::Rect {
-    ctx.data(|data| data.get_temp(egui::Id::new(key))).unwrap()
+    ctx.data(|data| data.get_temp(egui::Id::new(key)))
+        .unwrap_or_else(|| panic!("missing UI rectangle {key}"))
 }
 
 fn click(ctx: &egui::Context, app: &mut OpenPatch, size: egui::Vec2, at: egui::Pos2, time: f64) {
@@ -163,7 +164,7 @@ fn nested_device_dropdown_selection_keeps_settings_open_and_outside_still_dismis
 
 #[test]
 fn toolbar_reserves_essential_controls_and_settings_scrolls_in_small_viewports() {
-    for width in [700.0, 850.0, 1100.0, 1140.0, 1440.0] {
+    for width in [700.0, 850.0, 1100.0, 1140.0, 1280.0, 1440.0] {
         let dir = tempfile::tempdir().unwrap();
         let mut app = host(dir.path());
         app.title =
@@ -191,7 +192,7 @@ fn toolbar_reserves_essential_controls_and_settings_scrolls_in_small_viewports()
             }
         }
         let rack = rect(&ctx, "toolbar-test-canvas");
-        if width >= 1140.0 {
+        if width >= 1280.0 {
             assert!(rack.top() < 60.0, "Wide toolbar should use one band");
         } else {
             assert!(rack.top() >= 70.0 && rack.top() < 100.0);
@@ -287,7 +288,7 @@ fn toolbar_groups_keep_left_to_right_hit_regions_in_wide_and_compact_layouts() {
         }
     }
 
-    for width in [700.0, 850.0, 1100.0, 1140.0, 1440.0] {
+    for width in [700.0, 850.0, 1100.0, 1140.0, 1280.0, 1440.0] {
         let dir = tempfile::tempdir().unwrap();
         let mut app = host(dir.path());
         app.title = "Long project title must leave toolbar action groups intact ".repeat(5);
@@ -300,7 +301,7 @@ fn toolbar_groups_keep_left_to_right_hit_regions_in_wide_and_compact_layouts() {
         if width >= 850.0 {
             ordered(&ctx, width, &["undo", "redo", "save"]);
         }
-        if width >= 1140.0 {
+        if width >= 1280.0 {
             ordered(&ctx, width, &["play", "volume"]);
             assert!(
                 (rect(&ctx, "toolbar-library-rect").center().y - gear(&ctx).center().y).abs() < 1.0
@@ -341,7 +342,7 @@ fn toolbar_groups_keep_left_to_right_hit_regions_in_wide_and_compact_layouts() {
 #[ignore = "writes CPU toolbar review PNGs to OPENPATCH_UX_PREVIEW_DIR"]
 fn export_toolbar_ux_review() {
     let destination = std::path::PathBuf::from(std::env::var("OPENPATCH_UX_PREVIEW_DIR").unwrap());
-    for width in [700.0, 850.0, 1100.0, 1140.0, 1440.0] {
+    for width in [700.0, 850.0, 1100.0, 1140.0, 1280.0, 1440.0] {
         let dir = tempfile::tempdir().unwrap();
         let mut app = host(dir.path());
         let ctx = egui::Context::default();

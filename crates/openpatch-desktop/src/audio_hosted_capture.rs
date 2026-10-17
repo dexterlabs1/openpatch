@@ -46,6 +46,11 @@ pub(super) struct CaptureCallback {
     held_return: Option<Box<CapturePacket>>,
     control: Option<CaptureControl>,
 }
+impl CaptureControl {
+    pub(super) fn busy(&self) -> bool {
+        self.pending.is_some() || self.ready.is_some()
+    }
+}
 impl CaptureCallback {
     pub(super) fn new() -> Self {
         let (send, requests) = RingBuffer::new(1);
@@ -144,8 +149,7 @@ impl Audio {
     pub(super) fn capture_in_progress(&self) -> bool {
         self.capture.pending.is_some()
     }
-    #[allow(dead_code)] // Shared begin/poll workflow is internal until UI/MCP dispatch is connected.
-    pub(super) fn begin_hosted_capture(
+    pub(crate) fn begin_hosted_capture(
         &mut self,
         ticket: HostedProjectCaptureTicket,
     ) -> Result<u64, String> {
@@ -202,8 +206,7 @@ impl Audio {
         Ok(seal.request_id())
     }
 
-    #[allow(dead_code)]
-    pub(super) fn take_hosted_capture_result(
+    pub(crate) fn take_hosted_capture_result(
         &mut self,
         request_id: u64,
     ) -> Option<Result<HostedProjectCaptureReceipt, String>> {

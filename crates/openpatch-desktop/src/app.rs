@@ -26,6 +26,10 @@ include!("app_import.rs");
 include!("app_listen.rs");
 include!("app_rackmcp.rs");
 include!("app_bridge.rs");
+include!("app_hosted_save.rs");
+include!("audio_performance_ui.rs");
+include!("app_footer.rs");
+include!("app_recent_files.rs");
 use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -363,6 +367,7 @@ pub struct OpenPatch {
     settings_open: bool,
     settings_status: String,
     audio_performance_open: bool,
+    audio_timing_history: AudioTimingHistory,
     smoke_diagnostics: Option<AudioTimingSnapshot>,
     keyboard: Keyboard,
     keyboard_open: bool,
@@ -382,6 +387,8 @@ pub struct OpenPatch {
     filename: String,
     title: String,
     files: Vec<String>,
+    recent_files: Vec<String>,
+    organize_rows: Option<usize>,
     workspace: String,
     file_mode: Option<FileMode>,
     file_focus: bool,
@@ -401,6 +408,8 @@ pub struct OpenPatch {
     active_file: Option<String>,
     active_token: Option<FileToken>,
     after_save: Option<PendingAction>,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted_save: Option<HostedSave>,
     deferred_action: Option<PendingAction>,
     deferred_manual_release: Option<(u64, crate::audio::ManualReleaseTicket)>,
     autosave_needed: bool,
@@ -553,6 +562,7 @@ impl OpenPatch {
             settings_open: false,
             settings_status: String::new(),
             audio_performance_open: false,
+            audio_timing_history: AudioTimingHistory::default(),
             smoke_diagnostics: None,
             keyboard: Keyboard::default(),
             keyboard_open: false,
@@ -572,6 +582,8 @@ impl OpenPatch {
             filename,
             title: startup.title,
             files: vec![],
+            recent_files: Vec::new(),
+            organize_rows: None,
             workspace,
             file_mode: None,
             file_focus: false,
@@ -593,6 +605,8 @@ impl OpenPatch {
             active_file: startup.active_file,
             active_token: startup.active_token,
             after_save: None,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_save: None,
             deferred_action: None,
             deferred_manual_release: None,
             autosave_needed: false,
@@ -615,6 +629,9 @@ impl OpenPatch {
         }
         app.refresh_recovery_list();
         app.apply_host_preferences(&preferences);
+        if let Some(name) = app.active_file.clone() {
+            app.remember_recent_file(&name);
+        }
         app.refresh_files();
 
         app.refresh_devices();
@@ -753,6 +770,11 @@ impl OpenPatch {
         }
     }
     fn apply_host_preferences(&mut self, preferences: &Value) {
+        self.recent_files = recent_files_from_settings(&preferences["recent_files"]);
+        self.organize_rows = preferences["organize_rows"]
+            .as_u64()
+            .filter(|rows| (1..=8).contains(rows))
+            .map(|rows| rows as usize);
         // Clamp JSON's finite f64 before narrowing; huge valid numbers must
         // clamp to the zoom bound rather than overflow and select the fallback.
         self.library.set_preview_zoom(
@@ -799,11 +821,14 @@ impl OpenPatch {
         let result = (|| -> Result<(), String> {
             let data = serde_json::to_vec_pretty(&json!({
                 "output_device": self.output_device, "midi_device": self.midi_device,
+                "recent_files": self.recent_files,
+                "organize_rows": self.organize_rows,
                 "module_favorites": self.library.favorites(),
                 "library_zoom": self.library.preview_zoom(),
                 "lock_module_positions": self.rack.positions_locked(),
                 "room_brightness": self.rack.room_brightness(),
                 "cable_opacity": self.rack.cable_presentation().opacity,
+                "cable_finish": self.rack.cable_presentation().finish.key(),
                 "cable_tension": self.rack.cable_presentation().tension,
                 "plug_light_brightness": self.rack.cable_presentation().plug_brightness,
                 "cable_palette": self.cable_palette.settings()
@@ -1149,112 +1174,6 @@ impl OpenPatch {
         self.audio.as_ref().map(Audio::diagnostics)
     }
 
-    fn audio_performance(&mut self, ctx: &egui::Context) {
-        if !self.audio_performance_open {
-            return;
-        }
-        let snapshot = self.diagnostic_snapshot();
-        let status = timing_status(snapshot.as_ref());
-        let simulated = self.smoke_test.is_some() && self.smoke_diagnostics.is_some();
-        let mut open = true;
-        let mut reset = false;
-        egui::Window::new("Audio performance")
-            .default_pos(ctx.content_rect().center() - Vec2::new(210.0, 205.0))
-            .open(&mut open)
-            .resizable(false)
-            .default_width(420.0)
-            .show(ctx, |ui| {
-                if simulated {
-                    ui.colored_label(ACCENT, "SIMULATED DATA · SCREENSHOT FIXTURE");
-                } else if self.audio.as_ref().is_some_and(|audio| !audio.is_playing())
-                    && status == TimingStatus::Ready
-                {
-                    ui.label("Transport paused · audio callbacks continue");
-                }
-                ui.label(timing_explanation(status));
-                if status == TimingStatus::Ready {
-                    let snapshot = snapshot.as_ref().unwrap();
-                    let percent = |value: f64| format!("{:.1}%", value * 100.0);
-                    let current = snapshot.utilization.map(percent).unwrap_or_else(|| "—".into());
-                    let peak = snapshot.peak_utilization.map(percent).unwrap_or_else(|| "—".into());
-                    let mean = weighted_mean_utilization(snapshot)
-                        .map(percent)
-                        .unwrap_or_else(|| "—".into());
-                    ui.separator();
-                    egui::Grid::new("audio-performance-metrics")
-                        .num_columns(2)
-                        .spacing([18.0, 5.0])
-                        .show(ui, |ui| {
-                            ui.label("Current budget use");
-                            ui.strong(current);
-                            ui.end_row();
-                            ui.label("Peak budget use");
-                            ui.strong(peak);
-                            ui.end_row();
-                            ui.label("Weighted mean");
-                            ui.strong(mean);
-                            ui.end_row();
-                            ui.label("Last processing / budget");
-                            ui.label(format!(
-                                "{:.3} / {:.3} ms",
-                                snapshot.duration_ns as f64 / 1_000_000.0,
-                                snapshot.frames as f64 * 1000.0 / snapshot.sample_rate as f64
-                            ));
-                            ui.end_row();
-                            ui.label("Measured callbacks");
-                            ui.label(snapshot.callbacks.to_string());
-                            ui.end_row();
-                            ui.label("Invalid or empty callbacks");
-                            ui.label(snapshot.invalid_callbacks.to_string());
-                            ui.end_row();
-                            ui.label("Processing budget overruns");
-                            ui.colored_label(ACCENT, snapshot.overruns.to_string());
-                            ui.end_row();
-                            ui.label("Graph transitions in interval");
-                            ui.label(snapshot.transition_callbacks.to_string());
-                            ui.end_row();
-                        });
-                    ui.separator();
-                    ui.label(format!(
-                        "Last callback · {} frames × {} channels at {} Hz",
-                        snapshot.frames, snapshot.channels, snapshot.sample_rate
-                    ));
-                    ui.label(format!(
-                        "Graph revision {} · callback sequence {}",
-                        snapshot.revision, snapshot.callback_sequence
-                    ));
-                    ui.label(format!(
-                        "Graph adopted: {} · crossfade: {}",
-                        if snapshot.adopted_graph { "yes" } else { "no" },
-                        if snapshot.crossfade { "yes" } else { "no" }
-                    ));
-                }
-                ui.separator();
-                ui.label(RichText::new("Processing overruns mean measured callback time exceeded its frame budget. Elapsed time includes preemption during rendering; it does not measure late callback delivery or hardware xruns.").size(10.0).color(MUTED));
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(
-                            self.audio.is_some() && !simulated && status != TimingStatus::Stopped,
-                            egui::Button::new("Reset statistics"),
-                        )
-                        .on_hover_text("Start a new measurement interval on the next audio callback")
-                        .clicked()
-                    {
-                        reset = true;
-                    }
-                    if status == TimingStatus::ResetPending {
-                        ui.label("Waiting for callback…");
-                    }
-                });
-            });
-        self.audio_performance_open = open;
-        if reset {
-            if let Some(audio) = &self.audio {
-                audio.reset_diagnostics();
-                ctx.request_repaint();
-            }
-        }
-    }
     fn refresh_files(&mut self) {
         self.files = std::fs::read_dir(&self.workspace)
             .into_iter()
@@ -1687,7 +1606,12 @@ impl OpenPatch {
             self.project.layout = s.project_document().layout.clone();
             // Seal patch, banks, revision and ordered host effects together.
             // Later commits append a separate segment while this one retries.
-            if self.audio.is_some() && self.audio_revision != Some(s.revision()) {
+            if self
+                .audio
+                .as_ref()
+                .is_some_and(|audio| !audio.hosted_capture_busy())
+                && self.audio_revision != Some(s.revision())
+            {
                 match s.audio_snapshot() {
                     Ok(ticket) => audio_ticket = Some(ticket),
                     Err(error) => self.status = error,
@@ -2065,6 +1989,11 @@ impl OpenPatch {
         Ok(document)
     }
     fn request_action(&mut self, action: PendingAction) {
+        if self.hosted_save_pending() {
+            self.status =
+                "Saving plugin state… Please wait before closing or replacing this patch.".into();
+            return;
+        }
         self.cancel_wavetable_import();
         if matches!(action, PendingAction::DiscardClose) {
             self.perform_action(action);
@@ -2715,9 +2644,22 @@ impl OpenPatch {
         }
     }
     fn save_document(&mut self, name: &str, new_file: bool) {
+        if self.hosted_save_pending() {
+            self.status = "Saving plugin state…".into();
+            return;
+        }
         // This pair belongs to one observed UI revision. Never re-sync between
         // capturing its graph and layout, or while doing disk I/O.
         self.sync();
+        match self.begin_hosted_save(name, new_file) {
+            Ok(true) => return,
+            Ok(false) => {}
+            Err(error) => {
+                self.status = format!("Save failed: {error}");
+                self.restore_save_continuation();
+                return;
+            }
+        }
         let (document, checkpoint) = match self.capture_persisted_save() {
             Ok(captured) => captured,
             Err(error) => {
@@ -2729,6 +2671,17 @@ impl OpenPatch {
                 return;
             }
         };
+        let token = self.active_token.clone();
+        self.write_project_save(name, new_file, token.as_ref(), document, checkpoint);
+    }
+    fn write_project_save(
+        &mut self,
+        name: &str,
+        new_file: bool,
+        token: Option<&FileToken>,
+        document: Document,
+        checkpoint: openpatch::control::ProjectSaveCheckpoint,
+    ) {
         let result = self
             .projects
             .as_ref()
@@ -2737,13 +2690,7 @@ impl OpenPatch {
                 if new_file {
                     store.save_new(name, &document)
                 } else {
-                    store.save_existing(
-                        name,
-                        &document,
-                        self.active_token
-                            .as_ref()
-                            .ok_or("No saved project selected")?,
-                    )
+                    store.save_existing(name, &document, token.ok_or("No saved project selected")?)
                 }
             });
         match result {
@@ -2779,6 +2726,7 @@ impl OpenPatch {
                 self.clear_recovery();
                 live.record_bridge_action("save_project", true);
                 drop(live);
+                self.remember_recent_file(name);
                 self.sync();
                 self.capture_document();
                 if let Some(action) = self.after_save.take() {
@@ -2915,6 +2863,9 @@ impl OpenPatch {
                 self.file_mode = None;
                 self.recovery_open = false;
                 drop(live);
+                if !recovery {
+                    self.remember_recent_file(name);
+                }
                 self.sync();
                 self.capture_document();
             }
@@ -2933,7 +2884,7 @@ impl OpenPatch {
         }
     }
     fn autosave(&mut self) {
-        if self.smoke_test.is_some() || self.allow_close {
+        if self.smoke_test.is_some() || self.allow_close || self.hosted_save_pending() {
             return;
         }
         self.observe_document();
@@ -3120,7 +3071,7 @@ impl OpenPatch {
             if movement
                 .before
                 .keys()
-                .any(|id| !self.patch.nodes.iter().any(|node| &node.id == id))
+                .any(|id| !self.project.graph.nodes.iter().any(|node| node.id() == id))
             {
                 return Err("Moved module is no longer in the patch".to_string());
             }
@@ -3481,52 +3432,14 @@ impl OpenPatch {
                 egui::Id::new(("cable-presentation-control", key)), response,
             ));
         }
+        ui.label("Cable finish");
+        let mut presentation = self.rack.cable_presentation();
+        if crate::cable_palette_ui::cable_finish_picker(ui, &mut presentation.finish) {
+            self.set_cable_presentation(presentation);
+            self.save_host_settings();
+        }
     }
 
-    fn footer(&mut self, ctx: &egui::Context) {
-        let timing = self.diagnostic_snapshot();
-        let timing_label = timing_footer(timing.as_ref());
-        let timing_help = timing_explanation(timing_status(timing.as_ref()));
-        egui::TopBottomPanel::bottom("status")
-            .frame(egui::Frame::new().fill(CHROME).inner_margin(egui::Margin::symmetric(12,5)))
-            .show(ctx, |ui| {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Audio health stays visible even when a status message is long.
-                    if ui
-                        .button(RichText::new(&timing_label).size(10.0).color(ACCENT))
-                        .on_hover_text(format!("{timing_help}\nOpen Audio performance for details."))
-                        .clicked()
-                    {
-                        self.audio_performance_open = true;
-                    }
-                    if self.audio.is_none() {
-                        if ui.button("Retry audio").on_hover_text(&self.device).clicked() {
-                            self.reopen_audio(self.output_device.clone());
-                        }
-                    } else if let Some(audio)=&self.audio {
-                        ui.label(RichText::new(format!("{} Hz",audio.sample_rate)).size(10.0).color(MUTED)).on_hover_text(&self.device);
-                        ui.add(egui::ProgressBar::new(audio.peak().min(1.0)).desired_width(48.0).desired_height(5.0).fill(ACCENT))
-                            .on_hover_text("Combined output peak · after master volume and graph crossfade");
-                        ui.label(RichText::new(if audio.is_playing(){"Playing"}else{"Paused"}).size(10.0).color(MUTED));
-                        if audio.solver_failures()!=0 {
-                            ui.colored_label(ACCENT,"Solver holds").on_hover_text(format!("{} circuit solves reached the bounded work limit. The last valid capacitor state was retained. Reduce drive, resonance, or modulation.",audio.solver_failures()));
-                        }
-                    }
-                    self.mcp_status(ui);
-                    ui.separator();
-                    ui.allocate_ui_with_layout(ui.available_size(),egui::Layout::left_to_right(egui::Align::Center),|ui| {
-                        ui.label(RichText::new(format!("{} modules · {} cables",self.patch.nodes.len(),self.patch.cables.len())).size(10.0).color(MUTED))
-                            .on_hover_text(if self.patch.version==2 {"Polyphonic engine v2"}else{"Legacy mono engine"});
-                        if self.rack.selection_count()>1 {
-                            ui.label(RichText::new(format!("{} selected",self.rack.selection_count())).size(10.0).color(ACCENT))
-                                .on_hover_text("Shift-click headers to select modules. Cmd/Ctrl+D duplicates the selection; add Shift to include incoming cables.");
-                        }
-                        ui.separator();
-                        ui.add(egui::Label::new(RichText::new(&self.status).size(10.0).color(ACCENT)).truncate()).on_hover_text(&self.status);
-                    });
-                });
-            });
-    }
     fn select_analysis(&mut self, tab: Option<AnalysisTab>) {
         self.analysis_tab = tab;
         if tab == Some(AnalysisTab::Scope) {
@@ -7244,6 +7157,7 @@ impl OpenPatch {
                 opacity: 0.15,
                 tension: 1.0,
                 plug_brightness: 1.0,
+                ..CablePresentation::default()
             });
             self.title = "Clear panels · taut cables".into();
             self.status = "Cable bodies 15% · tension 100% · actual offline signal plugs stay bright · no live audio".into();
@@ -7256,6 +7170,7 @@ impl OpenPatch {
                 opacity: 1.0,
                 tension: 0.0,
                 plug_brightness: 1.0,
+                ..CablePresentation::default()
             });
             self.title = "Loose cables · fixed plugs".into();
             self.status = "Cable bodies 100% · tension 0% · short and reversed routes keep their real signal endpoints · no live audio".into();
@@ -8288,6 +8203,10 @@ impl eframe::App for OpenPatch {
         }
         self.service_agent_follow(ctx);
         self.sync();
+        self.service_hosted_save();
+        if self.hosted_save_pending() {
+            ctx.request_repaint_after(Duration::from_millis(16));
+        }
         self.service_manual_release(ctx);
         self.observe_document();
         self.toolbar(ctx);
@@ -8536,6 +8455,13 @@ mod project_workflow_tests {
     mod agent_follow_app_tests {
         include!("agent_follow_app_tests.rs");
     }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    mod hosted_save_app_tests {
+        include!("hosted_save_app_tests.rs");
+    }
+    mod ui_panels_app_tests {
+        include!("ui_panels_app_tests.rs");
+    }
     mod import_app_tests {
         include!("import_app_tests.rs");
     }
@@ -8633,6 +8559,7 @@ mod project_workflow_tests {
             settings_open: false,
             settings_status: String::new(),
             audio_performance_open: false,
+            audio_timing_history: AudioTimingHistory::default(),
             smoke_diagnostics: None,
             keyboard: Keyboard::default(),
             keyboard_open: false,
@@ -8650,6 +8577,8 @@ mod project_workflow_tests {
             filename: "test.openpatch".into(),
             title: "Test".into(),
             files: Vec::new(),
+            recent_files: Vec::new(),
+            organize_rows: None,
             workspace,
             file_mode: None,
             file_focus: false,
@@ -8671,6 +8600,8 @@ mod project_workflow_tests {
             active_file: None,
             active_token: None,
             after_save: None,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_save: None,
             deferred_action: None,
             deferred_manual_release: None,
             autosave_needed: false,

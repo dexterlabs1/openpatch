@@ -17,6 +17,26 @@ Rust tests and 123 Python/MCP tests, plus four bundled-release CLI smoke tests.
 native-window/audio-device qualification. Keep the installed app stable; macOS
 ARM remains first, Windows/Linux and MIDI/live performance remain deferred.
 
+## User-requested rack workflow and creative expansion (2026-10-17)
+
+Development source now adds [Signal Path, cable materials, seated black screws,
+gravity-shaped slack and Organize](../design/reviews/rack-tools-v1/README.md), plus
+[anchored performance/MCP tools, real timing history, recent files and the always
+visible Room slider](../design/reviews/host-tools-v1/README.md). Organize applies
+one undoable graph-aware layout with Auto or 1–8 rows, including retained source
+panels. These changes are not installed; keep 0.2.7 build 9 stable.
+
+The user's next creative-library milestone is [twenty genuinely new instruments](CREATIVE_MODULES_20.md),
+with independent contracts rather than renamed existing kinds. **Zero of those
+twenty are complete.** Begin with Tides-derived Tidal Functions, then Frame Scene
+and Segment Garden. The [pinned Tides source reference](../scripts/tides2_reference/README.md)
+compiled on ARM and exposed a frame-zero clock-start nonfinite boundary; retain
+that failed evidence and define a safe, explicit native startup contract before
+porting. Source fidelity, shared UI/MCP/history, Custom plus functional tags for
+original instruments and Mac validation remain done requirements. Binary-host
+MCP save integration, active panels and actual device qualification remain open
+parallel goal requirements; no hosting-completion or new installation is claimed.
+
 ## Execution changes
 
 The recent process duplicated feature-push/PR CI, required two full capture reviews, ran benchmarks across every platform for routine UI edits, copied large manifests into chat and fragmented related work across small releases. These consume time without a matching product benefit.
@@ -187,9 +207,12 @@ child drain and validates a stale-safe Session receipt. Actual-plugin checks cov
 130 queued commands from a 37-frame tail, full-return-queue freezing, native knob
 and HOLD persistence, save/reopen/resume, late timeout, newer edits and child death.
 Native DSP survives cancellation/restart, and failed captures never acknowledge a
-saved baseline. Next connect the asynchronous begin/poll workflow to native/MCP
-save entry points, then active panels and the actual Mac device gate. Ordinary
-synchronous hosted save remains explicitly refused; installed 0.2.7 is unchanged.
+saved baseline. Native Save/Save As now dispatch the asynchronous begin/poll
+workflow across UI frames and retain conflict-checked file writes and saved
+baselines. Actual-plugin app tests cover Save As, edit/Save, external disk
+conflicts, newer-edit refusal and preserved audio/child cleanup. MCP synchronous
+hosted save still refuses; MCP dispatch, active panels and the actual Mac device
+gate remain open. No public activation or installation; installed 0.2.7 is unchanged.
 
 ## Delivered: Core text and host boundary
 

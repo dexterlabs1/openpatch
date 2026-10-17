@@ -199,9 +199,9 @@ retained findings](benchmarks/rack-binary-mixed-graph.json).
 
 User-facing activation remains unavailable. The internal Audio controller now
 publishes the complete graph using a separate hosted execution epoch, and the
-two-phase capture API below implements a coherent cut. Ordinary save entry
-points still refuse a live hosted binding until they dispatch that asynchronous
-workflow. The native-only execution gate remains suspended.
+two-phase capture API below implements a coherent cut. Native Save/Save As now
+dispatch that asynchronous workflow across UI frames. Synchronous MCP save still
+refuses a live hosted binding. The native-only execution gate remains suspended.
 
 ## User-visible exit
 
@@ -293,8 +293,9 @@ Launch configuration is explicit (`OPENPATCH_HOSTED_COMPANION`,
 `OPENPATCH_HOSTED_WORKSPACE`). There is no automatic plugin discovery or public
 activation control yet. The device start path requests 48 kHz / fixed 128-frame
 buffers and validates the actual callback; that path has not been device-qualified.
-The installed app remains 0.2.7 build 9. Next connect asynchronous save dispatch,
-active shared controls and Mac device qualification before exposing activation.
+The installed app remains 0.2.7 build 9. Native save dispatch is implemented; MCP
+dispatch, active shared controls and Mac device qualification remain before
+exposing activation.
 
 ## Implemented coherent capture and resume API
 
@@ -337,9 +338,22 @@ Actual installed-plugin checks cover a 37-frame partial quantum, 130 queued
 commands across three real quanta, full-return-queue freezing, native VCA/HOLD
 capture, explicit save/reopen, resume, late-timeout ownership return, stale edits
 and child death. Callback allocation/deallocation checks remain active. This is
-a paced headless API result, not native-window/device qualification. App/MCP save
-begin/poll dispatch, public hosted controls, seamless ordinary graph/Scope rebuilds
-and sustained Mac device deadlines remain open; no installation follows.
+a paced headless API result, not native-window/device qualification. Native
+Save/Save As dispatch the begin/poll workflow described below. MCP save dispatch,
+public hosted controls, seamless ordinary graph/Scope rebuilds and sustained Mac
+device deadlines remain open; no installation follows.
+
+Native Save/Save As retain the target name and original file token while polling
+the capture result across UI frames. A successful, current receipt goes through
+the existing conflict-checked project writer, and only a successful write
+registers the saved baseline. A duplicate save or patch replacement waits while
+capture is pending; autosave also waits. New edits remain possible, but invalidate
+the sealed save without dropping audio or marking the project clean. A failed
+save restores a pending close/replacement decision. The native app with the
+actual installed plugin passes Save As, edit/Save, external disk conflict and
+newer-edit refusal checks, with callback heap guards enabled and child workspace
+cleanup verified. These are paced headless app tests, with no native window or
+audio device. [Evidence](benchmarks/rack-binary-mixed-graph.json#native_save_dispatch).
 
 ## Protocol and authority
 

@@ -84,6 +84,14 @@ impl HostedProjectCaptureReceipt {
 }
 
 impl Session {
+    /// True when saving must rendezvous with the live native/companion graph.
+    /// Callers must use begin/complete capture instead of a configured snapshot.
+    pub fn requires_hosted_project_capture(&self) -> bool {
+        self.live_module_events
+            .as_ref()
+            .is_some_and(|backend| backend.requires_hosted_capture_barrier())
+    }
+
     /// Seal the authored document without changing history or its saved baseline.
     #[doc(hidden)]
     pub fn begin_hosted_project_capture(

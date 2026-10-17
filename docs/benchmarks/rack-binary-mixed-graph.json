@@ -498,7 +498,7 @@
     ]
   },
   "coherent_capture": {
-    "status": "internal asynchronous capture/resume API validated; ordinary App/MCP save dispatch remains open",
+    "status": "internal asynchronous capture/resume API validated; native Save/Save As dispatch now implemented, MCP dispatch remains open",
     "evidence": "native-test-output/rack-control-import/binary-host/coherent-capture-004",
     "identities": {
       "plugin": "264e55e1389274c3873439372c5c51f48f63168bd6c98fb2c6ffec170224b6f6",
@@ -550,9 +550,36 @@
     ],
     "limits": [
       "5ms callback pacing, no sustained48k/device/window claim",
-      "ordinary synchronous save still refuses hosted bindings until begin/poll dispatch is connected",
+      "synchronous MCP hosted save still refuses; native Save/Save As dispatch validated separately",
       "active hosted panels, seamless ordinary graph/Scope rebuilds and general plugin capabilities remain open",
       "no package/version/install"
     ]
+  },
+  "native_save_dispatch": {
+    "status": "native asynchronous Save/Save As dispatch implemented and validated; synchronous MCP hosted save still refuses",
+    "scope": "paced actual installed Bogaudio OFFSET + native headless application; no native window/audio device",
+    "validation": {
+      "actual_application": "capture-app-actual-002.log:2 actual-plugin native Save/Save As scenarios passed; default test stack",
+      "project_workflows": "capture-app-project-001.log:212 passed,4 ignored; overlapping desktop filter",
+      "cli_hosted_capture": "capture-app-cli-001.log:5 passed",
+      "strict_clippy": "capture-app-clippy-001.log:CLI/desktop all-targets passed",
+      "format": "capture-app-fmt-001.log:all6 affected Rust files including include! files checked explicitly; git diff --check passed"
+    },
+    "checks": [
+      "Save As completion creates one full source-preserving document and registers baseline only after write",
+      "shared hosted edit then Save persists updated state",
+      "duplicate save and replacement action wait while capture is pending",
+      "external disk modification survives conflict refusal without advancing saved baseline",
+      "newer native edit refuses stale capture, restores close decision and retains audio",
+      "callback allocation/deallocation guards remain enabled; child workspace cleanup verified"
+    ],
+    "companion_sha256": "903faed075237e1f996856572e4aa09fbe00b4967a7653442ea89d40e82a7786",
+    "retained_failures": [
+      "capture-app-actual-001.log:unboxed Callback in returned render closure caused default-stack overflow; box callback off render, no RUST_MIN_STACK override"
+    ],
+    "device_qualified": false,
+    "public_activation": false,
+    "installed": false,
+    "evidence": "native-test-output/rack-control-import/capture-app-result-002.json"
   }
 }

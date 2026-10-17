@@ -133,7 +133,9 @@ fn narrow_blank_heading_and_mounts_remain_inside_the_actual_spacer() {
                             mounts(s, out);
                         }
                     }
-                    egui::Shape::Circle(c) if c.fill == Color32::from_rgb(22, 30, 24) => {
+                    // The outer captive washer is present even when fine screw detail
+                    // is omitted at thumbnail scales.
+                    egui::Shape::Circle(c) if c.fill == Color32::from_rgb(45, 46, 43) => {
                         out.push((c.center, c.radius))
                     }
                     _ => {}
