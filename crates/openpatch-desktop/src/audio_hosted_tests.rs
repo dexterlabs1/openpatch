@@ -4,16 +4,9 @@ mod hosted_callback {
     use openpatch_core::ExternalModuleSpec;
     use std::os::unix::fs::FileExt;
 
-    #[test]
-    #[ignore = "requires explicitly supplied real ARM companion, SDK and installed plugin; no device opened"]
-    fn hosted_callback_actual_plugin_native_impulse_and_control_capture() {
-        use openpatch::binary_host::{graph::HostedGraphPlan, process::LaunchConfig, OutputBlock};
+    fn hosted_document() -> (Patch, openpatch::project_document::ProjectDocument) {
         use openpatch::project_document::hosted::{HostedIdentity, HostedModule};
         use openpatch::project_document::{DocumentNode, ProjectDocument, ProjectLayout};
-        use std::time::{Duration, Instant};
-        let path = |key| std::path::PathBuf::from(std::env::var_os(key).expect(key));
-        let destination = path("OPENPATCH_HOSTED_CALLBACK_REVIEW");
-        std::fs::create_dir_all(&destination).unwrap();
         let native:Patch=serde_json::from_value(serde_json::json!({"version":2,"sample_rate":48000,
             "nodes":[{"id":"push","kind":"push","params":{}},
                      {"id":"amp","kind":"gain","params":{"gain":0.125}}],"cables":[],"output":"amp"})).unwrap();
@@ -49,6 +42,72 @@ mod hosted_callback {
                 .cables
                 .push(serde_json::from_value(serde_json::json!({"route":route})).unwrap());
         }
+        (native, document)
+    }
+
+    #[test]
+    fn hosted_document_request_cannot_fall_back_to_native_on_submit_or_device_restart() {
+        let (patch, document) = hosted_document();
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_project_document(document, None).unwrap();
+        session.request_delayed_hosted_execution(None).unwrap();
+        let ticket = session.audio_snapshot().unwrap();
+        let (mut audio, _callback) = host_test_audio(&patch);
+        let revision = audio.submitted_revision;
+        assert!(audio
+            .submit_document(ticket.clone())
+            .unwrap_err()
+            .contains("native projection refused"));
+        assert_eq!(audio.submitted_revision, revision);
+        assert!(audio.pending.is_none());
+        assert!(audio.accepted_document.is_none());
+        let error =
+            Audio::new_with_document(ticket, Some("no audio device may be consulted"), false)
+                .err()
+                .unwrap();
+        assert!(error.contains("native projection refused"));
+    }
+
+    #[test]
+    fn full_ticket_enforces_suspension_without_an_attached_session_backend() {
+        let (patch, document) = hosted_document();
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_project_document(document, None).unwrap();
+        let suspended = session.audio_snapshot().unwrap();
+        let (mut audio, mut callback) = host_test_audio(&patch);
+        assert!(audio.performance.execution_available());
+        audio.submit_document(suspended.clone()).unwrap();
+        assert!(!audio.performance.execution_available());
+        audio.set_playing(true);
+        let mut samples = [1.0_f32; 128];
+        callback.render(&mut samples, 1);
+        assert_eq!(samples, [0.; 128]);
+        assert!(!audio.performance.execution_available());
+        assert!(session.acknowledge_audio_snapshot(suspended.id));
+        session
+            .set_document_playback(openpatch::project_document::PlaybackMode::Partial, None)
+            .unwrap();
+        audio
+            .submit_document(session.audio_snapshot().unwrap())
+            .unwrap();
+        callback.render(&mut samples, 1);
+        assert!(
+            audio.performance.execution_available(),
+            "only explicit Partial authorizes the omitted native graph"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires explicitly supplied real ARM companion, SDK and installed plugin; no device opened"]
+    fn hosted_callback_actual_plugin_native_impulse_and_control_capture() {
+        use openpatch::binary_host::{graph::HostedGraphPlan, process::LaunchConfig, OutputBlock};
+        use std::time::{Duration, Instant};
+        let path = |key| std::path::PathBuf::from(std::env::var_os(key).expect(key));
+        let destination = path("OPENPATCH_HOSTED_CALLBACK_REVIEW");
+        std::fs::create_dir_all(&destination).unwrap();
+        let (native, document) = hosted_document();
         let plan = HostedGraphPlan::prepare(&document).unwrap();
         let banks = native
             .prepare_wave_banks(&WavePreparationCache::default())

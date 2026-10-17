@@ -4,6 +4,7 @@
 use crate::port_light_transport::{self, PortLightProducer, PortLightReader};
 pub(crate) use crate::port_light_transport::{offline_frame, PortLightFrame, PortLightKey};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use openpatch::control::HostLifecycleTicket;
 use openpatch::control::LiveModuleEvents;
 use openpatch::project_document::ExecutionDisposition;
 pub use openpatch_core::ModuleTelemetry as SequenceTelemetry;
@@ -535,11 +536,49 @@ pub struct Audio {
     // Exact control-side graph paired with submitted_revision and banks. Scope
     // rebuilds must not substitute a newer UI patch for a sealed Session ticket.
     accepted_patch: Patch,
+    accepted_document: Option<Arc<HostLifecycleTicket>>,
     prepared_wave_banks: Arc<PreparedWaveBanks>,
     port_light_reader: PortLightReader,
 }
 
 impl Audio {
+    /// All application/device starts consume the same immutable Session request.
+    /// A hosted request may never fall through to native-only construction.
+    pub fn new_with_document(
+        ticket: Arc<HostLifecycleTicket>,
+        selected: Option<&str>,
+        port_lights_enabled: bool,
+    ) -> Result<Self, String> {
+        let (patch, disposition) = ticket.native_projection()?;
+        let mut audio = Self::new_with_device_and_wave_banks_and_execution(
+            patch,
+            ticket.banks.clone(),
+            selected,
+            port_lights_enabled,
+            ticket.revision,
+            disposition,
+        )?;
+        audio.accepted_document = Some(ticket);
+        Ok(audio)
+    }
+
+    pub fn submit_document(&mut self, ticket: Arc<HostLifecycleTicket>) -> Result<(), String> {
+        let (patch, disposition) = ticket.native_projection()?;
+        // The ticket supplies permission even when no Session event backend is
+        // attached yet. Performance refuses to roll a newer decision backward;
+        // its revision/generation gate keeps stale prepared tickets suspended.
+        self.performance
+            .request_document_execution(ticket.revision, disposition);
+        self.submit_patch_with_host_lifecycle(
+            patch,
+            ticket.revision,
+            ticket.banks.clone(),
+            &ticket.delta,
+        )?;
+        self.accepted_document = Some(ticket);
+        Ok(())
+    }
+
     pub fn output_devices() -> Result<Vec<String>, String> {
         let host = cpal::default_host();
         let devices = host.output_devices().map_err(|e| e.to_string())?;
@@ -565,7 +604,7 @@ impl Audio {
     }
 
     /// Fence the initial document before the stream can invoke its first callback.
-    pub fn new_with_device_and_wave_banks_and_execution(
+    fn new_with_device_and_wave_banks_and_execution(
         patch: &Patch,
         banks: Arc<PreparedWaveBanks>,
         selected: Option<&str>,
@@ -651,6 +690,7 @@ impl Audio {
             performance,
             submitted_revision: revision,
             accepted_patch: patch.clone(),
+            accepted_document: None,
             prepared_wave_banks: banks,
             port_light_reader,
         })
@@ -669,7 +709,7 @@ impl Audio {
         )
     }
 
-    pub fn submit_patch_with_host_lifecycle(
+    fn submit_patch_with_host_lifecycle(
         &mut self,
         patch: &Patch,
         revision: u64,
@@ -849,6 +889,9 @@ impl Audio {
         _ui_patch: &Patch,
         selection: Option<ScopeSelection>,
     ) -> Result<u64, String> {
+        if let Some(ticket) = &self.accepted_document {
+            ticket.native_projection()?;
+        }
         // The UI may already show a revision beyond a retained Session ticket.
         // Rebuild the last accepted graph, including its pending ordered edges;
         // a subsequent ticket alone may advance patch/revision/banks together.

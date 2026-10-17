@@ -24,10 +24,14 @@ pub use document::{LayoutIntent, LayoutOrigin, ProjectDocumentSnapshot};
 mod host_lifecycle;
 #[cfg(test)]
 mod host_lifecycle_tests;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+mod hosted_execution;
 #[cfg(test)]
 mod project_layout_tests;
 #[doc(hidden)]
-pub use host_lifecycle::{HostLifecycleDelta, HostLifecycleTicket, HostModuleLifecycleDelta};
+pub use host_lifecycle::{
+    DocumentExecutionRequest, HostLifecycleDelta, HostLifecycleTicket, HostModuleLifecycleDelta,
+};
 mod layout_history;
 mod midi_cc;
 #[cfg(test)]
@@ -381,6 +385,8 @@ pub struct Session {
     last_operation: Option<Value>,
     playback_mode: PlaybackMode,
     document_execution: bool,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted_execution_grant: Option<crate::binary_host::execution::HostedExecutionGrant>,
     patch: Patch,
     wave_preparation_cache: WavePreparationCache,
     prepared_wave_banks: Arc<PreparedWaveBanks>,
@@ -414,6 +420,8 @@ impl Clone for Session {
             last_operation: self.last_operation.clone(),
             playback_mode: self.playback_mode,
             document_execution: self.document_execution,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_execution_grant: None,
             patch: self.patch.clone(),
             wave_preparation_cache: self.wave_preparation_cache.clone(),
             prepared_wave_banks: self.prepared_wave_banks.clone(),
@@ -649,6 +657,8 @@ impl Session {
             last_operation: None,
             playback_mode: PlaybackMode::Exact,
             document_execution: false,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_execution_grant: None,
             patch,
             wave_preparation_cache,
             prepared_wave_banks,
@@ -925,6 +935,13 @@ impl Session {
                         .iter()
                         .eq(effects.release_controls.iter())
             });
+        // A load's generation is part of the same publication as its document.
+        // Do this after fallible preflight, before history or backend publication.
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let hosted_grant = self.grant_after_edit(&document, effects);
+        if let Some(generation) = effects.next_document_generation {
+            self.project_save.begin_document(generation)?;
+        }
         if merge_group {
             self.patch = candidate;
             self.document = document;
@@ -966,6 +983,13 @@ impl Session {
         }
         self.document_execution |=
             self.has_source_document() || self.playback_mode == PlaybackMode::Partial;
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            if self.hosted_execution_grant.is_some() && hosted_grant.is_none() {
+                self.host_lifecycle.supersede_execution();
+            }
+            self.hosted_execution_grant = hosted_grant;
+        }
         self.prepared_wave_banks = prepared;
         self.layout_generation = layout_generation;
         self.layout_pending = needs_layout;
@@ -1171,6 +1195,8 @@ impl Session {
                 .prepare_wave_banks(&self.wave_preparation_cache)?,
         };
         target.patch.compile_with_wave_banks(&prepared)?;
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let hosted_grant = self.grant_after_history(&target.document, &target.retired_modules);
         self.prepare_midi_cc_edit(&self.midi_cc_ids())?;
         if redo {
             self.redo.pop().ok_or("nothing to redo")?;
@@ -1218,6 +1244,13 @@ impl Session {
             self.redo.push(opposite);
         }
         self.revision = revision;
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            if self.hosted_execution_grant.is_some() && hosted_grant.is_none() {
+                self.host_lifecycle.supersede_execution();
+            }
+            self.hosted_execution_grant = hosted_grant;
+        }
         self.layout_generation = layout_generation;
         self.layout_pending = needs_layout;
         self.layout_origin = Some(entry.layout_origin.unwrap_or(LayoutOrigin::Authored));

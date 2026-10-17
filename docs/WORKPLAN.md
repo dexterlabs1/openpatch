@@ -148,6 +148,17 @@ is still open. Callback fault, stale-plan and full-queue donor-retirement tests
 pass. User-facing activation, delayed permission and shared live UI/MCP/save
 remain the next step; these component gates do not make the host available yet.
 
+The full-document request boundary is now implemented: retained audio tickets
+bind document/load generation, permission and ordered effects across startup,
+device retry and edits. An internal profile/topology grant survives ordinary
+knob/layout edits but expires on loads, topology changes and module retirement;
+undo cannot restore it. Revocation replaces a sealed request without losing its
+pending lifecycle effects. Native preparation/offline tools refuse to treat a
+hosted request as permission to run its omitted carrier. This is still not
+user-facing activation. Next implement bounded precommit live-event admission
+and acknowledgment, then process-owner activation/retirement and coherent live
+save. Installed 0.2.7 remains stable; reuse unchanged DSP reference evidence.
+
 ## Delivered: Core text and host boundary
 
 Exact Core Notes 2.6.6 now converts into editable native Notes, including legacy

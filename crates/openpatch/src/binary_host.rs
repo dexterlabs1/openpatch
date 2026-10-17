@@ -14,6 +14,7 @@ use std::path::Path;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
+pub mod execution;
 pub mod graph;
 pub mod process;
 pub mod runner;

@@ -26,7 +26,9 @@ fn audio_callback(patch: &Patch, enabled: bool) -> (Audio, Callback) {
         .unwrap();
     let audio = Audio {
         _stream: None,
-        prepared_wave_banks: patch.prepare_wave_banks(&openpatch_core::WavePreparationCache::default()).unwrap(),
+        prepared_wave_banks: patch
+            .prepare_wave_banks(&openpatch_core::WavePreparationCache::default())
+            .unwrap(),
         incoming,
         retired,
         pending: None,
@@ -42,6 +44,7 @@ fn audio_callback(patch: &Patch, enabled: bool) -> (Audio, Callback) {
         performance: callback.performance.clone(),
         submitted_revision: 0,
         accepted_patch: patch.clone(),
+        accepted_document: None,
         port_light_reader: reader(&callback),
     };
     (audio, callback)

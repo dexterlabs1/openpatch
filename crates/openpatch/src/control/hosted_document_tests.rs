@@ -70,6 +70,231 @@ fn full(document: &ProjectDocument) -> Value {
 }
 
 #[test]
+fn document_load_publishes_its_new_generation_before_notifying_the_backend() {
+    struct Observer {
+        save: SharedProjectSave,
+        seen: Mutex<Vec<u64>>,
+    }
+    impl LiveModuleEvents for Observer {
+        fn trigger(&self, _: &str, _: ModuleAction) -> Result<Value, String> {
+            unreachable!()
+        }
+        fn snapshot(&self) -> Value {
+            Value::Null
+        }
+        fn supports_document_execution(&self) -> bool {
+            true
+        }
+        fn sync_patch(&self, _: &Patch, _: u64) {
+            self.seen.lock().unwrap().push(self.save.generation());
+        }
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let mut session = Session::new(temp.path()).unwrap();
+    let observer = Arc::new(Observer {
+        save: session.project_save.clone(),
+        seen: Mutex::new(Vec::new()),
+    });
+    session
+        .set_live_module_events(Some(observer.clone()))
+        .unwrap();
+    let previous = session.project_save.generation();
+    session.replace_project_document(document(), None).unwrap();
+    assert_eq!(observer.seen.lock().unwrap().last(), Some(&(previous + 1)));
+    let committed_generation = session.project_save.generation();
+    let committed_revision = session.revision();
+    let mut invalid = document();
+    invalid.graph.cables[0].route.input = "missing".into();
+    assert!(session.replace_project_document(invalid, None).is_err());
+    assert_eq!(session.project_save.generation(), committed_generation);
+    assert_eq!(session.revision(), committed_revision);
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn full_execution_tickets_keep_permission_document_and_retry_identity_together() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut session = Session::new(temp.path()).unwrap();
+    session.replace_project_document(document(), None).unwrap();
+    let first = session.audio_snapshot().unwrap();
+    assert_eq!(first.document_generation, session.project_save.generation());
+    assert_eq!(full(&first.document), full(session.project_document()));
+    assert_eq!(
+        first.native_projection().unwrap().1,
+        ExecutionDisposition::SuspendedUnresolved
+    );
+    let permission_revision = session
+        .request_delayed_hosted_execution(Some(session.revision()))
+        .unwrap();
+    assert_eq!(session.playback_mode(), PlaybackMode::Exact);
+    assert_eq!(
+        session.execution_disposition(),
+        ExecutionDisposition::SuspendedUnresolved
+    );
+    assert!(
+        !session.acknowledge_audio_snapshot(first.id),
+        "a new permission decision supersedes the old request"
+    );
+    let requested = session.audio_snapshot().unwrap();
+    assert_eq!(requested.revision, permission_revision);
+    assert!(matches!(
+        requested.execution,
+        DocumentExecutionRequest::HostedDelayed(_)
+    ));
+    assert!(requested
+        .native_projection()
+        .unwrap_err()
+        .contains("native projection refused"));
+    assert_eq!(requested.document.graph.nodes.len(), 3);
+    assert_eq!(requested.document.graph.cables.len(), 2);
+    session
+        .set_hosted_parameter("offset", "offset", -0.5, None)
+        .unwrap();
+    assert!(Arc::ptr_eq(&requested, &session.audio_snapshot().unwrap()));
+    assert_eq!(
+        hosted(&requested.document).parameter("offset").unwrap(),
+        0.25
+    );
+    assert!(session.acknowledge_audio_snapshot(requested.id));
+    let edited = session.audio_snapshot().unwrap();
+    assert_eq!(hosted(&edited.document).parameter("offset").unwrap(), -0.5);
+    assert!(matches!(
+        edited.execution,
+        DocumentExecutionRequest::HostedDelayed(_)
+    ));
+    assert_eq!(
+        session.document_execution_status()["delayed_hosted_request"]["active"],
+        false
+    );
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn delayed_permission_is_ephemeral_and_cannot_be_restored_by_undo_or_a_load() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut session = Session::new(temp.path()).unwrap();
+    session.replace_project_document(document(), None).unwrap();
+    let authored = session.project_edit_content(None).unwrap();
+    session.request_delayed_hosted_execution(None).unwrap();
+    assert_eq!(session.project_edit_content(None).unwrap(), authored);
+    assert!(session.clone().hosted_execution_grant.is_none());
+    session
+        .set_hosted_parameter("offset", "scale", 0.75, None)
+        .unwrap();
+    session.execute("undo", json!({})).unwrap();
+    assert!(
+        session.hosted_execution_grant.is_some(),
+        "a knob undo keeps the same topology"
+    );
+    session
+        .execute("add_module", json!({"id":"new","kind":"constant"}))
+        .unwrap();
+    assert!(session.hosted_execution_grant.is_none());
+    session.execute("undo", json!({})).unwrap();
+    assert!(
+        session.hosted_execution_grant.is_none(),
+        "undo cannot revive permission"
+    );
+    session.request_delayed_hosted_execution(None).unwrap();
+    let generation = session.project_save.generation();
+    session.replace_project_document(document(), None).unwrap();
+    assert!(session.hosted_execution_grant.is_none());
+    assert_eq!(session.project_save.generation(), generation + 1);
+    let ticket = session.audio_snapshot().unwrap();
+    assert_eq!(ticket.document_generation, generation + 1);
+    assert!(matches!(
+        ticket.execution,
+        DocumentExecutionRequest::Native(ExecutionDisposition::SuspendedUnresolved)
+    ));
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn revocation_supersedes_a_sealed_hosted_request_without_losing_ordered_effects() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut session = Session::new(temp.path()).unwrap();
+    session.replace_project_document(document(), None).unwrap();
+    session.request_delayed_hosted_execution(None).unwrap();
+    let hosted = session.audio_snapshot().unwrap();
+    assert!(!hosted.delta.is_empty());
+    let effects = hosted.delta.clone();
+    session.revoke_delayed_hosted_execution(None).unwrap();
+    assert!(!session.acknowledge_audio_snapshot(hosted.id));
+    let revoked = session.audio_snapshot().unwrap();
+    assert_eq!(revoked.delta, effects);
+    assert_eq!(
+        revoked.native_projection().unwrap().1,
+        ExecutionDisposition::SuspendedUnresolved
+    );
+    assert_eq!(revoked.revision, session.revision());
+    assert!(session.acknowledge_audio_snapshot(revoked.id));
+    assert!(session.audio_snapshot().unwrap().delta.is_empty());
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn undo_of_an_identical_host_only_load_revokes_the_new_incarnation_permission() {
+    let mut document = document();
+    document
+        .graph
+        .nodes
+        .retain(|node| matches!(node, DocumentNode::Hosted { .. }));
+    document.graph.output = Some("offset".into());
+    document.graph.output_port = "out".into();
+    document.graph.cables = vec![DocumentCable {
+        route: serde_json::from_value(
+            json!({"id":"feedback", "from":"offset", "output":"out", "to":"offset", "input":"in"}),
+        )
+        .unwrap(),
+        source: None,
+    }];
+    document.layout.positions.retain(|id, _| id == "offset");
+    let temp = tempfile::tempdir().unwrap();
+    let mut session = Session::new(temp.path()).unwrap();
+    session
+        .replace_project_document(document.clone(), None)
+        .unwrap();
+    session
+        .replace_project_document(document.clone(), None)
+        .unwrap();
+    session.request_delayed_hosted_execution(None).unwrap();
+    assert!(session.patch.nodes.is_empty());
+    session.execute("undo", json!({})).unwrap();
+    assert_eq!(full(session.project_document()), full(&document));
+    assert!(
+        session.hosted_execution_grant.is_none(),
+        "load history must fence hosted incarnations even when the native carrier is empty"
+    );
+    session.execute("redo", json!({})).unwrap();
+    assert!(session.hosted_execution_grant.is_none());
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn delayed_request_never_authorizes_native_only_offline_tools_even_in_partial_mode() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut session = Session::new(temp.path()).unwrap();
+    session.replace_project_document(document(), None).unwrap();
+    session
+        .set_document_playback(PlaybackMode::Partial, None)
+        .unwrap();
+    session.request_delayed_hosted_execution(None).unwrap();
+    assert!(session
+        .require_document_execution()
+        .unwrap_err()
+        .contains("native-only"));
+    assert!(session
+        .execute(
+            "render_audio",
+            json!({"filename":"omitted.wav","seconds":0.01})
+        )
+        .is_err());
+    assert!(!temp.path().join("omitted.wav").exists());
+    session.revoke_delayed_hosted_execution(None).unwrap();
+    session.require_document_execution().unwrap();
+}
+
+#[test]
 fn hosted_document_roundtrip_keeps_routes_but_never_claims_native_execution() {
     let document = document();
     let reopened = ProjectDocument::decode(&document.encode().unwrap()).unwrap();

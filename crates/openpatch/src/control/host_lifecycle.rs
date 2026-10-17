@@ -53,16 +53,43 @@ impl HostLifecycleDelta {
     }
 }
 
-/// Session retains the same Arc until its exact id is acknowledged. A compile
-/// retry therefore cannot mix an old delta with a newer patch or wave bank.
+/// Full-document execution request, distinct from an audio activation receipt.
+/// In particular, a hosted request never permits executing the native carrier.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub enum DocumentExecutionRequest {
+    Native(ExecutionDisposition),
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    HostedDelayed(crate::binary_host::execution::HostedExecutionGrant),
+}
+
+/// Session retains the same Arc until its exact id is acknowledged. A retry
+/// cannot mix document, execution permission, ordered effects or wave banks.
 #[doc(hidden)]
 #[derive(Clone)]
 pub struct HostLifecycleTicket {
     pub id: u64,
     pub revision: u64,
-    pub patch: Patch,
+    pub document_generation: u64,
+    pub document: Arc<ProjectDocument>,
+    pub execution: DocumentExecutionRequest,
+    pub(super) patch: Patch,
     pub banks: Arc<PreparedWaveBanks>,
     pub delta: HostLifecycleDelta,
+}
+
+impl HostLifecycleTicket {
+    /// Native preparation is permitted only with the sealed native disposition.
+    /// Hosted dispatch must consume the complete document and its own grant.
+    pub fn native_projection(&self) -> Result<(&Patch, ExecutionDisposition), String> {
+        match &self.execution {
+            DocumentExecutionRequest::Native(disposition) => Ok((&self.patch, *disposition)),
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            DocumentExecutionRequest::HostedDelayed(_) => Err(
+                "delayed hosted execution requires full-document audio preparation; native projection refused".into(),
+            ),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -72,6 +99,21 @@ pub(super) struct Publication {
     baseline_ids: BTreeSet<String>,
 }
 impl Publication {
+    /// Replace a permission decision without pairing its old grant with a new
+    /// document. Retain all unacknowledged lifecycle intent in original order.
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn supersede_execution(&mut self) {
+        if let Some(ticket) = self.sealed.take() {
+            let mut combined = ticket.delta.clone();
+            combined.append(&self.tail);
+            self.tail = combined;
+            // A control-side submission may be between preparation and its
+            // Session acknowledgment. Keep those IDs until a newer exact ack.
+            self.baseline_ids
+                .extend(ticket.patch.nodes.iter().map(|node| node.id.clone()));
+        }
+    }
+
     pub fn at_patch(patch: &Patch) -> Self {
         Self {
             baseline_ids: patch.nodes.iter().map(|node| node.id.clone()).collect(),
@@ -93,6 +135,14 @@ impl Publication {
 static NEXT_TICKET: AtomicU64 = AtomicU64::new(1);
 
 impl Session {
+    fn document_execution_request(&self) -> DocumentExecutionRequest {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if let Some(grant) = &self.hosted_execution_grant {
+            return DocumentExecutionRequest::HostedDelayed(grant.clone());
+        }
+        DocumentExecutionRequest::Native(self.execution_disposition())
+    }
+
     #[doc(hidden)]
     pub fn audio_snapshot(&mut self) -> Result<Arc<HostLifecycleTicket>, String> {
         if let Some(ticket) = &self.host_lifecycle.sealed {
@@ -112,6 +162,9 @@ impl Session {
         let ticket = Arc::new(HostLifecycleTicket {
             id,
             revision: self.revision,
+            document_generation: self.project_save.generation(),
+            document: Arc::new(self.document.clone()),
+            execution: self.document_execution_request(),
             patch: self.patch.clone(),
             banks: self.prepared_wave_banks.clone(),
             delta: std::mem::take(&mut self.host_lifecycle.tail),

@@ -306,7 +306,9 @@ mod port_light_host {
         let (mut callback, incoming, retired) = callback_for(&patch);
         let mut audio = Audio {
             _stream: None,
-        prepared_wave_banks: patch.prepare_wave_banks(&openpatch_core::WavePreparationCache::default()).unwrap(),
+            prepared_wave_banks: patch
+                .prepare_wave_banks(&openpatch_core::WavePreparationCache::default())
+                .unwrap(),
             incoming,
             retired,
             pending: None,
@@ -322,6 +324,7 @@ mod port_light_host {
             performance: callback.performance.clone(),
             submitted_revision: 0,
             accepted_patch: patch.clone(),
+            accepted_document: None,
             port_light_reader: reader(&callback),
         };
         render(&mut callback, 64);

@@ -102,10 +102,49 @@ their 20.8 µs budgets; one small event callback in the Core runner gate also
 overran. Neither gate qualifies arbitrary tiny callbacks or sustained real-time
 playback. No performance advantage is claimed. [Recorded evidence](benchmarks/rack-binary-mixed-graph.json).
 
-Application launch/configuration, topology-bound delayed permission, active
+Application launch/configuration, user-facing delayed permission, active
 Signal Atlas controls, shared live parameter/state publication and coherent
 live save/reopen remain unfinished. The actual Callback fixture explicitly
 injects a prepared graph; it does not override document Exact/Partial permission.
+
+## Implemented full-document request boundary
+
+The Session's retained audio ticket now seals the complete immutable document,
+load generation, execution request, native state carrier, wave banks and ordered
+lifecycle effects together. Startup, device retry and normal application edits
+consume this ticket. Scope rebuilds retain its accepted context. Native audio
+preparation cannot extract a native projection from a delayed-host request;
+until full hosted dispatch is implemented, it refuses that request explicitly.
+This prevents a permission flag from accidentally enabling the omitted carrier.
+
+The internal delayed-host request binds an explicit grant to the full graph's
+topology and the provisional 48 kHz/Q128/D384/max128 profile. The key retains
+module order and identity, structural settings, custom state, routing/order,
+output, assets and automation; qualified ordinary knob values and layout do not
+revoke it. A new load, topology change or retired incarnation revokes permission.
+Undo cannot revive it. Grants are neither saved nor copied into cloned Sessions,
+and they never change the meaning of Exact or Partial. Native-only offline
+render/analysis refuses a delayed-host request, including from Partial mode.
+
+Changing or revoking permission supersedes an old sealed request while retaining
+unacknowledged lifecycle intent in order. Parameter edits within the same grant
+retain the exact old ticket for retries. Loads publish their new generation
+before notifying the backend, rather than notifying with the old generation.
+Inspection distinguishes an internal request from activation (`active: false`).
+This boundary is not a user-facing Start command or a live-event admission API.
+The next dependency is bounded precommit admission and acknowledged hosted
+parameter publication, followed by controller activation/retirement and a
+coherent save barrier. Do not expose activation by adding a runnable enum to the
+existing native Patch synchronization path. A second focused architecture
+advisory identified this concrete authority/rebuild risk; no extra DSP oracle or
+device qualification is claimed for these control-path changes.
+
+Local Mac checks pass: 410 CLI/control tests, 242 audio callback tests and 257
+project/startup/workflow tests (the desktop filters overlap), plus strict
+CLI/desktop all-target Clippy and formatting. Focused review reproduced a
+host-only identical-load/undo permission bug; loads now retire the full document's
+modules and cables, and the new regression passes. Existing callback DSP and
+reference comparisons were not regenerated for these control-only changes.
 
 ## User-visible exit
 

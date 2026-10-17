@@ -463,6 +463,8 @@ impl Session {
             last_operation: self.last_operation.clone(),
             playback_mode: self.playback_mode,
             document_execution: self.document_execution,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_execution_grant: None,
             patch: self.patch.clone(),
             wave_preparation_cache: self.wave_preparation_cache.clone(),
             prepared_wave_banks: self.prepared_wave_banks.clone(),

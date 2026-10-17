@@ -196,6 +196,10 @@ impl Session {
     }
 
     pub(super) fn require_document_execution(&self) -> Result<(), String> {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if self.hosted_execution_grant.is_some() {
+            return Err("this operation requires full hosted execution; native-only rendering or analysis would omit hosted modules".into());
+        }
         if self.execution_disposition().is_runnable() {
             Ok(())
         } else {
@@ -427,10 +431,26 @@ impl Session {
         )?;
         self.reconcile_midi_cc_learn()?;
         let mut effects = EditEffects::default();
-        effects.retired = self.module_ids();
-        effects.retired_cables = self.cable_ids();
+        // A load retires every document incarnation, including hosted/source
+        // nodes omitted from the native state carrier. History must retain this
+        // fence even for an identical graph with no native modules at all.
+        effects.retired = self
+            .document
+            .graph
+            .nodes
+            .iter()
+            .map(|node| node.id().to_owned())
+            .collect();
+        effects.retired_cables = self
+            .document
+            .graph
+            .cables
+            .iter()
+            .filter_map(|cable| cable.route.id.clone())
+            .collect();
         effects.replacement_document = Some(document);
         effects.playback_mode = Some(PlaybackMode::Exact);
+        effects.next_document_generation = Some(next_generation);
         let revision = self.commit_with_layout(
             carrier.patch,
             expected_revision,
@@ -438,7 +458,6 @@ impl Session {
             &effects,
             prepared_layout,
         )?;
-        self.project_save.begin_document(next_generation)?;
         self.layout_origin = if prepared_layout {
             None
         } else {
@@ -672,7 +691,21 @@ impl Session {
     }
 
     pub fn document_execution_status(&self) -> Value {
-        execution_status(&self.document, self.playback_mode)
+        let status = execution_status(&self.document, self.playback_mode);
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let status = {
+            let mut status = status;
+            status["delayed_hosted_request"] = self.hosted_execution_grant.as_ref().map_or(
+                json!({"status":"not_requested"}),
+                |grant| {
+                    json!({"status":"requested", "document_generation":grant.document_generation(),
+                    "topology_key":grant.topology_key(), "profile":grant.profile(),
+                    "active":false})
+                },
+            );
+            status
+        };
+        status
     }
 
     pub(super) fn document_tool(
