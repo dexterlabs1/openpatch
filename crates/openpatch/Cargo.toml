@@ -14,6 +14,7 @@ tar = { version = "0.4.46", default-features = false }
 zstd = { version = "0.14.3", default-features = false }
 base64 = "0.22.1"
 tempfile = "=3.27.0"
+rtrb = "0.3"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

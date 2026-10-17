@@ -63,6 +63,25 @@ pub enum DocumentExecutionRequest {
     HostedDelayed(crate::binary_host::execution::HostedExecutionGrant),
 }
 
+/// Borrowed control-thread view of the complete authored execution request.
+pub struct DocumentExecutionContext<'a> {
+    pub document: &'a ProjectDocument,
+    pub document_generation: u64,
+    pub request: DocumentExecutionRequest,
+    pub native_carrier: &'a Patch,
+    pub revision: u64,
+    pub fence_native: bool,
+}
+impl DocumentExecutionContext<'_> {
+    pub fn native_disposition(&self) -> ExecutionDisposition {
+        match self.request {
+            DocumentExecutionRequest::Native(disposition) => disposition,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            DocumentExecutionRequest::HostedDelayed(_) => ExecutionDisposition::SuspendedUnresolved,
+        }
+    }
+}
+
 /// Session retains the same Arc until its exact id is acknowledged. A retry
 /// cannot mix document, execution permission, ordered effects or wave banks.
 #[doc(hidden)]
@@ -135,7 +154,17 @@ impl Publication {
 static NEXT_TICKET: AtomicU64 = AtomicU64::new(1);
 
 impl Session {
-    fn document_execution_request(&self) -> DocumentExecutionRequest {
+    pub(super) fn document_execution_context(&self) -> DocumentExecutionContext<'_> {
+        DocumentExecutionContext {
+            document: &self.document,
+            document_generation: self.project_save.generation(),
+            request: self.document_execution_request(),
+            native_carrier: &self.patch,
+            revision: self.revision,
+            fence_native: self.document_execution,
+        }
+    }
+    pub(super) fn document_execution_request(&self) -> DocumentExecutionRequest {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         if let Some(grant) = &self.hosted_execution_grant {
             return DocumentExecutionRequest::HostedDelayed(grant.clone());

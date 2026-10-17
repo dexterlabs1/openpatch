@@ -3,7 +3,9 @@
 use super::audio_diagnostics::{Diagnostics, Recorder};
 use crate::listen_capture::{self, CaptureProducer, CaptureService, StartRequest, Target};
 use crate::scope_transport::{self, ScopeFrame, ScopeProducer, ScopeReader};
-use openpatch::control::LiveModuleEvents;
+use openpatch::control::{
+    DocumentExecutionContext, HostedEditAdmission, HostedEditProposal, LiveModuleEvents,
+};
 use openpatch::project_document::ExecutionDisposition;
 use openpatch_core::{
     Cable, CableHandle, Engine, FixedPatternName, ListenSink, ListenStatus, ModuleAction,
@@ -1030,8 +1032,16 @@ impl Shared {
         self.publish_serial.fetch_add(1, Ordering::SeqCst);
     }
 }
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[derive(Default)]
+struct HostedControlBinding {
+    revision: u64,
+    control: Option<Arc<openpatch::binary_host::control::HostedControl>>,
+}
 pub(super) struct Performance {
     control: Mutex<Control>,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted_control: Mutex<HostedControlBinding>,
     pub(super) diagnostics: Arc<Diagnostics>,
     shared: Arc<Shared>,
     rate: u32,
@@ -1470,6 +1480,56 @@ pub(super) struct EventReader {
 }
 
 impl Performance {
+    /// Register event admission for a fully prepared document. This does not
+    /// activate playback; Audio must still publish the matching hosted graph.
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[allow(dead_code)] // Controller dispatch is the next application boundary.
+    pub(super) fn register_hosted_control(
+        &self,
+        ticket: &openpatch::control::HostLifecycleTicket,
+        hosted: Arc<openpatch::binary_host::control::HostedControl>,
+    ) -> Result<(), String> {
+        if self.shared.closed.load(Ordering::Acquire) {
+            return Err("audio backend is closed".into());
+        }
+        let openpatch::control::DocumentExecutionRequest::HostedDelayed(grant) = &ticket.execution
+        else {
+            return Err("hosted control registration requires a full-document grant".into());
+        };
+        if !grant.matches_document(&ticket.document, ticket.document_generation)?
+            || !hosted.accepts_document(&ticket.document, ticket.document_generation)?
+        {
+            return Err("hosted control registration does not match its document".into());
+        }
+        let native = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        if self.shared.closed.load(Ordering::Acquire) {
+            return Err("audio backend is closed".into());
+        }
+        let mut binding = self
+            .hosted_control
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if ticket.revision
+            < native
+                .revision
+                .max(native.execution.revision)
+                .max(binding.revision)
+        {
+            return Err("stale hosted control registration".into());
+        }
+        binding.revision = ticket.revision;
+        if binding
+            .control
+            .as_ref()
+            .is_some_and(|old| Arc::ptr_eq(old, &hosted))
+        {
+            return Ok(());
+        }
+        if let Some(old) = binding.control.replace(hosted) {
+            old.close();
+        }
+        Ok(())
+    }
     pub(super) fn execution_available(&self) -> bool {
         !self.shared.closed.load(Ordering::Acquire) && self.shared.execution_available()
     }
@@ -1599,6 +1659,8 @@ impl Performance {
         };
         (
             Arc::new(Self {
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                hosted_control: Mutex::new(HostedControlBinding::default()),
                 control: Mutex::new(Control {
                     queue,
                     entries: BTreeMap::new(),
@@ -2176,9 +2238,20 @@ impl Performance {
             .fetch_add(1, Ordering::Relaxed);
     }
     pub(super) fn close(&self) {
-        // Serialize against producer acceptance. This mutex never reaches audio.
+        // Keep the same native→hosted lock order as registration and snapshots.
+        // No registration can slip between clearing the binding and closing.
         let _control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         self.shared.closed.store(true, Ordering::Release);
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if let Some(hosted) = self
+            .hosted_control
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .control
+            .take()
+        {
+            hosted.close();
+        }
         for mailbox in self.shared.midi_learns.iter() {
             let _ = mailbox.cancel_armed();
         }
@@ -2611,6 +2684,80 @@ impl LiveModuleEvents for Performance {
     ) {
         self.sync_patch_intents(patch, revision, assignments, sequence_loads);
     }
+    fn reserve_hosted_parameters(
+        &self,
+        proposal: HostedEditProposal<'_>,
+    ) -> Result<Option<Box<dyn HostedEditAdmission>>, String> {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            let binding = self
+                .hosted_control
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if proposal.base_revision < binding.revision {
+                return Err("stale hosted edit admission".into());
+            }
+            let hosted = binding.control.clone();
+            drop(binding);
+            hosted
+                .map(|hosted| proposal.reserve_with_control(&hosted))
+                .transpose()
+        }
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        {
+            let _ = proposal;
+            Ok(None)
+        }
+    }
+    fn sync_document(&self, context: DocumentExecutionContext<'_>) {
+        self.sync_document_with_intents(context, &BTreeMap::new(), &[]);
+    }
+    fn sync_document_with_intents(
+        &self,
+        context: DocumentExecutionContext<'_>,
+        assignments: &BTreeMap<String, BTreeMap<String, f32>>,
+        sequence_loads: &[String],
+    ) {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            // Match the existing snapshot lock order. Check both publication
+            // floors before a stale document can invalidate a newer binding.
+            let native = self.control.lock().unwrap_or_else(|e| e.into_inner());
+            let mut binding = self
+                .hosted_control
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if context.revision
+                < native
+                    .revision
+                    .max(native.execution.revision)
+                    .max(binding.revision)
+            {
+                return;
+            }
+            binding.revision = context.revision;
+            if let Some(hosted) = binding.control.as_ref() {
+                let permitted = matches!(&context.request, openpatch::control::DocumentExecutionRequest::HostedDelayed(grant)
+                    if grant.matches_document(context.document, context.document_generation).unwrap_or(false))
+                    && hosted
+                        .accepts_document(context.document, context.document_generation)
+                        .unwrap_or(false);
+                if !permitted {
+                    hosted.close();
+                    binding.control.take();
+                }
+            }
+        }
+        if context.fence_native {
+            self.request_document_execution(context.revision, context.native_disposition());
+        }
+        self.sync_patch_intents(
+            context.native_carrier,
+            context.revision,
+            assignments,
+            sequence_loads,
+        );
+    }
     fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String> {
         self.enqueue_guarded(id, action, None)
             .map(|(receipt, _)| receipt)
@@ -2688,7 +2835,17 @@ impl LiveModuleEvents for Performance {
                 "controls":actual.and_then(|snapshot|snapshot.controls),"lights":actual.and_then(|snapshot|snapshot.lights).and_then(module_lights_value)}))
         }).collect();
         let hosted_status = shared.hosted_status.load(Ordering::Acquire);
-        json!({"hosted_runtime":{"status":match hosted_status {0=>"not_present",1=>"priming",2=>"running",_=>"suspended_fault"},"fault_code":(hosted_status>=16).then_some(hosted_status),"reason":match hosted_status {16=>Some("unsupported_callback_profile"),17=>Some("external_boundary_rejected"),18=>Some("sequence_mismatch"),19=>Some("frame_counter_exhausted"),20=>Some("invalid_parameter_event"),32=>Some("companion_unavailable"),33=>Some("companion_fault"),34=>Some("invalid_transport_input"),35=>Some("transport_queue_full"),36=>Some("missed_deadline"),37=>Some("invalid_transport_output"),38=>Some("stale_transport_output"),39=>Some("transport_sequence_exhausted"),_=>None}},"audio_timing":self.diagnostics.snapshot(),"available":available,"unavailable_reason":(!available).then_some(if shared.closed.load(Ordering::Acquire) { "audio_device_closed" } else { "document_execution_suspended_or_pending" }),"execution":{
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let hosted_controls = self
+            .hosted_control
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .control
+            .as_ref()
+            .map(|hosted| hosted.snapshot());
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        let hosted_controls: Option<Value> = None;
+        json!({"hosted_controls":hosted_controls,"hosted_runtime":{"status":match hosted_status {0=>"not_present",1=>"priming",2=>"running",_=>"suspended_fault"},"fault_code":(hosted_status>=16).then_some(hosted_status),"reason":match hosted_status {16=>Some("unsupported_callback_profile"),17=>Some("external_boundary_rejected"),18=>Some("sequence_mismatch"),19=>Some("frame_counter_exhausted"),20=>Some("invalid_parameter_event"),32=>Some("companion_unavailable"),33=>Some("companion_fault"),34=>Some("invalid_transport_input"),35=>Some("transport_queue_full"),36=>Some("missed_deadline"),37=>Some("invalid_transport_output"),38=>Some("stale_transport_output"),39=>Some("transport_sequence_exhausted"),40=>Some("hosted_control_failed"),_=>None}},"audio_timing":self.diagnostics.snapshot(),"available":available,"unavailable_reason":(!available).then_some(if shared.closed.load(Ordering::Acquire) { "audio_device_closed" } else { "document_execution_suspended_or_pending" }),"execution":{
             "requested_revision":if control.execution.generation == 0 { control.revision } else { control.execution.revision },
             "generation":control.execution.generation,"disposition":control.execution.disposition,
             "acknowledged":available},"coherent":coherent_frame.is_some(),"frame":coherent_frame,"modules":modules,"revision":control.revision,"emergency_release_requests":shared.emergency_release_requests.load(Ordering::Relaxed),"emergency_release_applied":shared.emergency_release_applied.load(Ordering::Relaxed),"queued":queued,"applied":applied,"dropped":dropped,
@@ -2747,6 +2904,7 @@ impl EventReader {
             RunnerFault::Sequence => 18,
             RunnerFault::FrameOverflow => 19,
             RunnerFault::InvalidEvent => 20,
+            RunnerFault::Control(_) => 40,
             RunnerFault::Transport(fault) => match fault {
                 Fault::CompanionUnavailable => 32,
                 Fault::CompanionFault(_) => 33,

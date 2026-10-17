@@ -558,7 +558,12 @@ impl Session {
         value: f32,
         expected_revision: Option<u64>,
     ) -> Result<u64, String> {
-        self.edit_hosted_module(id, expected_revision, |module| {
+        let index = match parameter {
+            "offset" => 0,
+            "scale" => 1,
+            _ => return Err("unsupported hosted parameter".into()),
+        };
+        self.edit_hosted_module(id, expected_revision, Some((index, value)), |module| {
             module.with_parameter(parameter, value)
         })
     }
@@ -569,7 +574,7 @@ impl Session {
         value: bool,
         expected_revision: Option<u64>,
     ) -> Result<u64, String> {
-        self.edit_hosted_module(id, expected_revision, |module| {
+        self.edit_hosted_module(id, expected_revision, None, |module| {
             module.with_option(option, value)
         })
     }
@@ -577,6 +582,7 @@ impl Session {
         &mut self,
         id: &str,
         expected_revision: Option<u64>,
+        assignment: Option<(u16, f32)>,
         edit: impl FnOnce(
             &crate::project_document::hosted::HostedModule,
         ) -> Result<crate::project_document::hosted::HostedModule, String>,
@@ -600,6 +606,13 @@ impl Session {
         *module = edit(module)?;
         let carrier = document.state_carrier()?;
         let mut effects = EditEffects::default();
+        if let Some((parameter, value)) = assignment {
+            effects.hosted_parameters.push(HostedParameterAssignment {
+                module_id: id.to_owned(),
+                parameter,
+                value,
+            });
+        }
         effects.replacement_document = Some(document);
         self.commit(carrier.patch, expected_revision, None, &effects)
     }

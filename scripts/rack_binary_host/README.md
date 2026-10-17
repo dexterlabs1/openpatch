@@ -159,6 +159,13 @@ execution, live-state and active UI work.
 ## Production mixed-graph runner gate
 
 Use the same command with `--gate mixed-graph` to build `binary_host_graph`.
+It also exercises shared Session parameter edits, undo/redo and an equal-value
+assignment through the bounded live-control channel. The seven-command case
+records accepted versus acknowledged values, exact audio transitions, retired
+capture, full-document save/reopen and a fresh child restore. Its declared 5 ms
+minimum callback-start gap and authoring outside processing make this a paced
+correctness check, not continuous device qualification. See the
+[shared-control contract and evidence](../../docs/BINARY_HOST_V1.md#implemented-shared-parameter-admission-and-acknowledgment).
 It constructs authored native/external graphs, uses the production Core boundary
 and hosted runner, and paces callbacks outside tracked processing. Three fresh
 real-plugin children compare every sample of a one-frame native impulse,

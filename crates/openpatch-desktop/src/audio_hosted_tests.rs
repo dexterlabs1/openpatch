@@ -100,6 +100,105 @@ mod hosted_callback {
     }
 
     #[test]
+    fn performance_keeps_one_hosted_event_binding_for_shared_edits_and_history() {
+        use openpatch::binary_host::control::HostedControl;
+        use openpatch::control::DocumentExecutionRequest;
+        let (patch, document) = hosted_document();
+        let workspace = tempfile::tempdir().unwrap();
+        let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+        session.replace_project_document(document, None).unwrap();
+        session.request_delayed_hosted_execution(None).unwrap();
+        let ticket = session.audio_snapshot().unwrap();
+        let DocumentExecutionRequest::HostedDelayed(grant) = &ticket.execution else {
+            panic!("missing grant")
+        };
+        let (control, mut reader) = HostedControl::new(
+            grant.clone(),
+            &ticket.document,
+            Fence {
+                incarnation: 991,
+                generation: ticket.document_generation,
+                revision: 77,
+            },
+            ticket.revision,
+        )
+        .unwrap();
+        let (audio, _callback) = host_test_audio(&patch);
+        audio
+            .performance
+            .register_hosted_control(&ticket, control.clone())
+            .unwrap();
+        session
+            .set_live_module_events(Some(audio.performance.clone()))
+            .unwrap();
+        session
+            .execute(
+                "set_hosted_parameter",
+                serde_json::json!({"id":"binary","parameter":"scale","value":-0.25}),
+            )
+            .unwrap();
+        session.execute("undo", serde_json::json!({})).unwrap();
+        session.execute("redo", serde_json::json!({})).unwrap();
+        let inspection = audio.performance.snapshot();
+        assert_eq!(inspection["hosted_controls"]["incarnation"], 991);
+        assert_eq!(
+            inspection["hosted_controls"]["plan_epoch"], 77,
+            "authored revisions must not restart the execution epoch"
+        );
+        assert_eq!(inspection["hosted_controls"]["latest_accepted_sequence"], 3);
+        assert_eq!(inspection["hosted_controls"]["available"], false);
+        audio
+            .performance
+            .sync_document(openpatch::control::DocumentExecutionContext {
+                document: &ticket.document,
+                document_generation: ticket.document_generation,
+                request: DocumentExecutionRequest::Native(
+                    openpatch::project_document::ExecutionDisposition::SuspendedUnresolved,
+                ),
+                native_carrier: &patch,
+                revision: ticket.revision,
+                fence_native: true,
+            });
+        assert!(
+            !control.snapshot().closed,
+            "an older context cannot close a newer binding"
+        );
+        assert!(
+            audio
+                .performance
+                .register_hosted_control(&ticket, control.clone())
+                .is_err(),
+            "an old ticket cannot replace the newer publication floor"
+        );
+        for (sequence, value) in [(1, -0.25), (2, 0.25), (3, -0.25)] {
+            let event = reader.next_for_sample(0).unwrap().unwrap();
+            assert_eq!(
+                (event.sequence, event.parameter, event.value),
+                (sequence, 1, value)
+            );
+        }
+        assert!(reader.next_for_sample(0).unwrap().is_none());
+        assert!(
+            control.snapshot().applied.is_none(),
+            "scheduling alone is not application"
+        );
+        // A custom option needs a fresh plan. Full document synchronization
+        // invalidates the reader; it cannot keep executing the old incarnation.
+        session
+            .set_hosted_option("binary", "offset_first", false, None)
+            .unwrap();
+        assert!(control.snapshot().closed);
+        assert!(reader.next_for_sample(1).is_err());
+        assert!(audio.performance.snapshot()["hosted_controls"].is_null());
+        audio.performance.close();
+        assert!(audio
+            .performance
+            .register_hosted_control(&ticket, control)
+            .unwrap_err()
+            .contains("closed"));
+    }
+
+    #[test]
     #[ignore = "requires explicitly supplied real ARM companion, SDK and installed plugin; no device opened"]
     fn hosted_callback_actual_plugin_native_impulse_and_control_capture() {
         use openpatch::binary_host::{graph::HostedGraphPlan, process::LaunchConfig, OutputBlock};

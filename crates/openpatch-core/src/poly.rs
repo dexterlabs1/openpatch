@@ -2651,7 +2651,11 @@ impl PolyEngine {
         if routes.len() > MAX_CABLES {
             return Err(format!("patch exceeds {MAX_CABLES} cables"));
         }
-        let port_catalog = crate::catalog();
+        // Built-in port descriptions are immutable. Compilation is a control-
+        // thread operation, but rebuilding the entire catalog for every graph
+        // validation made live edits repeatedly pay for unrelated schemas.
+        static PORT_CATALOG: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+        let port_catalog = PORT_CATALOG.get_or_init(crate::catalog);
         let mut node_lookup = BTreeMap::new();
         let mut nodes = Vec::with_capacity(patch.nodes.len());
         let mut output_count = 0;

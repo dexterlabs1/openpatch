@@ -132,8 +132,8 @@ retain the exact old ticket for retries. Loads publish their new generation
 before notifying the backend, rather than notifying with the old generation.
 Inspection distinguishes an internal request from activation (`active: false`).
 This boundary is not a user-facing Start command or a live-event admission API.
-The next dependency is bounded precommit admission and acknowledged hosted
-parameter publication, followed by controller activation/retirement and a
+Bounded precommit admission and acknowledged parameter publication are
+implemented below; the next dependencies are controller activation/retirement and a
 coherent save barrier. Do not expose activation by adding a runnable enum to the
 existing native Patch synchronization path. A second focused architecture
 advisory identified this concrete authority/rebuild risk; no extra DSP oracle or
@@ -145,6 +145,64 @@ CLI/desktop all-target Clippy and formatting. Focused review reproduced a
 host-only identical-load/undo permission bug; loads now retire the full document's
 modules and cables, and the new regression passes. Existing callback DSP and
 reference comparisons were not regenerated for these control-only changes.
+
+## Implemented shared parameter admission and acknowledgment
+
+Hosted parameter commands now reserve capacity before changing Session history.
+The same path covers native UI/API edits, MCP commands and undo/redo, including
+an explicit assignment of the existing value. Queue saturation or a stale
+revision leaves the document, history and save baseline unchanged. Dropping an
+unused reservation cancels it; publication after commit is infallible. If the
+executor fails or closes during publication, the authored command remains
+accepted but is reported unavailable, never falsely applied.
+
+The channel admits at most 512 outstanding commands and delivers at most 64 per
+128-frame input quantum, retaining FIFO order rather than coalescing accepted
+edits. A fixed callback-side tracker records actual scheduled input frames.
+Effective values and the applied command/revision watermark publish only after
+the parent validates the corresponding returned plugin block. Initial state is
+unavailable until a validated block arrives. The execution incarnation/plan
+epoch is separate from authored edit revisions. The callback takes no locks,
+waits or heap allocations; channel ownership retires with its hosted runner.
+
+Session/backend synchronization now carries the full document and request.
+Performance retains the same event binding for compatible parameter edits,
+exposes requested/queued/applied/failed state, and closes incompatible bindings.
+Its revision floor prevents a stale context or registration from closing or
+replacing a newer binding. Shutdown shares the registration lock order.
+Attaching an existing native snapshot remains distinct from an explicit data
+load, preserving RackMCP sequence ownership and load-intent behavior.
+
+The genuine installed-binary gate now includes a shared Session workflow with
+seven ordered edit/history/equal-value commands, exact expected audio transitions,
+acknowledgment observations, post-retirement capture agreement, full-document
+save/reopen and fresh-process restore. Authoring runs outside the tracked
+processing calls, with a declared minimum 5 ms gap between callback starts.
+This proves paced control/history and plugin correctness; it does not qualify
+continuous 48 kHz device playback or application callback activation. The
+existing impulse, feedback and ordered-event contracts remain in that gate.
+
+The measured control path also exposed repeated reconstruction of immutable
+built-in catalog metadata. Execution-key comparisons and native graph compilation
+now cache that metadata for the process lifetime; model schemas and DSP equations
+are unchanged. This is a control-path optimization, not a Rack CPU/latency claim.
+
+In the same small debug fixture, observed median authoring time fell from
+106.9 ms to 6.0 ms. Final local checks pass: 437 Core unit tests, 426 control tests,
+243 callback tests and 257 project/workflow tests (desktop filters overlap),
+strict Core/CLI/desktop all-target Clippy and formatting. The original imported
+sequence callback test exposed an inline-tracker stack regression; the tracker
+is now boxed during control preparation, and the unmodified regression passes.
+The actual desktop companion fixture also passes again with zero heap activity;
+its two tiny callbacks still exceed their budgets. [Evidence, timing scope and
+retained findings](benchmarks/rack-binary-mixed-graph.json).
+
+User-facing activation remains unavailable. Audio still refuses delayed requests
+until the UI-owned process controller can publish the complete matching graph.
+Its active hosted execution gate must use the plan epoch rather than resetting
+on every authored revision; the native-only execution gate remains suspended.
+General live save still needs the declared coherent quantum barrier. The new
+workflow saves after explicit retirement and comparison, not during playback.
 
 ## User-visible exit
 

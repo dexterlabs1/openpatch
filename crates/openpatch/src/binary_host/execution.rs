@@ -8,6 +8,15 @@ use crate::project_document::{DocumentNode, ProjectDocument};
 use serde::Serialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::sync::OnceLock;
+
+// The built-in catalog is immutable for the process lifetime. Reconstructing
+// every module's complete schema for each permission comparison made a single
+// knob edit perform several full catalog builds on the control thread.
+fn parameter_catalog() -> &'static Value {
+    static CATALOG: OnceLock<Value> = OnceLock::new();
+    CATALOG.get_or_init(openpatch_core::catalog)
+}
 
 /// The sole provisional profile. Device deadline qualification remains separate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -59,7 +68,7 @@ impl HostedTopologyKey {
         document: &ProjectDocument,
         profile: HostedExecutionProfile,
     ) -> Result<Self, String> {
-        let catalog = openpatch_core::catalog();
+        let catalog = parameter_catalog();
         let mut graph = serde_json::to_value(&document.graph).map_err(|e| e.to_string())?;
         // Project the typed graph so newly added opaque fields are included by
         // default. Only explicitly understood parameter/presentation fields go.

@@ -2,7 +2,7 @@
   "schema": 1,
   "date": "2026-10-17",
   "platform": "macOS ARM64",
-  "status": "production Core graph and desktop Callback correctness pass; user-facing activation and device qualification remain open",
+  "status": "bounded shared Session live-parameter/history and actual plugin correctness pass; user-facing activation, coherent live save and device qualification remain open",
   "profile": {
     "rate": 48000,
     "quantum_frames": 128,
@@ -162,5 +162,297 @@
     "scenario": "events",
     "callback_budget_overruns": 1,
     "note": "Earlier correctness pass retained; final runner pass has zero, desktop tiny-callback overruns remain2. Short runs are not sustained realtime qualification."
+  },
+  "shared_live_control": {
+    "local_evidence": "native-test-output/rack-control-import/binary-host/transport-kmv87y_9",
+    "parent_sha256": "2e69524aa0ae0b0264190ae89b1536a0239b28e8e7a45aa10e711cd28c9554b4",
+    "companion_sha256": "903faed075237e1f996856572e4aa09fbe00b4967a7653442ea89d40e82a7786",
+    "artifact_manifest_sha256": "1aa018ae1dce3fe9d14b6d6f085c623d83e10e6b6f2c14fb48f81fcd5002d289",
+    "command_capacity": 512,
+    "commands_per_input_quantum": 64,
+    "input_quantum_frames": 128,
+    "callback_allocations": 0,
+    "callback_deallocations": 0,
+    "frames": 3072,
+    "passed": true,
+    "shared_commands": [
+      {
+        "accepted_before_matching_ack": true,
+        "accepted_sequence": 1,
+        "action": "set_hosted_parameter",
+        "applied_sequence_before": 0,
+        "arguments": {
+          "id": "offset",
+          "parameter": "offset",
+          "value": 0.25
+        },
+        "authored_revision": 3,
+        "control_duration_ns": 6641708,
+        "input_frame": 512,
+        "requested": {
+          "offset": 0.25,
+          "scale": 0.25
+        },
+        "response_revision": 3,
+        "single_ordered_command": true
+      },
+      {
+        "accepted_before_matching_ack": true,
+        "accepted_sequence": 2,
+        "action": "set_hosted_parameter",
+        "applied_sequence_before": 0,
+        "arguments": {
+          "id": "offset",
+          "parameter": "scale",
+          "value": -0.25
+        },
+        "authored_revision": 4,
+        "control_duration_ns": 6091416,
+        "input_frame": 512,
+        "requested": {
+          "offset": 0.25,
+          "scale": -0.25
+        },
+        "response_revision": 4,
+        "single_ordered_command": true
+      },
+      {
+        "accepted_before_matching_ack": true,
+        "accepted_sequence": 3,
+        "action": "undo",
+        "applied_sequence_before": 0,
+        "arguments": {},
+        "authored_revision": 5,
+        "control_duration_ns": 5962708,
+        "input_frame": 768,
+        "requested": {
+          "offset": 0.25,
+          "scale": 0.25
+        },
+        "response_revision": 5,
+        "single_ordered_command": true
+      },
+      {
+        "accepted_before_matching_ack": true,
+        "accepted_sequence": 4,
+        "action": "undo",
+        "applied_sequence_before": 2,
+        "arguments": {},
+        "authored_revision": 6,
+        "control_duration_ns": 5615916,
+        "input_frame": 1024,
+        "requested": {
+          "offset": 0.0,
+          "scale": 0.25
+        },
+        "response_revision": 6,
+        "single_ordered_command": true
+      },
+      {
+        "accepted_before_matching_ack": true,
+        "accepted_sequence": 5,
+        "action": "redo",
+        "applied_sequence_before": 3,
+        "arguments": {},
+        "authored_revision": 7,
+        "control_duration_ns": 5648417,
+        "input_frame": 1280,
+        "requested": {
+          "offset": 0.25,
+          "scale": 0.25
+        },
+        "response_revision": 7,
+        "single_ordered_command": true
+      },
+      {
+        "accepted_before_matching_ack": true,
+        "accepted_sequence": 6,
+        "action": "redo",
+        "applied_sequence_before": 4,
+        "arguments": {},
+        "authored_revision": 8,
+        "control_duration_ns": 6084083,
+        "input_frame": 1536,
+        "requested": {
+          "offset": 0.25,
+          "scale": -0.25
+        },
+        "response_revision": 8,
+        "single_ordered_command": true
+      },
+      {
+        "accepted_before_matching_ack": true,
+        "accepted_sequence": 7,
+        "action": "set_hosted_parameter",
+        "applied_sequence_before": 5,
+        "arguments": {
+          "id": "offset",
+          "parameter": "scale",
+          "value": -0.25
+        },
+        "authored_revision": 9,
+        "control_duration_ns": 6019042,
+        "input_frame": 1792,
+        "requested": {
+          "offset": 0.25,
+          "scale": -0.25
+        },
+        "response_revision": 9,
+        "single_ordered_command": true
+      }
+    ],
+    "expected_transitions": [
+      [
+        0,
+        0.0
+      ],
+      [
+        387,
+        0.0390625
+      ],
+      [
+        897,
+        -0.234375
+      ],
+      [
+        1153,
+        0.234375
+      ],
+      [
+        1409,
+        0.0390625
+      ],
+      [
+        1665,
+        0.234375
+      ],
+      [
+        1921,
+        -0.234375
+      ]
+    ],
+    "first_command7_observation": [
+      2303,
+      {
+        "authored_revision": 9,
+        "input_frame": 1792,
+        "observed_frame": 2176,
+        "received_blocks": 15,
+        "sequence": 7,
+        "values": {
+          "offset": 0.25,
+          "scale": -0.25
+        }
+      }
+    ],
+    "accepted_commands_waited_for_matching_ack": true,
+    "final_accepted_sequence": 7,
+    "final_applied": {
+      "authored_revision": 9,
+      "input_frame": 1792,
+      "observed_frame": 2944,
+      "received_blocks": 21,
+      "sequence": 7,
+      "values": {
+        "offset": 0.25,
+        "scale": -0.25
+      }
+    },
+    "outstanding_before_retirement": 0,
+    "full_authored_matches_retired_child": true,
+    "saved_document_sha256": "3a663e4c566895c3a3abac9843e9013f60027cf662389c59ef178581f7d486ae",
+    "fresh_session_preserves_full_state": true,
+    "fresh_process_restore_matches": true,
+    "revalidated_scenarios": [
+      {
+        "name": "impulse",
+        "passed": true,
+        "frames": 2048,
+        "allocations": 0,
+        "deallocations": 0,
+        "budget_overruns": 0
+      },
+      {
+        "name": "feedback",
+        "passed": true,
+        "frames": 2048,
+        "allocations": 0,
+        "deallocations": 0,
+        "budget_overruns": 0
+      },
+      {
+        "name": "events",
+        "passed": true,
+        "frames": 2048,
+        "allocations": 0,
+        "deallocations": 0,
+        "budget_overruns": 0
+      },
+      {
+        "name": "live-session",
+        "passed": true,
+        "frames": 3072,
+        "allocations": 0,
+        "deallocations": 0,
+        "budget_overruns": 0
+      }
+    ],
+    "processing_scope": "paced debug Core/Runner/shared Session driver; live-session authoring outside processing and minimum5ms callback-start gap; no continuous device or application activation qualification",
+    "control_timing": {
+      "scope": "seven authoring operations in the same small debug fixture; includes document/history/tool dispatch; not an audio CPU comparison",
+      "before_evidence": "native-test-output/rack-control-import/binary-host/transport-x1qssdds",
+      "after_evidence": "native-test-output/rack-control-import/binary-host/transport-kmv87y_9",
+      "before_ms": [
+        124.823,
+        122.743,
+        104.245,
+        104.315,
+        106.903,
+        104.724,
+        123.466
+      ],
+      "after_ms": [
+        6.642,
+        6.091,
+        5.963,
+        5.616,
+        5.648,
+        6.084,
+        6.019
+      ],
+      "before_median_ms": 106.903,
+      "after_median_ms": 6.019
+    },
+    "desktop_callback_recheck": {
+      "local_evidence": "native-test-output/rack-control-import/binary-host/actual-callback-005",
+      "result_sha256": "5770efcdd33f41c92d425ea6b38e3481c98a4d55b4b9cb6f36af05f436b2a3d1",
+      "passed": true,
+      "allocations": 0,
+      "deallocations": 0,
+      "frames": 2048,
+      "overruns": 2,
+      "device_qualified": false,
+      "live_control_bound": false
+    },
+    "validation": {
+      "core_unit": "437 passed,2 ignored; metadata-only compilation cache",
+      "cli_control": "426 passed,2 ignored",
+      "desktop_audio": "243 passed,2 ignored",
+      "desktop_project": "257 passed,2 ignored; filters overlap",
+      "strict_clippy": "Core/CLI/desktop all-targets passed",
+      "format": "workspace and included hosted callback test pass"
+    },
+    "retained_findings": [
+      "first combined gate feedback tiny callback overrun1 at transport-x1qssdds; prior tiny-buffer findings retained",
+      "native attach initially dispatched empty authored intents; original sequence intent test failed and production attachment semantics restored",
+      "callback regression initially overflowed stack because inline tracker enlarged every graph; tracker now boxed during control preparation and original regression passes",
+      "stale full context/registration could invalidate newer binding; revision floor now checked under shared lock order; closed backend cannot register"
+    ],
+    "not_available": [
+      "user-facing full hosted graph activation",
+      "continuous real-device qualification",
+      "coherent during-playback save barrier",
+      "general plugin or stacked-host-input compatibility"
+    ]
   }
 }

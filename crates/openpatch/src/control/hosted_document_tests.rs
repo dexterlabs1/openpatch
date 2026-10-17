@@ -480,3 +480,238 @@ fn unknown_hosted_state_is_preserved_and_unsupported_edits_are_atomic() {
         session.document_execution_status()["hosted_modules"][0]["capability_error"].is_string()
     );
 }
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+mod live_admission {
+    use super::*;
+    use crate::binary_host::control::{
+        HostedControl, HostedControlReader, ParameterAssignment, COMMAND_CAPACITY,
+    };
+    use crate::binary_host::{Fence, MAX_EVENTS};
+
+    struct Backend(Arc<HostedControl>);
+
+    impl LiveModuleEvents for Backend {
+        fn trigger(&self, _: &str, _: ModuleAction) -> Result<Value, String> {
+            Err("this admission fixture has no native action executor".into())
+        }
+
+        fn snapshot(&self) -> Value {
+            serde_json::to_value(self.0.snapshot()).unwrap()
+        }
+
+        fn supports_document_execution(&self) -> bool {
+            true
+        }
+
+        fn reserve_hosted_parameters(
+            &self,
+            proposal: HostedEditProposal<'_>,
+        ) -> Result<Option<Box<dyn HostedEditAdmission>>, String> {
+            proposal.reserve_with_control(&self.0).map(Some)
+        }
+    }
+
+    fn fixture() -> (
+        tempfile::TempDir,
+        Session,
+        Arc<HostedControl>,
+        HostedControlReader,
+    ) {
+        let directory = tempfile::tempdir().unwrap();
+        let mut session = Session::new(directory.path()).unwrap();
+        session.replace_project_document(document(), None).unwrap();
+        let saved = session.capture_active_project_save(None).unwrap();
+        session
+            .project_save_baseline()
+            .register(&saved.checkpoint, Some("admission-baseline.json".into()))
+            .unwrap();
+        session.request_delayed_hosted_execution(None).unwrap();
+        let request = session.audio_snapshot().unwrap();
+        let DocumentExecutionRequest::HostedDelayed(grant) = &request.execution else {
+            panic!("fixture requires the explicit full-document execution grant");
+        };
+        let (control, reader) = HostedControl::new(
+            grant.clone(),
+            &request.document,
+            Fence {
+                incarnation: 71,
+                generation: request.document_generation,
+                revision: 901,
+            },
+            session.revision(),
+        )
+        .unwrap();
+        session
+            .set_live_module_events(Some(Arc::new(Backend(Arc::clone(&control)))))
+            .unwrap();
+        (directory, session, control, reader)
+    }
+
+    fn authored_checkpoint(session: &Session) -> Value {
+        json!({
+            "document": full(session.project_document()),
+            "revision": session.revision(),
+            "state_id": session.state_id,
+            "history": session.history(),
+            "save": session.project_save_status(),
+            "generation": session.project_save_baseline().generation(),
+            "layout_generation": session.layout_generation(),
+        })
+    }
+
+    fn fill_remaining(session: &Session, control: &Arc<HostedControl>) {
+        let value = hosted(session.project_document())
+            .parameter("offset")
+            .unwrap();
+        let batch = [ParameterAssignment {
+            parameter: 0,
+            value,
+        }; MAX_EVENTS];
+        let mut remaining = COMMAND_CAPACITY - control.snapshot().outstanding_commands;
+        while remaining > 0 {
+            let count = remaining.min(MAX_EVENTS);
+            control
+                .reserve(&batch[..count])
+                .unwrap()
+                .publish(session.revision());
+            remaining -= count;
+        }
+        assert_eq!(control.snapshot().outstanding_commands, COMMAND_CAPACITY);
+    }
+
+    #[test]
+    fn equal_value_edit_undo_and_redo_each_deliver_their_own_command() {
+        let (_directory, mut session, control, mut reader) = fixture();
+        let original = full(session.project_document());
+        let generation = session.project_save_baseline().generation();
+        let edit_revision = session
+            .set_hosted_parameter("offset", "offset", 0.25, Some(session.revision()))
+            .unwrap();
+        session.execute("undo", json!({})).unwrap();
+        let undo_revision = session.revision();
+        session.execute("redo", json!({})).unwrap();
+        let redo_revision = session.revision();
+        assert_eq!(full(session.project_document()), original);
+        assert_eq!(session.project_save_baseline().generation(), generation);
+        assert_eq!(session.project_save_status()["dirty"], false);
+        assert_eq!(control.snapshot().latest_accepted_sequence, 3);
+        assert!(control.snapshot().applied.is_none());
+        for (index, revision) in [edit_revision, undo_revision, redo_revision]
+            .into_iter()
+            .enumerate()
+        {
+            let event = reader.next_for_sample(0).unwrap().unwrap();
+            assert_eq!(event.sequence, index as u64 + 1);
+            assert_eq!(event.wire_order, index as u32);
+            assert_eq!(event.parameter, 0);
+            assert_eq!(event.value, 0.25);
+            assert_eq!(event.authored_revision, revision);
+        }
+        assert!(reader.next_for_sample(0).unwrap().is_none());
+        reader.acknowledge(1, 384).unwrap();
+        let applied = control.snapshot().applied.unwrap();
+        assert_eq!(applied.sequence, 3);
+        assert_eq!(applied.authored_revision, redo_revision);
+        assert_eq!(applied.values.offset, 0.25);
+        assert_eq!(control.snapshot().outstanding_commands, 0);
+    }
+
+    #[test]
+    fn ordinary_edit_and_undo_share_the_reader_while_native_edits_emit_no_hosted_commands() {
+        let (_directory, mut session, control, mut reader) = fixture();
+        let edit_revision = session
+            .set_hosted_parameter("offset", "offset", -0.75, None)
+            .unwrap();
+        assert_eq!(control.snapshot().latest_accepted_sequence, 1);
+        session
+            .execute(
+                "set_parameter",
+                json!({"id":"dc", "parameter":"value", "value":0.125}),
+            )
+            .unwrap();
+        assert_eq!(control.snapshot().latest_accepted_sequence, 1);
+        session.execute("undo", json!({})).unwrap();
+        assert_eq!(control.snapshot().latest_accepted_sequence, 1);
+        assert_eq!(
+            hosted(session.project_document())
+                .parameter("offset")
+                .unwrap(),
+            -0.75
+        );
+        session.execute("undo", json!({})).unwrap();
+        let undo_revision = session.revision();
+        assert_eq!(
+            hosted(session.project_document())
+                .parameter("offset")
+                .unwrap(),
+            0.25
+        );
+        let edit = reader.next_for_sample(37).unwrap().unwrap();
+        let undo = reader.next_for_sample(37).unwrap().unwrap();
+        assert_eq!(
+            (edit.sequence, edit.value, edit.authored_revision),
+            (1, -0.75, edit_revision)
+        );
+        assert_eq!(
+            (undo.sequence, undo.value, undo.authored_revision),
+            (2, 0.25, undo_revision)
+        );
+        assert!(reader.next_for_sample(37).unwrap().is_none());
+        reader.acknowledge(1, 384).unwrap();
+        assert_eq!(control.snapshot().applied.unwrap().values.offset, 0.25);
+        assert_eq!(control.snapshot().applied.unwrap().sequence, 2);
+    }
+
+    #[test]
+    fn queue_full_and_stale_revision_reject_before_authored_history_or_baseline_changes() {
+        let (_directory, mut session, control, _reader) = fixture();
+        let before = authored_checkpoint(&session);
+        let stale = session.revision() - 1;
+        assert!(session
+            .set_hosted_parameter("offset", "offset", -0.75, Some(stale))
+            .unwrap_err()
+            .contains("revision"));
+        assert_eq!(authored_checkpoint(&session), before);
+        assert_eq!(control.snapshot().latest_accepted_sequence, 0);
+        assert!(!control.snapshot().reservation_outstanding);
+        fill_remaining(&session, &control);
+        let full_sequence = control.snapshot().latest_accepted_sequence;
+        assert!(session
+            .set_hosted_parameter("offset", "offset", -0.75, None)
+            .unwrap_err()
+            .contains("queue is full"));
+        assert_eq!(authored_checkpoint(&session), before);
+        assert_eq!(control.snapshot().latest_accepted_sequence, full_sequence);
+        assert!(!control.snapshot().reservation_outstanding);
+        assert!(session
+            .set_hosted_parameter("offset", "offset", -0.75, Some(stale))
+            .unwrap_err()
+            .contains("revision"));
+        assert_eq!(authored_checkpoint(&session), before);
+        assert_eq!(control.snapshot().latest_accepted_sequence, full_sequence);
+    }
+
+    #[test]
+    fn saturated_undo_and_redo_preserve_both_history_stacks_and_save_baseline() {
+        for action in ["undo", "redo"] {
+            let (_directory, mut session, control, _reader) = fixture();
+            session
+                .set_hosted_parameter("offset", "scale", -0.5, None)
+                .unwrap();
+            if action == "redo" {
+                session.execute("undo", json!({})).unwrap();
+            }
+            fill_remaining(&session, &control);
+            let before = authored_checkpoint(&session);
+            let sequence = control.snapshot().latest_accepted_sequence;
+            assert!(session
+                .execute(action, json!({}))
+                .unwrap_err()
+                .contains("queue is full"));
+            assert_eq!(authored_checkpoint(&session), before);
+            assert_eq!(control.snapshot().latest_accepted_sequence, sequence);
+            assert!(!control.snapshot().reservation_outstanding);
+        }
+    }
+}

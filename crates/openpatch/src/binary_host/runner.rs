@@ -1,4 +1,5 @@
 //! Bounded audio-side schedule. No process ownership, waits or JSON live here.
+use super::control::{ControlFault, HostedControlReader};
 use super::{Fault, InputBlock, OutputBlock, OwnedEndpoint, QUANTUM, SAMPLE_RATE};
 use openpatch_core::{
     Engine, ExternalFrameError, ExternalFrameIo, PortFrame, ResolvedExternalModule,
@@ -16,6 +17,7 @@ pub enum RunnerFault {
     Sequence,
     FrameOverflow,
     InvalidEvent,
+    Control(ControlFault),
 }
 
 pub struct HostedRunner {
@@ -26,6 +28,10 @@ pub struct HostedRunner {
     frame: u64,
     fault: Option<RunnerFault>,
     awaiting_inputs: bool,
+    // The fixed acknowledgment history is prepared off audio. Keep only its
+    // pointer in every graph (including native graphs with no hosted runner),
+    // rather than inflating callback/adoption stack frames by the entire ring.
+    control: Option<Box<HostedControlReader>>,
 }
 
 impl HostedRunner {
@@ -58,7 +64,21 @@ impl HostedRunner {
             frame: 0,
             fault: None,
             awaiting_inputs: false,
+            control: None,
         })
+    }
+
+    pub fn prepare_with_control(
+        endpoint: OwnedEndpoint,
+        handle: ResolvedExternalModule,
+        control: HostedControlReader,
+    ) -> Result<Self, String> {
+        if endpoint.fence() != control.fence() {
+            return Err("hosted event reader belongs to another execution fence".into());
+        }
+        let mut runner = Self::prepare(endpoint, handle)?;
+        runner.control = Some(Box::new(control));
+        Ok(runner)
     }
 
     pub fn frame(&self) -> u64 {
@@ -96,6 +116,18 @@ impl HostedRunner {
     /// Append an already-authorized event before processing its target sample.
     /// Equal-sample order is explicit; capacity/order failure latches suspension.
     pub fn queue_parameter(
+        &mut self,
+        parameter: u16,
+        value: f32,
+        order: u32,
+    ) -> Result<(), RunnerFault> {
+        if self.control.is_some() {
+            return self.fail(RunnerFault::InvalidEvent);
+        }
+        self.append_parameter(parameter, value, order)
+    }
+
+    fn append_parameter(
         &mut self,
         parameter: u16,
         value: f32,
@@ -144,6 +176,21 @@ impl HostedRunner {
                 Err(fault) => return self.fail(RunnerFault::Transport(fault)),
             }
         }
+        if let Some(mut control) = self.control.take() {
+            let result = (|| {
+                while let Some(event) = control
+                    .next_for_sample(self.frame)
+                    .map_err(RunnerFault::Control)?
+                {
+                    self.append_parameter(event.parameter, event.value, event.wire_order)?;
+                }
+                Ok(())
+            })();
+            self.control = Some(control);
+            if let Err(fault) = result {
+                return self.fail(fault);
+            }
+        }
         self.io.outputs.fill(PortFrame::default());
         if self.frame >= TRANSPORT_DELAY_FRAMES as u64 {
             self.io.outputs[0] = PortFrame {
@@ -189,6 +236,12 @@ impl HostedRunner {
             Some(frame) => frame,
             None => return self.fail(RunnerFault::FrameOverflow),
         };
+        if let Some(control) = &mut self.control {
+            if let Err(fault) = control.acknowledge(self.endpoint.received_blocks(), self.frame - 1)
+            {
+                return self.fail(RunnerFault::Control(fault));
+            }
+        }
         Ok(())
     }
 
@@ -241,6 +294,12 @@ impl HostedRunner {
     }
 
     fn fail<T>(&mut self, fault: RunnerFault) -> Result<T, RunnerFault> {
+        if let Some(control) = &mut self.control {
+            control.fail(match fault {
+                RunnerFault::Control(fault) => fault,
+                _ => ControlFault::Execution,
+            });
+        }
         self.fault = Some(fault);
         self.output.silence();
         self.io.outputs.fill(PortFrame::default());

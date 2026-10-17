@@ -155,9 +155,20 @@ knob/layout edits but expires on loads, topology changes and module retirement;
 undo cannot restore it. Revocation replaces a sealed request without losing its
 pending lifecycle effects. Native preparation/offline tools refuse to treat a
 hosted request as permission to run its omitted carrier. This is still not
-user-facing activation. Next implement bounded precommit live-event admission
-and acknowledgment, then process-owner activation/retirement and coherent live
+user-facing activation. Bounded precommit live-event admission and acknowledgment
+are now implemented; next connect process-owner activation/retirement and coherent live
 save. Installed 0.2.7 remains stable; reuse unchanged DSP reference evidence.
+
+Shared parameter edits, equal-value assignments and undo/redo now reserve queue
+capacity before history changes and publish effective values only after a
+validated returned plugin block. The genuine OFFSET workflow exercises seven
+commands, exact audio, retired capture, native document save/reopen and a fresh
+child restore. This is a paced processing gate, not continuous device/app
+activation. Stale synchronization cannot invalidate a newer event binding.
+Repeated catalog construction found in edit timings is now cached in execution
+checks and graph compilation; the built-in schemas and model equations are
+unchanged. Continue with the actual Audio controller/full hosted execution gate,
+then active panel controls and the coherent live save barrier. No installation.
 
 ## Delivered: Core text and host boundary
 

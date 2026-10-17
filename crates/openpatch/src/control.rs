@@ -22,6 +22,8 @@ use crate::project_document::{
 };
 pub use document::{LayoutIntent, LayoutOrigin, ProjectDocumentSnapshot};
 mod host_lifecycle;
+mod hosted_events;
+pub use hosted_events::{HostedEditAdmission, HostedEditProposal, HostedParameterAssignment};
 #[cfg(test)]
 mod host_lifecycle_tests;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -30,7 +32,8 @@ mod hosted_execution;
 mod project_layout_tests;
 #[doc(hidden)]
 pub use host_lifecycle::{
-    DocumentExecutionRequest, HostLifecycleDelta, HostLifecycleTicket, HostModuleLifecycleDelta,
+    DocumentExecutionContext, DocumentExecutionRequest, HostLifecycleDelta, HostLifecycleTicket,
+    HostModuleLifecycleDelta,
 };
 mod layout_history;
 mod midi_cc;
@@ -177,6 +180,42 @@ impl MidiLearnReceipt {
 pub trait LiveModuleEvents: Send + Sync {
     fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String>;
     fn snapshot(&self) -> Value;
+    /// Reserve live capacity before changing authored history. None means this
+    /// backend has no active hosted executor; the edit remains authored-only.
+    fn reserve_hosted_parameters(
+        &self,
+        _proposal: HostedEditProposal<'_>,
+    ) -> Result<Option<Box<dyn HostedEditAdmission>>, String> {
+        Ok(None)
+    }
+
+    /// Attach an existing snapshot without inventing an authored load intent.
+    fn sync_document(&self, context: DocumentExecutionContext<'_>) {
+        if context.fence_native {
+            self.request_document_execution(context.revision, context.native_disposition());
+        }
+        self.sync_patch(context.native_carrier, context.revision);
+    }
+
+    /// One full-document synchronization boundary. Legacy/native backends use
+    /// the same gate and native intents as before; a host-aware backend can
+    /// validate its binding before accepting any native projection.
+    fn sync_document_with_intents(
+        &self,
+        context: DocumentExecutionContext<'_>,
+        assignments: &BTreeMap<String, BTreeMap<String, f32>>,
+        sequence_loads: &[String],
+    ) {
+        if context.fence_native {
+            self.request_document_execution(context.revision, context.native_disposition());
+        }
+        self.sync_patch_with_intents(
+            context.native_carrier,
+            context.revision,
+            assignments,
+            sequence_loads,
+        );
+    }
     /// Atomically queue at most two source sequencer requests. Data identifies
     /// the pattern ordering; the callback must reject a superseded identity.
     fn rackmcp_transport(
@@ -458,6 +497,8 @@ struct HistoryEntry {
     sequence_loads: Vec<String>,
     restore_parameters: parameters::ParameterValues,
     return_parameters: parameters::ParameterValues,
+    restore_hosted_parameters: Vec<HostedParameterAssignment>,
+    return_hosted_parameters: Vec<HostedParameterAssignment>,
     document: ProjectDocument,
     layout_origin: Option<LayoutOrigin>,
     playback_mode: PlaybackMode,
@@ -691,10 +732,7 @@ impl Session {
         self.reconcile_midi_cc_learn()?;
         self.prepare_midi_cc_edit(&self.midi_cc_ids())?;
         if let Some(backend) = &backend {
-            if self.document_execution {
-                backend.request_document_execution(self.revision, self.execution_disposition());
-            }
-            backend.sync_patch(&self.patch, self.revision);
+            backend.sync_document(self.document_execution_context());
         }
         self.live_module_events = backend;
         self.midi_learn_committed.clear();
@@ -707,9 +745,6 @@ impl Session {
         sequence_loads: &[String],
     ) {
         if let Some(backend) = &self.live_module_events {
-            if self.document_execution {
-                backend.request_document_execution(self.revision, self.execution_disposition());
-            }
             let sequence_loads = sequence_loads
                 .iter()
                 .filter(|id| {
@@ -720,9 +755,8 @@ impl Session {
                 })
                 .cloned()
                 .collect::<Vec<_>>();
-            backend.sync_patch_with_intents(
-                &self.patch,
-                self.revision,
+            backend.sync_document_with_intents(
+                self.document_execution_context(),
                 assignments,
                 &sequence_loads,
             );
@@ -870,6 +904,7 @@ impl Session {
         candidate.compile_with_wave_banks(&prepared)?;
         let parameter_effects = parameters::for_commit(self, &mut candidate, effects)?;
         let document = self.document_after_edit(&candidate, effects)?;
+        let hosted_effects = hosted_events::for_commit(&self.document, &document, effects)?;
         let needs_layout = self.layout_host_attached
             && !prepared_layout
             && (self.layout_pending
@@ -892,6 +927,11 @@ impl Session {
             self.live_module_events.as_deref(),
         )?;
         let revision = self.revision.checked_add(1).ok_or("revision exhausted")?;
+        let hosted_admission = self.reserve_hosted_edit(
+            &document,
+            &hosted_effects.after,
+            !effects.retired.is_empty() || effects.next_document_generation.is_some(),
+        )?;
         if !effects.learn_reconciliation {
             self.prepare_midi_cc_edit(&self.midi_cc_conflicts(&candidate, effects))?;
         }
@@ -930,6 +970,10 @@ impl Session {
                         &parameter_effects.before,
                     )
                     && parameters::same_coverage(&entry.return_parameters, &parameter_effects.after)
+                    && hosted_events::same_coverage(
+                        &entry.return_hosted_parameters,
+                        &hosted_effects.after,
+                    )
                     && entry
                         .release_controls
                         .iter()
@@ -951,6 +995,7 @@ impl Session {
                 entry
                     .return_parameters
                     .extend(parameter_effects.after.clone());
+                entry.return_hosted_parameters = hosted_effects.after.clone();
                 entry.return_lifecycle.append(&forward_lifecycle);
                 entry.restore_lifecycle = reverse_lifecycle
                     .clone()
@@ -964,6 +1009,8 @@ impl Session {
                 sequence_loads: effects.sequence_loads.iter().rev().cloned().collect(),
                 restore_parameters: parameter_effects.before.clone(),
                 return_parameters: parameter_effects.after.clone(),
+                restore_hosted_parameters: hosted_effects.before.clone(),
+                return_hosted_parameters: hosted_effects.after.clone(),
                 document: std::mem::replace(&mut self.document, document),
                 layout_origin: self.layout_origin,
                 playback_mode: std::mem::replace(&mut self.playback_mode, playback_mode),
@@ -1000,6 +1047,9 @@ impl Session {
         self.redo.clear();
         self.prune_history_assets();
         self.revision = revision;
+        if let Some(admission) = hosted_admission {
+            admission.publish(revision);
+        }
         self.host_lifecycle.tail.append(&forward_lifecycle);
         self.host_lifecycle.prune(&self.patch);
         self.record_layout_placements(&effects.placements, &effects.retired);
@@ -1195,6 +1245,11 @@ impl Session {
                 .prepare_wave_banks(&self.wave_preparation_cache)?,
         };
         target.patch.compile_with_wave_banks(&prepared)?;
+        let hosted_admission = self.reserve_hosted_edit(
+            &target.document,
+            &target.restore_hosted_parameters,
+            !target.retired_modules.is_empty(),
+        )?;
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         let hosted_grant = self.grant_after_history(&target.document, &target.retired_modules);
         self.prepare_midi_cc_edit(&self.midi_cc_ids())?;
@@ -1208,6 +1263,8 @@ impl Session {
             sequence_loads: entry.sequence_loads.iter().rev().cloned().collect(),
             restore_parameters: entry.return_parameters.clone(),
             return_parameters: entry.restore_parameters.clone(),
+            restore_hosted_parameters: entry.return_hosted_parameters.clone(),
+            return_hosted_parameters: entry.restore_hosted_parameters.clone(),
             document: std::mem::replace(&mut self.document, entry.document),
             layout_origin: self.layout_origin,
             playback_mode: std::mem::replace(&mut self.playback_mode, entry.playback_mode),
@@ -1244,6 +1301,9 @@ impl Session {
             self.redo.push(opposite);
         }
         self.revision = revision;
+        if let Some(admission) = hosted_admission {
+            admission.publish(revision);
+        }
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
             if self.hosted_execution_grant.is_some() && hosted_grant.is_none() {
