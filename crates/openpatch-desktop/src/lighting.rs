@@ -119,12 +119,12 @@ impl Default for RoomLighting {
 
 impl RoomLighting {
     fn bloom_amount(&self) -> f32 {
-        // Darkness reveals a little spill; the lens remains the brightest part.
-        0.20 + 0.45 * (1.0 - self.amount).powf(1.5)
+        // Keep the light concentrated in its lens, even with the room off.
+        0.12 + 0.30 * (1.0 - self.amount).powf(1.5)
     }
 
     fn bloom_diffusion(&self) -> f32 {
-        0.24 + 0.12 * (1.0 - self.amount).powf(1.5)
+        0.18 + 0.08 * (1.0 - self.amount).powf(1.5)
     }
 
     /// Static display illumination, distinct from signal-driven lamps. The
@@ -137,8 +137,8 @@ impl RoomLighting {
             painter,
             rect,
             Color32::from_rgb(104, 155, 119),
-            0.012 + 0.048 * dark,
-            (0.8 + 0.8 * dark) * zoom / corner,
+            0.006 + 0.030 * dark,
+            (0.6 + 0.5 * dark) * zoom / corner,
         );
         self.preserve(painter, start);
     }
