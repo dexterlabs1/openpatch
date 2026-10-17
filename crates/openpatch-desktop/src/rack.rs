@@ -29,6 +29,7 @@ include!("resonator_panel.rs");
 include!("atlas_voice_panel.rs");
 include!("atlas_analog_panels.rs");
 include!("atlas_utility_panels.rs");
+include!("atlas_mixer_panels.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
 #[path = "agent_follow.rs"]
@@ -235,7 +236,8 @@ fn generic_parameter_hardware(
 ) -> GenericParameterHardware {
     if has_choices {
         GenericParameterHardware::Choice
-    } else if atlas_voice(kind) || matches!(kind, "stock_vco" | "stock_lfo") {
+    } else if atlas_voice(kind) || matches!(kind, "stock_vco" | "stock_lfo" | "mix6" | "stock_mix")
+    {
         GenericParameterHardware::Rotary {
             body_radius: layout_radius,
             target_half: layout_radius + 3.0,
@@ -3984,6 +3986,26 @@ impl Rack {
                         }
                         action = Some(RackAction::Command("set_parameter", args));
                     }
+                    if interactive {
+                        if let Some(cue) = self
+                            .construction_animation
+                            .parameter(&node.id, &node.kind, name)
+                        {
+                            let label = |v: f32| if v >= 0.5 { "On" } else { "Off" };
+                            self.register_construction_anchor(
+                                ui,
+                                node,
+                                name,
+                                crate::construction_motion::Anchor {
+                                    rect,
+                                    marker: None,
+                                    old_text: label(cue.old).into(),
+                                    new_text: label(cue.new).into(),
+                                },
+                                &[button.id],
+                            );
+                        }
+                    }
                     button.on_hover_text(if *name == "average" && node.kind == "stock_mix" {
                         "Divide by the number of inputs with channels, including connected mono 0 V."
                     } else if *name == "average" {
@@ -4187,7 +4209,7 @@ impl Rack {
                     label_gap = 5.0;
                     (pos2(width * (0.25 + index as f32 * 0.5), 133.0), 27.0)
                 } else if matches!(node.kind.as_str(), "mix6" | "stock_mix") {
-                    (pos2(width * 0.5, 125.0), 32.0)
+                    (pos2(width * 0.5, 125.0), 38.0)
                 } else if atlas_voice(&node.kind) {
                     AtlasVoiceLayout { width }.control(&node.kind, name)
                 } else if matches!(node.kind.as_str(), "analog_vco" | "lfo") {
@@ -4378,7 +4400,9 @@ impl Rack {
                     raw_max: max,
                     focus: true,
                 };
-                let value_offset = if matches!(node.kind.as_str(), "stock_lfo" | "stock_vco") {
+                let value_offset = if matches!(node.kind.as_str(), "mix6" | "stock_mix") {
+                    21.0
+                } else if matches!(node.kind.as_str(), "stock_lfo" | "stock_vco") {
                     16.0
                 } else if matches!(node.kind.as_str(), "multi_lfo" | "multi_vco") {
                     18.0
@@ -4406,7 +4430,9 @@ impl Rack {
                 } else {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
-                let readout_width = if atlas_voice(&node.kind) {
+                let readout_width = if matches!(node.kind.as_str(), "mix6" | "stock_mix") {
+                    78.0
+                } else if atlas_voice(&node.kind) {
                     AtlasVoiceLayout { width }.value_width(&node.kind, name)
                 } else if node.kind == "random" {
                     if *name == "unipolar" {
@@ -4687,8 +4713,10 @@ impl Rack {
                     );
                 } else if let GenericParameterHardware::Rotary { body_radius, .. } = hardware {
                     let paint_rotary = if atlas_voice(&node.kind)
-                        || matches!(node.kind.as_str(), "stock_vco" | "stock_lfo")
-                    {
+                        || matches!(
+                            node.kind.as_str(),
+                            "stock_vco" | "stock_lfo" | "mix6" | "stock_mix"
+                        ) {
                         paint_atlas_voice_rotary
                     } else {
                         crate::panel_skin::signal_atlas_rotary
@@ -4720,6 +4748,8 @@ impl Rack {
                         clock_ratio,
                         self.zoom,
                     );
+                } else if matches!(node.kind.as_str(), "mix6" | "stock_mix") {
+                    paint_atlas_six_mix_print(&painter, rect, node, self.zoom);
                 } else if !atlas_voice(&node.kind) {
                     crate::panel_skin::control_label(
                         &painter,
@@ -4764,8 +4794,10 @@ impl Rack {
                     );
                 }
                 let paint_readout = if atlas_voice(&node.kind)
-                    || matches!(node.kind.as_str(), "stock_vco" | "stock_lfo")
-                {
+                    || matches!(
+                        node.kind.as_str(),
+                        "stock_vco" | "stock_lfo" | "mix6" | "stock_mix"
+                    ) {
                     paint_atlas_voice_readout
                 } else {
                     crate::panel_skin::readout
@@ -12494,6 +12526,9 @@ fn paint_panel(
                 | "stock_vca"
                 | "stock_process"
                 | "stock_octave"
+                | "stock_vca_mix"
+                | "mix6"
+                | "stock_mix"
         )
     {
         paint_atlas_voice_face(painter, rect, node, zoom);
@@ -12565,6 +12600,9 @@ fn paint_panel(
                 | "stock_vca"
                 | "stock_process"
                 | "stock_octave"
+                | "stock_vca_mix"
+                | "mix6"
+                | "stock_mix"
         )
     {
         if master {
@@ -12827,6 +12865,9 @@ fn paint_jack(
             | "stock_vca"
             | "stock_process"
             | "stock_octave"
+            | "stock_vca_mix"
+            | "mix6"
+            | "stock_mix"
     ) {
         paint_atlas_socket_hardware(painter, center, 10.3 * zoom * port_scale / 32.0, connected);
     } else {
@@ -13986,9 +14027,11 @@ mod tests {
                                     && text.starts_with("RND "))
                                 || (kind == "stock_vca_mix"
                                     && match name {
-                                        "level1" | "level2" | "level3" | "level4" =>
-                                            text == "LEVEL",
-                                        "mix_level" => text == "MIX LEVEL",
+                                        "level1" => text == "CH 1",
+                                        "level2" => text == "CH 2",
+                                        "level3" => text == "CH 3",
+                                        "level4" => text == "CH 4",
+                                        "mix_level" => text == "MASTER",
                                         "channel_exp" => text.starts_with("CHANNEL CV  "),
                                         "mix_exp" => text.starts_with("MIX CV  "),
                                         _ => false,

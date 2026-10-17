@@ -55,6 +55,13 @@ Stock VCA, Process and Octave bring the detailed native design to fourteen panel
 
 [Native utility trio and thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-stock-utilities.png). **42 focused checks passed**, including real Session edits/undo, actual gain lanes/dark-room telemetry, octave source/raw-value behavior, manual gate release, precise units, all affected MCP anchors and simultaneous isolated previews. A real-engine check confirms +1 V slew CV halves rate and doubles time. Strict desktop Clippy and formatting passed; light/dark native meshes were inspected. Preceding `92c4e0c` passed GitHub CI. No DSP/frozen-reference changes or installation. Next: the mixer family, starting with Stock VCA Mix and the two six-input mixers.
 
+
+### Mixer continuation
+
+Mix 6, Stock Mix and Stock VCA Mix now use the detailed native treatment, bringing the catalog pass to seventeen panels. Six-input mixers gain larger calibrated level knobs, numeric wells and a configured sum/average/level/polarity path. Stock VCA Mix keeps its four actual strip VUs and five rotaries, with separate strip/master CV laws and a compact four-output-to-master diagram. Socket identities, existing HP widths, raw/dB entry and editing/history remain intact; MCP cues follow the relocated controls, including the six-input flags.
+
+[Native mixer panels and matching thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-mixers.png). **24 focused checks passed**, covering real Session edits/undo, precision values, actual factory meters, all seven Stock VCA Mix MCP anchors, six-input flag cues, socket/text clearance, natural browser zoom and shared rack/browser drawing. Strict desktop Clippy and formatting passed; light/dim-room CPU meshes were inspected. The prior `dc9dbe8` CI passed 1,096 desktop checks and exposed two old primitive expectations; those are corrected with size/alignment assertions retained. No DSP/frozen-reference changes or installation. Next: detailed effect panels, preserving truthful configured guides and real telemetry.
+
 The following catalog batches describe existing development source, not an approved final design.
 
 ### First catalog batch in progress

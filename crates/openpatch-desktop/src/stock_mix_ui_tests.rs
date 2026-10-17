@@ -324,3 +324,44 @@ fn stock_mix_real_level_readout_opens_bounded_precision_control() {
     edit.text = "1.01".into();
     assert!(parsed_parameter_result(edit).is_err());
 }
+
+#[test]
+fn six_mix_mcp_flag_anchors_follow_actual_controls_and_configuration() {
+    use crate::construction_motion::MotionMode;
+    for kind in ["mix6", "stock_mix"] {
+        for (parameter, x) in [("average", 67.5), ("invert", 172.5)] {
+            let ctx = egui::Context::default();
+            let mut rack = Rack::default();
+            let before: Patch =
+                serde_json::from_value(json!({"version":2,"nodes":[{"id":"mix","kind":kind}]}))
+                    .unwrap();
+            let mut after = before.clone();
+            after.nodes[0].params.insert(parameter.into(), 1.0);
+            frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+            let now = std::time::Instant::now();
+            let receipt = json!({"plan_id":21,"completed_steps":1,"last_revision":10,"current_revision":10,"last_commit":{"age_ms":0,"invalidate_existing_cables":false,"plan_id":21,"step_index":0,"before_revision":9,"revision":10,"label":"Configure mixer","new_modules":[],"new_cables":[],"parameter_changes":[{"id":"mix","kind":kind,"parameter":parameter,"old_effective":0.0,"new_effective":1.0}]}});
+            rack.observe_construction_transition_at(
+                &before,
+                &after,
+                9,
+                10,
+                &receipt,
+                MotionMode::Full,
+                now,
+            );
+            rack.set_construction_clock_override(Some(now + std::time::Duration::from_millis(150)));
+            let (action, output) =
+                frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10);
+            assert!(action.is_none());
+            let anchor = &rack.construction_anchors[&("mix".into(), parameter.into())];
+            assert_eq!((&*anchor.old_text, &*anchor.new_text), ("Off", "On"));
+            assert_eq!(anchor.rect.center(), pos2(24.0 + x, 12.0 + 212.0));
+            let expected = if parameter == "average" {
+                "Σ/N"
+            } else {
+                "− OUT"
+            };
+            assert!(texts(&output).iter().any(|(text, _)| text == expected));
+        }
+    }
+}

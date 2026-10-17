@@ -14,10 +14,10 @@ const STOCK_VCA_MIX_ALL_PARAMS: [&str; 7] = [
     "channel_exp",
     "mix_exp",
 ];
-const STOCK_VCA_MIX_KNOB_RADIUS: f32 = 17.0;
-const STOCK_VCA_MIX_KNOB_Y: f32 = 138.0;
-const STOCK_VCA_MIX_VALUE_Y: f32 = 178.0;
-const STOCK_VCA_MIX_METER_Y: f32 = 212.0;
+const STOCK_VCA_MIX_KNOB_RADIUS: f32 = 18.0;
+const STOCK_VCA_MIX_KNOB_Y: f32 = 154.0;
+const STOCK_VCA_MIX_VALUE_Y: f32 = 192.0;
+const STOCK_VCA_MIX_METER_Y: f32 = 221.0;
 
 fn stock_vca_mix_column(index: usize) -> f32 {
     35.0 + index as f32 * 50.0
@@ -28,7 +28,7 @@ fn stock_vca_mix_knob_center(index: usize) -> Pos2 {
 }
 
 fn stock_vca_mix_knob_rect(index: usize) -> Rect {
-    Rect::from_center_size(stock_vca_mix_knob_center(index), vec2(44.0, 44.0))
+    Rect::from_center_size(stock_vca_mix_knob_center(index), vec2(48.0, 48.0))
 }
 
 fn stock_vca_mix_value_rect(index: usize) -> Rect {
@@ -116,66 +116,6 @@ fn stock_vca_mix_port_label(port: &str) -> &str {
         "out4" => "OUT 4",
         other => other,
     }
-}
-
-fn stock_vca_mix_paint_knob(
-    painter: &egui::Painter,
-    center: Pos2,
-    normalized: f32,
-    active: bool,
-    zoom: f32,
-) {
-    let value = if normalized.is_finite() {
-        normalized.clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
-    let black = Color32::from_rgb(22, 23, 22);
-    let rim = Color32::from_rgb(102, 102, 96);
-    let face = Color32::from_rgb(39, 40, 38);
-    let radius = STOCK_VCA_MIX_KNOB_RADIUS * zoom;
-
-    // The five ticks describe the bounded UI travel; the pointer represents
-    // that proposed UI value, while the readout retains the stored raw value.
-    let start = 3.0 * std::f32::consts::PI / 4.0;
-    let sweep = 3.0 * std::f32::consts::PI / 2.0;
-    for tick in 0..=4 {
-        let angle = start + sweep * tick as f32 / 4.0;
-        let (sin, cos) = angle.sin_cos();
-        let inner = radius + 1.6 * zoom;
-        let tick_length = if tick == 0 || tick == 4 { 3.0 } else { 1.8 };
-        let outer = inner + tick_length * zoom;
-        painter.line_segment(
-            [
-                center + vec2(cos, sin) * inner,
-                center + vec2(cos, sin) * outer,
-            ],
-            Stroke::new(0.9 * zoom, black),
-        );
-    }
-    painter.circle_filled(
-        center + vec2(0.8, 1.1) * zoom,
-        radius + 1.0 * zoom,
-        Color32::from_black_alpha(55),
-    );
-    painter.circle_filled(center, radius, black);
-    painter.circle_stroke(center, radius, Stroke::new(0.8 * zoom, rim));
-    painter.circle_filled(center, radius - 2.0 * zoom, face);
-    painter.circle_stroke(
-        center,
-        radius - 2.0 * zoom,
-        Stroke::new(0.6 * zoom, Color32::from_rgb(12, 13, 12)),
-    );
-    let angle = start + sweep * value;
-    let (sin, cos) = angle.sin_cos();
-    painter.line_segment(
-        [center, center + vec2(cos, sin) * (radius - 5.0 * zoom)],
-        Stroke::new(
-            (if active { 2.0 } else { 1.7 }) * zoom,
-            Color32::from_rgb(245, 241, 228),
-        ),
-    );
-    painter.circle_filled(center, 1.8 * zoom, Color32::from_rgb(196, 191, 178));
 }
 
 impl Rack {
@@ -274,7 +214,7 @@ impl Rack {
             node,
             revision,
             "channel_exp",
-            screen(Rect::from_min_max(pos2(10.0, 62.0), pos2(148.0, 84.0))),
+            screen(Rect::from_min_max(pos2(10.0, 61.0), pos2(148.0, 82.0))),
             interactive,
         );
         let master_action = self.stock_vca_mix_mode_control(
@@ -282,27 +222,51 @@ impl Rack {
             node,
             revision,
             "mix_exp",
-            screen(Rect::from_min_max(pos2(154.0, 62.0), pos2(260.0, 84.0))),
+            screen(Rect::from_min_max(pos2(154.0, 61.0), pos2(260.0, 82.0))),
             interactive,
         );
         action = action.or(master_action);
 
+        let screen_paint = AtlasVoicePaint {
+            painter: &painter,
+            origin: rect.min,
+            layout: AtlasVoiceLayout {
+                width: rect.width() / z,
+            },
+            zoom: z,
+        };
+        screen_paint.screen(screen(Rect::from_min_max(
+            pos2(10.0, 87.0),
+            pos2(260.0, 112.0),
+        )));
+        let screen_ink = Color32::from_rgb(195, 200, 180);
         painter.text(
-            point(110.0, 92.0),
+            point(73.0, 99.5),
             Align2::CENTER_CENTER,
             if node.params.get("channel_exp").copied().unwrap_or(0.0) == 1.0 {
-                "c = max(CV/10, 0)^4 · 1 unpatched"
+                "c=max(CV/10,0)^4"
             } else {
-                "c = max(CV/10, 0) · 1 unpatched"
+                "c=max(CV/10,0)"
             },
-            font(8.0),
-            muted,
+            font(7.4),
+            screen_ink,
+        );
+        painter.text(
+            point(197.0, 99.5),
+            Align2::CENTER_CENTER,
+            if node.params.get("mix_exp").copied().unwrap_or(0.0) == 1.0 {
+                "h=max(V/10,0)^4"
+            } else {
+                "h=max(V/10,0)"
+            },
+            font(7.4),
+            screen_ink,
         );
 
         for index in 0..5 {
             let column = stock_vca_mix_column(index);
             painter.text(
-                point(column, 104.0),
+                point(column, 122.0),
                 Align2::CENTER_CENTER,
                 if index == 4 {
                     "MASTER"
@@ -337,7 +301,9 @@ impl Rack {
             };
             let center = point(stock_vca_mix_column(index), STOCK_VCA_MIX_KNOB_Y);
             let knob_rect = screen(stock_vca_mix_knob_rect(index));
-            let id = egui::Id::new(("stock-vca-mix-knob", &node.id, parameter));
+            // Namespaced under the owning panel UI: stable for native edits,
+            // isolated when several library previews reuse the same node ID.
+            let id = ui.id().with(("stock-vca-mix-knob", &node.id, parameter));
             let knob = ui.interact(knob_rect, id, Sense::click_and_drag());
             knob.widget_info(|| {
                 egui::WidgetInfo::slider(
@@ -402,17 +368,18 @@ impl Rack {
                     &[knob.id],
                 );
             }
-            stock_vca_mix_paint_knob(
+            paint_atlas_voice_rotary(
                 &painter,
                 center,
                 normalized,
                 knob.hovered() || knob.dragged() || knob.has_focus(),
+                STOCK_VCA_MIX_KNOB_RADIUS,
                 z,
             );
             let raw_outside_ui = raw.is_finite() && !(0.0..=max).contains(&raw);
             if raw_outside_ui {
                 let marker = Rect::from_center_size(
-                    point(stock_vca_mix_column(index) + 18.0, 116.0),
+                    point(stock_vca_mix_column(index) + 18.0, 136.0),
                     vec2(13.0, 11.0) * z,
                 );
                 painter.rect_filled(marker, 2.0 * z, Color32::from_rgb(156, 62, 43));
@@ -443,30 +410,23 @@ impl Rack {
 
             // The strip knob is a raw `levelN` setting that DSP squares; the
             // master `mix_level` remains a linear setting.
-            let label = if index == 4 { "MIX LEVEL" } else { "LEVEL" };
-            painter.text(
-                point(stock_vca_mix_column(index), 164.0),
-                Align2::CENTER_CENTER,
-                label,
-                font(9.0),
-                muted,
-            );
             let value_rect = screen(stock_vca_mix_value_rect(index));
             let value_response = ui.interact(
                 value_rect,
-                egui::Id::new(("stock-vca-mix-value", &node.id, parameter)),
+                ui.id().with(("stock-vca-mix-value", &node.id, parameter)),
                 Sense::click(),
             );
-            painter.text(
+            let readout = if index == 4 {
+                format!("{}×", stock_vca_mix_raw_label(raw))
+            } else {
+                stock_vca_mix_raw_label(raw)
+            };
+            paint_atlas_voice_readout(
+                &painter,
                 value_rect.center(),
-                Align2::CENTER_CENTER,
-                if index == 4 {
-                    format!("{}×", stock_vca_mix_raw_label(raw))
-                } else {
-                    stock_vca_mix_raw_label(raw)
-                },
-                font(9.5),
-                black,
+                &readout,
+                value_rect.width(),
+                z,
             );
             let value_response = value_response.on_hover_text(format!(
                 "Exact loaded raw {parameter}: {raw:?}. The visible UI range is 0–{max:.7}; edits are bounded and never rewrite a loaded value during rendering. Click or right-click for exact entry."
@@ -492,7 +452,7 @@ impl Rack {
 
             if index < 4 {
                 painter.text(
-                    point(stock_vca_mix_column(index), 195.0),
+                    point(stock_vca_mix_column(index), 208.0),
                     Align2::CENTER_CENTER,
                     "IN × L² × c",
                     font(8.0),
@@ -500,7 +460,7 @@ impl Rack {
                 );
                 ui.interact(
                     screen(Rect::from_center_size(
-                        pos2(stock_vca_mix_column(index), 195.0),
+                        pos2(stock_vca_mix_column(index), 208.0),
                         vec2(48.0, 13.0),
                     )),
                     ui.id().with((&node.id, "strip-law", index)),
@@ -557,7 +517,7 @@ impl Rack {
         }
 
         painter.text(
-            point(235.0, 207.0),
+            point(135.0, 229.0),
             Align2::CENTER_CENTER,
             if node.bypassed {
                 "VU HELD"
@@ -575,9 +535,8 @@ impl Rack {
         );
         stock_vca_mix_topology(
             &painter,
-            screen(Rect::from_min_size(pos2(0.0, 214.0), vec2(270.0, 54.0))),
+            screen(Rect::from_min_size(pos2(0.0, 229.0), vec2(270.0, 40.0))),
             z,
-            node.params.get("mix_exp").copied().unwrap_or(0.0) == 1.0,
         );
         action
     }
