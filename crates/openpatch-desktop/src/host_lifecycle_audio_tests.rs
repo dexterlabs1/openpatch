@@ -14,7 +14,7 @@ fn host_lifecycle_patch() -> Patch {
     .unwrap()
 }
 
-fn host_test_audio(patch: &Patch) -> (Audio, Callback) {
+pub(super) fn host_test_audio(patch: &Patch) -> (Audio, Callback) {
     let (mut callback, incoming, retired) = callback_for(patch);
     callback.performance.sync_patch(patch, 0);
     callback.graphs.active.modules = callback
@@ -22,6 +22,8 @@ fn host_test_audio(patch: &Patch) -> (Audio, Callback) {
         .plan(patch, &callback.graphs.active, 0)
         .unwrap();
     let audio = Audio {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        capture: callback.capture.take_control(),
         _stream: None,
         incoming,
         retired,

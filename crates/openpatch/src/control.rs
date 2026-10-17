@@ -27,7 +27,11 @@ pub use hosted_events::{HostedEditAdmission, HostedEditProposal, HostedParameter
 #[cfg(test)]
 mod host_lifecycle_tests;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+mod hosted_capture;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 mod hosted_execution;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub use hosted_capture::{HostedProjectCaptureReceipt, HostedProjectCaptureTicket};
 #[cfg(test)]
 mod project_layout_tests;
 #[doc(hidden)]

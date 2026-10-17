@@ -148,7 +148,11 @@ impl Session {
                     .into(),
             );
         }
-        let states = if self.execution_disposition().is_runnable() {
+        let has_live_hosted_projection = self
+            .live_module_events
+            .as_ref()
+            .is_some_and(|backend| backend.requires_hosted_capture_barrier());
+        let states = if self.execution_disposition().is_runnable() || has_live_hosted_projection {
             self.capture_project_running(expected_revision)?
                 .saved_states
         } else {

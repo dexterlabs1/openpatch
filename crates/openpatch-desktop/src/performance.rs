@@ -966,6 +966,7 @@ struct ExecutionRequest {
     disposition: ExecutionDisposition,
 }
 struct Shared {
+    capture_pending: AtomicBool,
     execution_serial: AtomicU64,
     execution_revision: AtomicU64,
     execution_generation: AtomicU64,
@@ -1576,7 +1577,10 @@ impl Performance {
         Ok(())
     }
     pub(super) fn execution_available(&self) -> bool {
-        if self.shared.closed.load(Ordering::Acquire) || !self.shared.execution_available() {
+        if self.shared.closed.load(Ordering::Acquire)
+            || self.shared.capture_pending.load(Ordering::Acquire)
+            || !self.shared.execution_available()
+        {
             return false;
         }
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -1599,6 +1603,23 @@ impl Performance {
             }
         }
         self.shared.hosted_request.load(Ordering::Acquire) == 0
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn set_hosted_capture_pending(&self, pending: bool) {
+        self.shared
+            .capture_pending
+            .store(pending, Ordering::Release);
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn is_closed(&self) -> bool {
+        self.shared.closed.load(Ordering::Acquire)
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn hosted_binding_revision(&self) -> u64 {
+        self.hosted_control
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .revision
     }
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     fn revoke_hosted_control(&self, revision: u64) -> bool {
@@ -1726,6 +1747,7 @@ impl Performance {
         let (queue, input) = RingBuffer::new(EVENT_CAPACITY);
         let (listen, listen_producer) = listen_capture::channel();
         let shared = Arc::new(Shared {
+            capture_pending: AtomicBool::new(false),
             execution_serial: AtomicU64::new(0),
             execution_revision: AtomicU64::new(0),
             execution_generation: AtomicU64::new(0),

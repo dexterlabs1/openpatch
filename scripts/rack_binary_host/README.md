@@ -203,7 +203,7 @@ OPENPATCH_HOSTED_COMPANION=/absolute/path/to/companion \
 OPENPATCH_HOSTED_SDK=/absolute/path/to/Rack-SDK \
 OPENPATCH_HOSTED_PLUGIN=/absolute/path/to/Bogaudio \
 OPENPATCH_HOSTED_ACTIVATION_REVIEW=/absolute/path/to/new-review-directory \
-cargo test -p openpatch-desktop actual_application_ -- --ignored --test-threads=1
+cargo test -p openpatch-desktop hosted_callback::app_host_activation::actual_application_ -- --ignored --test-threads=1
 ```
 
 The tests open no device or window and use 5 ms callback pacing. They cover exact
@@ -212,5 +212,23 @@ restart, state capture after retirement, unadmitted value changes, pending-edit
 capture refusal, killed-child silence and unread-queue teardown. Callback heap
 checks remain active. They do not qualify realtime device deadlines or complete
 live project saving; the shared live capture path refuses to claim a successful
-save until the native/child barrier exists. Configuration does not discover or
+save until the asynchronous native/child barrier is dispatched by that entry point. Configuration does not discover or
 execute arbitrary installed plugins. See [the application contract](../../docs/BINARY_HOST_V1.md#implemented-application-controller-activation-still-internal).
+
+## Coherent application capture checks
+
+Supply the same three explicit binary/SDK/plugin variables above and
+`OPENPATCH_HOSTED_CAPTURE_REVIEW=/absolute/path/to/new-review-directory`, then run:
+
+```sh
+cargo test -p openpatch-desktop actual_application_c -- --ignored --test-threads=1
+```
+
+The two local tests exercise real partial-quanta/backlogged commands, frozen whole
+native graph ownership, retained-reader child drain, snapshot validation,
+save/reopen/resume, timeout ownership races, newer authored intent and child
+failure. They open no device/window and pace callbacks by 5 ms. Native effective
+VCA and HOLD state remain distinct from authored history. Ordinary synchronous
+save still refuses live hosted bindings: App/MCP must dispatch this two-phase
+begin/poll workflow before it becomes user-facing. See the
+[coherent capture contract](../../docs/BINARY_HOST_V1.md#implemented-coherent-capture-and-resume-api).

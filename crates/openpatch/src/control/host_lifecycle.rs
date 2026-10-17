@@ -152,6 +152,11 @@ impl Publication {
     }
 }
 static NEXT_TICKET: AtomicU64 = AtomicU64::new(1);
+fn next_ticket_id() -> Result<u64, String> {
+    NEXT_TICKET
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+        .map_err(|_| "audio lifecycle ticket ids exhausted".into())
+}
 
 impl Session {
     pub(super) fn document_execution_context(&self) -> DocumentExecutionContext<'_> {
@@ -177,17 +182,7 @@ impl Session {
         if let Some(ticket) = &self.host_lifecycle.sealed {
             return Ok(ticket.clone());
         }
-        let mut id = NEXT_TICKET.load(Ordering::Relaxed);
-        loop {
-            let next = id
-                .checked_add(1)
-                .ok_or("audio lifecycle ticket ids exhausted")?;
-            match NEXT_TICKET.compare_exchange_weak(id, next, Ordering::Relaxed, Ordering::Relaxed)
-            {
-                Ok(_) => break,
-                Err(current) => id = current,
-            }
-        }
+        let id = next_ticket_id()?;
         let ticket = Arc::new(HostLifecycleTicket {
             id,
             revision: self.revision,
@@ -200,6 +195,22 @@ impl Session {
         });
         self.host_lifecycle.sealed = Some(ticket.clone());
         Ok(ticket)
+    }
+
+    /// Capture preparation does not publish audio intent, take lifecycle edges,
+    /// or leave a sealed publication that later edits would need to acknowledge.
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn capture_resume_snapshot(&self) -> Result<Arc<HostLifecycleTicket>, String> {
+        Ok(Arc::new(HostLifecycleTicket {
+            id: next_ticket_id()?,
+            revision: self.revision,
+            document_generation: self.project_save.generation(),
+            document: Arc::new(self.document.clone()),
+            execution: self.document_execution_request(),
+            patch: self.patch.clone(),
+            banks: self.prepared_wave_banks.clone(),
+            delta: HostLifecycleDelta::default(),
+        }))
     }
 
     #[doc(hidden)]

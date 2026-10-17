@@ -197,12 +197,11 @@ The actual desktop companion fixture also passes again with zero heap activity;
 its two tiny callbacks still exceed their budgets. [Evidence, timing scope and
 retained findings](benchmarks/rack-binary-mixed-graph.json).
 
-User-facing activation remains unavailable. Audio still refuses delayed requests
-until the UI-owned process controller can publish the complete matching graph.
-Its active hosted execution gate must use the plan epoch rather than resetting
-on every authored revision; the native-only execution gate remains suspended.
-General live save still needs the declared coherent quantum barrier. The new
-workflow saves after explicit retirement and comparison, not during playback.
+User-facing activation remains unavailable. The internal Audio controller now
+publishes the complete graph using a separate hosted execution epoch, and the
+two-phase capture API below implements a coherent cut. Ordinary save entry
+points still refuse a live hosted binding until they dispatch that asynchronous
+workflow. The native-only execution gate remains suspended.
 
 ## User-visible exit
 
@@ -283,19 +282,64 @@ commands, killed-child silence and unread queued-graph shutdown. These tests use
 5 ms pacing between 128-frame callbacks; they do **not** qualify continuous 48 kHz
 device deadlines, native-window interaction or sustained representative load.
 
-Retired child capture alone is not a coherent playing-project save. Until a
-native/child audio-boundary barrier is implemented, the shared Session explicitly
-refuses live document capture while the application holds a hosted binding; a
-refused capture cannot advance the saved baseline. Authored-only documents without
-such a binding retain their existing save/reopen behavior.
+Retired child capture alone is not a coherent playing-project save. The shared
+Session still refuses ordinary synchronous live document capture while an
+application hosted binding exists; the asynchronous API below must be dispatched
+instead. A refused capture cannot advance the saved baseline. Authored-only
+documents without such a binding retain their existing save/reopen behavior.
 
 Launch configuration is explicit (`OPENPATCH_HOSTED_COMPANION`,
 `OPENPATCH_HOSTED_SDK`, `OPENPATCH_HOSTED_PLUGIN`, optional
 `OPENPATCH_HOSTED_WORKSPACE`). There is no automatic plugin discovery or public
 activation control yet. The device start path requests 48 kHz / fixed 128-frame
 buffers and validates the actual callback; that path has not been device-qualified.
-The installed app remains 0.2.7 build 9. Next implement the coherent save barrier,
+The installed app remains 0.2.7 build 9. Next connect asynchronous save dispatch,
 active shared controls and Mac device qualification before exposing activation.
+
+## Implemented coherent capture and resume API
+
+`Session::begin_hosted_project_capture` seals the full document, backend identity,
+save/load generation, revision, state and layout identities without changing
+history or consuming pending audio-publication intent. `Audio::begin_hosted_capture`
+then seals command admission under the same mutex as reservation/publication.
+An outstanding reservation prevents the seal; later hosted edits are refused
+before they can change history. Scheduling remains operational.
+
+The callback finishes the actual partial 128-frame quantum and all accepted
+commands, then swaps the entire frozen native graph and hosted runner into a
+bounded return queue. Storage and the silent replacement are prepared off audio.
+A full return queue retains the graph locally; silence cannot advance it or free
+it. The control thread retains the event reader while draining only validated
+child output. The private acknowledgment requires the exact seal, all accepted
+commands applied, and all submitted blocks returned. Native DSP never advances
+to make transport drain. The process owner then captures the stopped child using
+the exact endpoint and execution fence.
+
+Completion overlays qualified native runtime controls/persistent fields and the
+actual hosted snapshot into the sealed document clone. For the current stateless
+OFFSET capability, the complete captured state must equal the sealed accepted
+parameters and both custom flags. Native graph changes, unknown fields, stale
+document/layout/backend and another ticket's receipt are rejected. Completion
+does not load the clone into Session or register a saved baseline; registration
+remains after successful file persistence. A capture-only execution snapshot does
+not leave a stale audio publication blocking the next edit.
+
+Valid capture resumes with a fresh child and preserved native DSP/parameter/state
+handoff. A timeout racing callback ownership return retains a terminal request
+until the graph arrives and can restore the exact runner. Newer intent invalidates
+save completion; the frozen native donor is retained for the newer graph so an
+unrelated effective control is not reset. Native submissions retry while capture
+owns that graph, preventing an already-queued replacement from bypassing handoff.
+Child failure refuses the receipt and can restart the current authored capability
+while preserving the native donor. None of these failures acknowledges a save.
+
+Actual installed-plugin checks cover a 37-frame partial quantum, 130 queued
+commands across three real quanta, full-return-queue freezing, native VCA/HOLD
+capture, explicit save/reopen, resume, late-timeout ownership return, stale edits
+and child death. Callback allocation/deallocation checks remain active. This is
+a paced headless API result, not native-window/device qualification. App/MCP save
+begin/poll dispatch, public hosted controls, seamless ordinary graph/Scope rebuilds
+and sustained Mac device deadlines remain open; no installation follows.
 
 ## Protocol and authority
 

@@ -496,5 +496,63 @@
       "hosted Scope selection and coherent live project save unfinished",
       "no public activation control, device/window test, packaging or installation"
     ]
+  },
+  "coherent_capture": {
+    "status": "internal asynchronous capture/resume API validated; ordinary App/MCP save dispatch remains open",
+    "evidence": "native-test-output/rack-control-import/binary-host/coherent-capture-004",
+    "identities": {
+      "plugin": "264e55e1389274c3873439372c5c51f48f63168bd6c98fb2c6ffec170224b6f6",
+      "runtime": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c",
+      "companion": "903faed075237e1f996856572e4aa09fbe00b4967a7653442ea89d40e82a7786",
+      "parent_test_executable": "051cfab5ccc2ad05c0da7eeff4b4d81347cf19500c9515a39434479045bcee1f"
+    },
+    "source_manifest_sha256": "0153806c534cd14d6bc160c7483a54e2ab29429e42dfba507dab2d4a696d8e46",
+    "shared_commands": 130,
+    "input_cut": 1408,
+    "device_cut": 1408,
+    "initial_partial_quantum_frames": 37,
+    "exact_input_quanta_completed": [
+      8,
+      9,
+      10
+    ],
+    "native_level": 0.75,
+    "native_hold": true,
+    "callback_allocations": 0,
+    "callback_deallocations": 0,
+    "save_reopen": true,
+    "resumed_native_state": true,
+    "checks": [
+      "reservation/seal race and stale/crossfence cancellation",
+      "scheduled backlog and retained-reader validated drain",
+      "full return queue freezes entire native graph",
+      "capture-only snapshot does not consume normal audio publication",
+      "native VCA and HOLD capture without authored history mutation",
+      "explicit file persistence before baseline registration",
+      "late-timeout graph return restores exact child/runner",
+      "stale completion refuses save and retains donor for newer graph",
+      "child death refuses capture and restarts current capability preserving native donor"
+    ],
+    "validation": {
+      "cli_library": "438passed2ignored",
+      "audio_and_performance": "298passed8ignored",
+      "project_workflows": "236passed2ignored; overlapping desktop filter",
+      "actual_application": "5 actual-plugin tests passed serially, including both capture tests and three earlier activation/failure scenarios",
+      "strict_all_target_clippy": "passed",
+      "format": "passed"
+    },
+    "retained_findings": [
+      "capture-host-001:partial-phase fixture skipped actual core exchange; fixed fixture, production validation unchanged",
+      "capture-audio-focused-001:incorrect allocator-helper test path; fixed",
+      "capture-check-002:unwrap_err required Debug for private receipt; test uses err()",
+      "capture-clippy-001:use is_multiple_of; corrected",
+      "capture-actual-003:child death before quiesce retained native donor but did not restart; fixed that recovery path, final five-scenario004 passes"
+    ],
+    "limits": [
+      "5ms callback pacing, no sustained48k/device/window claim",
+      "ordinary synchronous save still refuses hosted bindings until begin/poll dispatch is connected",
+      "active hosted panels, seamless ordinary graph/Scope rebuilds and general plugin capabilities remain open",
+      "no package/version/install"
+    ]
   }
 }

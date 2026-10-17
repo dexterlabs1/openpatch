@@ -31,6 +31,9 @@ use std::sync::Arc;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 #[path = "hosted_audio.rs"]
 mod hosted_audio;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[path = "audio_hosted_capture.rs"]
+mod hosted_capture;
 include!("audio_host_lifecycle.rs");
 
 #[cfg(test)]
@@ -390,6 +393,7 @@ struct ScopeSetup {
     taps: [Option<ResolvedTap>; 2],
 }
 struct PreparedGraph {
+    resumed_from_capture: bool,
     engine: Engine,
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     hosted: Option<openpatch::binary_host::runner::HostedRunner>,
@@ -409,6 +413,7 @@ struct PreparedGraph {
 impl From<Engine> for PreparedGraph {
     fn from(engine: Engine) -> Self {
         Self {
+            resumed_from_capture: false,
             engine,
             #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
             hosted: None,
@@ -425,6 +430,45 @@ impl From<Engine> for PreparedGraph {
     }
 }
 impl PreparedGraph {
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn resume_native_from(&mut self, donor: &mut Self) {
+        self.modules.handoff_state_with_host_exclusions(
+            &mut self.engine,
+            &donor.modules,
+            &mut donor.engine,
+            &self.host_lifecycle.resets,
+        );
+        self.modules.inherit_parameters_with_host_exclusions(
+            &mut self.engine,
+            &donor.modules,
+            &donor.engine,
+            &self.host_lifecycle.resets,
+        );
+        self.modules.reload_sequences_with_host_exclusions(
+            &mut self.engine,
+            &donor.modules,
+            &donor.engine,
+            &self.host_lifecycle.resets,
+        );
+        for (slot, binding) in self.modules.bindings.iter_mut().enumerate() {
+            if let Some(binding) = binding {
+                if let Some(old) =
+                    donor.modules.bindings[slot].filter(|old| old.token == binding.token)
+                {
+                    binding.release_epoch = old.release_epoch;
+                } else {
+                    self.engine.reset_module_state(binding.handle);
+                }
+            }
+        }
+        self.modules
+            .initialize_pending(&mut self.engine, Some(&donor.modules));
+        self.modules.load_saved_pending(
+            &mut self.engine,
+            Some((&mut donor.modules, &mut donor.engine)),
+        );
+        self.resumed_from_capture = true;
+    }
     fn current_revision(&self) -> u64 {
         self.authored_revision
             .as_ref()
@@ -502,6 +546,7 @@ fn prepare_graph_for_control(
         .transpose()?
         .unwrap_or([None; 2]);
     let mut graph = PreparedGraph {
+        resumed_from_capture: false,
         engine,
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         hosted: None,
@@ -529,6 +574,8 @@ fn prepare_graph_for_control(
 /// The stream keeps running during transport pause so gain can fade to silence.
 /// Call `service` on each UI update to dispose of retired graphs and publish edits.
 pub struct Audio {
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    capture: hosted_capture::CaptureControl,
     // Drop the stream before its control-side queue endpoints. CPAL shuts down the
     // callback before returning from Stream::drop; graph teardown is not rendering.
     _stream: Option<cpal::Stream>,
@@ -607,6 +654,13 @@ impl Audio {
 
     pub fn submit_document(&mut self, ticket: Arc<HostLifecycleTicket>) -> Result<(), String> {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if self.capture_in_progress() {
+            return Err(
+                "Audio capture is returning its current graph; retry the retained document ticket"
+                    .into(),
+            );
+        }
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         if matches!(
             ticket.execution,
             openpatch::control::DocumentExecutionRequest::HostedDelayed(_)
@@ -646,6 +700,15 @@ impl Audio {
 
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     fn submit_hosted_document(&mut self, ticket: Arc<HostLifecycleTicket>) -> Result<(), String> {
+        self.submit_hosted_document_inner(ticket, None)
+    }
+
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn submit_hosted_document_inner(
+        &mut self,
+        ticket: Arc<HostLifecycleTicket>,
+        donor: Option<&mut PreparedGraph>,
+    ) -> Result<(), String> {
         use openpatch::control::DocumentExecutionRequest;
         if ticket.revision < self.submitted_revision {
             return Err("Stale audio patch revision".into());
@@ -755,6 +818,9 @@ impl Audio {
                 return Err(error);
             }
         };
+        if let Some(donor) = donor {
+            graph.resume_native_from(donor);
+        }
         self.port_light_reader = graph.port_light_reader.as_ref().unwrap().clone();
         if let Some(old) = self.pending.replace(graph) {
             self.dispose_graph(old);
@@ -930,6 +996,8 @@ impl Audio {
             timestamp: TimestampMapper::default(),
             rate: sample_rate,
         });
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let capture = callback.capture.take_control();
         let stream = match supported.sample_format() {
             cpal::SampleFormat::F32 => build_stream::<f32>(&device, &config, callback),
             cpal::SampleFormat::I16 => build_stream::<i16>(&device, &config, callback),
@@ -941,6 +1009,8 @@ impl Audio {
             .play()
             .map_err(|error| format!("Could not start audio stream: {error}"))?;
         Ok(Self {
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            capture,
             _stream: Some(stream),
             incoming,
             retired,
@@ -1232,6 +1302,8 @@ impl Audio {
     }
 
     pub fn service(&mut self) {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        self.service_hosted_capture();
         while let Ok(graph) = self.retired.pop() {
             self.dispose_graph(graph);
         }
@@ -1239,7 +1311,12 @@ impl Audio {
         for receipt in self.hosted_controller.service() {
             self.last_hosted_retirement = Some(receipt);
         }
-        if let Some(engine) = self.pending.take() {
+        if let Some(mut engine) = self.pending.take() {
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            if let Some(mut donor) = self.capture.recovery.take() {
+                engine.resume_native_from(&mut donor);
+                self.dispose_graph(donor);
+            }
             if let Err(PushError::Full(engine)) = self.incoming.push(engine) {
                 self.pending = Some(engine);
             }
@@ -1361,6 +1438,8 @@ impl Drop for Audio {
         // queued-but-unapplied counters; retained MCP senders remain closed.
         drop(self._stream.take());
         self.performance.finish_close();
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        self.shutdown_hosted_capture();
         if let Some(graph) = self.pending.take() {
             self.dispose_graph(graph);
         }
@@ -1526,6 +1605,8 @@ impl Gain {
 
 struct Callback {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    capture: hosted_capture::CaptureCallback,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     stream_rate: u32,
     graphs: Exchange<PreparedGraph>,
     shared: Arc<Shared>,
@@ -1573,6 +1654,8 @@ impl Callback {
             stream_rate: rate,
             performance,
             module_events,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            capture: hosted_capture::CaptureCallback::new(),
             timing,
             scope,
             scope_packets: Some(scope_packets),
@@ -1680,12 +1763,17 @@ impl Callback {
             .graph_revision_high_water
             .max(self.graphs.active.revision);
         let revision_floor = self.graph_revision_high_water;
-        let adopted = self.graphs.poll_if(|active, next| {
-            let fenced = active.contains_rackmcp_sequence || next.contains_rackmcp_sequence;
-            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-            let fenced = fenced || active.hosted.is_some() || next.hosted.is_some();
-            next.current_revision() >= revision_floor || !fenced
-        });
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let capture_blocks_adoption = self.poll_hosted_capture();
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        let capture_blocks_adoption = false;
+        let adopted = !capture_blocks_adoption
+            && self.graphs.poll_if(|active, next| {
+                let fenced = active.contains_rackmcp_sequence || next.contains_rackmcp_sequence;
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                let fenced = fenced || active.hosted.is_some() || next.hosted.is_some();
+                next.current_revision() >= revision_floor || !fenced
+            });
         self.graph_revision_high_water = self
             .graph_revision_high_water
             .max(self.graphs.active.revision);
@@ -1700,8 +1788,9 @@ impl Callback {
             .sync_port_light_control(control, control_changed);
         if adopted {
             self.module_events.clear_hosted_status();
-            let mut moved = false;
-            if let Some(previous) = self.graphs.previous.as_mut() {
+            let resumed = self.graphs.active.resumed_from_capture;
+            let mut moved = resumed;
+            if let Some(previous) = self.graphs.previous.as_mut().filter(|_| !resumed) {
                 let active = &mut self.graphs.active;
                 moved = active.modules.handoff_state_with_host_exclusions(
                     &mut active.engine,
@@ -1848,10 +1937,18 @@ impl Callback {
             .frame_clock
             .saturating_add((output.len() / channels) as u64);
         let crossfade = self.graphs.previous.is_some() && output.len() >= channels;
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let mut captured_this_callback = false;
         for chunk in output.chunks_mut(BLOCK_SIZE * channels) {
             let frames = chunk.len() / channels;
             let mut offset = 0;
             while offset < frames {
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                if self.try_hosted_capture() {
+                    captured_this_callback = true;
+                    self.freeze_execution(&mut chunk[offset * channels..], channels);
+                    break;
+                }
                 if !self
                     .module_events
                     .execution_permitted(&self.graphs.active.modules)
@@ -1928,6 +2025,8 @@ impl Callback {
                     (at.saturating_sub(self.frame_clock) as usize).clamp(1, remaining)
                 });
                 let count = if one_frame { 1 } else { count };
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                let count = self.capture_span(count);
                 let active = &mut self.graphs.active;
                 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
                 {
@@ -2049,6 +2148,13 @@ impl Callback {
             }
             // CPAL normally supplies complete frames; incomplete tails are silence.
             chunk[frames * channels..].fill(T::from_mono(0.0));
+        }
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            captured_this_callback |= self.try_hosted_capture();
+            if captured_this_callback {
+                return (adopted, crossfade);
+            }
         }
         if !self
             .module_events
@@ -2313,7 +2419,7 @@ mod tests {
         }
     }
 
-    fn without_heap_activity(operation: impl FnOnce()) {
+    pub(super) fn without_heap_activity(operation: impl FnOnce()) {
         ALLOCATIONS.with(|count| count.set(0));
         DEALLOCATIONS.with(|count| count.set(0));
         TRACKING.with(|tracking| tracking.set(true));

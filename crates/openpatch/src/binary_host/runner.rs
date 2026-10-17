@@ -1,9 +1,10 @@
 //! Bounded audio-side schedule. No process ownership, waits or JSON live here.
-use super::control::{ControlFault, HostedControlReader};
+use super::control::{ControlFault, HostedCaptureSeal, HostedControlReader};
 use super::{Fault, InputBlock, OutputBlock, OwnedEndpoint, QUANTUM, SAMPLE_RATE};
 use openpatch_core::{
     Engine, ExternalFrameError, ExternalFrameIo, PortFrame, ResolvedExternalModule,
 };
+use serde::Serialize;
 
 /// A conservative first profile, pending measured application/device qualification.
 pub const TRANSPORT_DELAY_FRAMES: usize = QUANTUM * 3;
@@ -83,6 +84,16 @@ impl HostedRunner {
 
     pub fn frame(&self) -> u64 {
         self.frame
+    }
+    pub fn fence(&self) -> super::Fence {
+        self.endpoint.fence()
+    }
+    /// Distinguishes a canceled seal from a valid cut still scheduling backlog.
+    /// This callback-side query never takes the control admission mutex.
+    pub fn capture_matches(&self, seal: &HostedCaptureSeal) -> bool {
+        self.control
+            .as_ref()
+            .is_some_and(|control| control.capture_matches(seal))
     }
     pub fn fault(&self) -> Option<RunnerFault> {
         self.fault
@@ -282,6 +293,50 @@ impl HostedRunner {
         Ok(if priming { [0.; 2] } else { audio })
     }
 
+    /// Callback-safe readiness: accepted commands may span several quanta, and
+    /// every scheduled event must already belong to a submitted complete block.
+    pub fn capture_ready(&self, seal: &HostedCaptureSeal) -> bool {
+        self.fault.is_none()
+            && !self.awaiting_inputs
+            && self.frame.is_multiple_of(QUANTUM as u64)
+            && self.input.event_count == 0
+            && self.endpoint.fault().is_none()
+            && self.endpoint.status() == super::Status::Ready
+            && self.endpoint.fence() == seal.fence()
+            && self.endpoint.submitted_blocks() == self.frame / QUANTUM as u64
+            && self.control.as_ref().is_some_and(|control| {
+                control.capture_matches(seal)
+                    && control.scheduled_sequence() == seal.accepted_sequence()
+            })
+    }
+
+    /// Control-thread ownership transfer after the callback has stopped at the
+    /// sealed cut. The reader survives until all corresponding outputs validate.
+    #[allow(clippy::result_large_err)]
+    pub fn quiesce(self, seal: HostedCaptureSeal) -> Result<QuiescedHostedRunner, (Self, String)> {
+        if !self.capture_ready(&seal) {
+            return Err((
+                self,
+                "hosted runner has not reached the sealed capture cut".into(),
+            ));
+        }
+        if let Err(error) = self
+            .control
+            .as_ref()
+            .expect("readiness requires a reader")
+            .validate_capture(&seal)
+        {
+            return Err((self, error));
+        }
+        Ok(QuiescedHostedRunner {
+            endpoint: self.endpoint,
+            control: self.control.expect("readiness requires a reader"),
+            output: self.output,
+            cut_input_frame: self.frame,
+            seal,
+        })
+    }
+
     /// Consume only after callback retirement; process waits/draining belong to
     /// the control side. An unsubmitted tail is returned explicitly, never padded.
     pub fn retire(self) -> (OwnedEndpoint, usize, bool, Option<RunnerFault>) {
@@ -304,6 +359,110 @@ impl HostedRunner {
         self.output.silence();
         self.io.outputs.fill(PortFrame::default());
         Err(fault)
+    }
+}
+
+/// An acknowledgment can only be issued after the retained reader validates
+/// every submitted output and applies the exact sealed command sequence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct HostedCaptureAcknowledgment {
+    seal: HostedCaptureSeal,
+    input_frame: u64,
+    applied_sequence: u64,
+}
+
+impl HostedCaptureAcknowledgment {
+    pub fn seal(&self) -> HostedCaptureSeal {
+        self.seal
+    }
+    pub fn input_frame(&self) -> u64 {
+        self.input_frame
+    }
+    pub fn applied_sequence(&self) -> u64 {
+        self.applied_sequence
+    }
+}
+
+/// Control-side drain ownership. This type has no native engine or scheduling
+/// API, so waiting for the child cannot move the input cut or native DSP state.
+pub struct QuiescedHostedRunner {
+    endpoint: OwnedEndpoint,
+    control: Box<HostedControlReader>,
+    output: Box<OutputBlock>,
+    cut_input_frame: u64,
+    seal: HostedCaptureSeal,
+}
+
+impl QuiescedHostedRunner {
+    pub fn input_frame(&self) -> u64 {
+        self.cut_input_frame
+    }
+    pub fn seal(&self) -> HostedCaptureSeal {
+        self.seal
+    }
+    pub fn is_drained(&self) -> bool {
+        self.endpoint.is_drained() && self.validate().is_ok()
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        self.control.validate_capture(&self.seal)?;
+        if self.endpoint.fence() != self.seal.fence()
+            || self.endpoint.status() != super::Status::Ready
+            || self.endpoint.fault().is_some()
+            || self.endpoint.submitted_blocks() != self.cut_input_frame / QUANTUM as u64
+            || self.endpoint.received_blocks() > self.endpoint.submitted_blocks()
+        {
+            return Err("hosted capture transport is unavailable or differs from the cut".into());
+        }
+        Ok(())
+    }
+
+    /// Each attempt performs at most one validated nonblocking receive. Never
+    /// synthesize input, schedule events, or advance native DSP while draining.
+    pub fn poll_drain(&mut self, max_attempts: usize) -> Result<bool, String> {
+        self.validate()?;
+        for _ in 0..max_attempts {
+            if self.endpoint.is_drained() {
+                break;
+            }
+            match self.endpoint.try_receive(&mut self.output) {
+                Ok(Some(_)) => {
+                    self.control
+                        .acknowledge(
+                            self.endpoint.received_blocks(),
+                            self.cut_input_frame.saturating_sub(1),
+                        )
+                        .map_err(|fault| {
+                            format!("hosted capture acknowledgment failed: {fault:?}")
+                        })?;
+                }
+                Ok(None) => break,
+                Err(fault) => {
+                    self.control.fail(ControlFault::Execution);
+                    return Err(format!(
+                        "hosted capture output validation failed: {fault:?}"
+                    ));
+                }
+            }
+        }
+        self.validate()?;
+        Ok(self.endpoint.is_drained())
+    }
+
+    pub fn finish(self) -> Result<(OwnedEndpoint, HostedCaptureAcknowledgment), String> {
+        self.validate()?;
+        if !self.endpoint.is_drained() {
+            return Err("hosted capture outputs have not drained".into());
+        }
+        let applied_sequence = self
+            .control
+            .finish_capture(&self.seal, self.endpoint.received_blocks())?;
+        let acknowledgment = HostedCaptureAcknowledgment {
+            seal: self.seal,
+            input_frame: self.cut_input_frame,
+            applied_sequence,
+        };
+        Ok((self.endpoint, acknowledgment))
     }
 }
 
@@ -343,11 +502,15 @@ mod tests {
 
     // Deterministic ownership-controlled peer, not evidence of plugin behavior.
     fn echo_ready(runner: &HostedRunner) {
+        echo_endpoint(&runner.endpoint);
+    }
+
+    fn echo_endpoint(endpoint: &OwnedEndpoint) {
         use crate::binary_host::{
             HEADER, INPUT_READY, INPUT_VALUES, OUTPUT_COUNTS, OUTPUT_READY, OUTPUT_VALUES, SLOT,
             SLOTS,
         };
-        let region = runner.endpoint.region.as_ref();
+        let region = endpoint.region.as_ref();
         for index in 0..SLOTS {
             let slot = HEADER + index * SLOT;
             if region
@@ -476,5 +639,176 @@ mod tests {
         let (_, mut runner) = self::runner(&dir);
         runner.before_sample().unwrap();
         assert!(matches!(runner.before_sample(), Err(RunnerFault::Boundary)));
+    }
+    fn controlled_runner(
+        directory: &tempfile::TempDir,
+    ) -> (
+        Engine,
+        HostedRunner,
+        std::sync::Arc<super::super::control::HostedControl>,
+    ) {
+        let (engine, mut runner) = runner(directory);
+        let document = super::super::graph::tests::document();
+        let (control, reader) = super::super::control::HostedControl::new(
+            super::super::execution::HostedExecutionGrant::new(&document, 1).unwrap(),
+            &document,
+            runner.endpoint.fence(),
+            42,
+        )
+        .unwrap();
+        runner.control = Some(Box::new(reader));
+        (engine, runner, control)
+    }
+
+    #[test]
+    fn capture_waits_for_all_accepted_quanta_and_retained_reader_acks_the_fixed_cut() {
+        use super::super::control::ParameterAssignment;
+        let dir = tempfile::tempdir().unwrap();
+        let (mut engine, mut runner, control) = controlled_runner(&dir);
+        let batch = [ParameterAssignment {
+            parameter: 0,
+            value: 0.25,
+        }; super::super::MAX_EVENTS];
+        control.reserve(&batch).unwrap().publish(43);
+        control.reserve(&batch).unwrap().publish(44);
+        let seal = control.begin_capture(44).unwrap();
+        assert!(!runner.capture_ready(&seal));
+        for _ in 0..QUANTUM {
+            runner.process_frame(&mut engine).unwrap();
+        }
+        assert!(
+            !runner.capture_ready(&seal),
+            "one quantum schedules only 64 of 128 accepted commands"
+        );
+        echo_ready(&runner);
+        for _ in 0..QUANTUM {
+            runner.process_frame(&mut engine).unwrap();
+        }
+        assert!(runner.capture_ready(&seal));
+        assert!(control.snapshot().applied.is_none());
+        let mut quiesced = runner.quiesce(seal).map_err(|(_, error)| error).unwrap();
+        assert_eq!(quiesced.input_frame(), 2 * QUANTUM as u64);
+        assert!(!quiesced.poll_drain(0).unwrap());
+        assert!(!quiesced.poll_drain(1).unwrap());
+        assert_eq!(control.snapshot().applied.unwrap().sequence, 64);
+        assert!(
+            !quiesced.poll_drain(1).unwrap(),
+            "unpublished output is never acknowledged"
+        );
+        echo_endpoint(&quiesced.endpoint);
+        assert!(quiesced.poll_drain(1).unwrap());
+        assert!(quiesced.is_drained());
+        let (endpoint, acknowledgment) = quiesced.finish().unwrap();
+        assert!(endpoint.is_drained());
+        assert_eq!(acknowledgment.seal(), seal);
+        assert_eq!(acknowledgment.applied_sequence(), 128);
+        assert_eq!(acknowledgment.input_frame(), 2 * QUANTUM as u64);
+        let snapshot = control.snapshot();
+        assert!(snapshot.closed);
+        let applied = snapshot.applied.unwrap();
+        assert_eq!(applied.sequence, seal.accepted_sequence());
+        assert_eq!(applied.observed_frame, 2 * QUANTUM as u64 - 1);
+        assert_eq!(applied.received_blocks, 2);
+    }
+
+    #[test]
+    fn capture_refuses_partial_quantum_awaiting_input_and_stale_seal_without_losing_runner() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut engine, mut runner, control) = controlled_runner(&dir);
+        let stale = control.begin_capture(42).unwrap();
+        control.cancel_capture(stale).unwrap();
+        let seal = control.begin_capture(42).unwrap();
+        assert_eq!(runner.fence(), seal.fence());
+        assert!(!runner.capture_matches(&stale));
+        assert!(runner.capture_matches(&seal));
+        let (returned, _) = runner.quiesce(stale).err().unwrap();
+        runner = returned;
+        runner.before_sample().unwrap();
+        assert!(!runner.capture_ready(&seal));
+        // Complete the actual core exchange so the connected signal input has
+        // its canonical channel count before this fragment enters the block.
+        engine
+            .process_audio_frame_with_externals(std::slice::from_mut(&mut runner.io))
+            .unwrap();
+        runner.after_sample().unwrap();
+        assert!(!runner.capture_ready(&seal));
+        for _ in 1..QUANTUM {
+            runner.process_frame(&mut engine).unwrap();
+        }
+        assert!(runner.capture_ready(&seal));
+        let quiesced = runner.quiesce(seal).map_err(|(_, error)| error).unwrap();
+        assert!(
+            quiesced.finish().is_err(),
+            "an undrained cut cannot issue a receipt"
+        );
+        assert!(control.snapshot().closed);
+    }
+
+    #[test]
+    fn capture_drain_rejects_canceled_seal_and_transport_fault_without_false_ack() {
+        for cancel in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let (mut engine, mut runner, control) = controlled_runner(&dir);
+            control
+                .reserve(&[super::super::control::ParameterAssignment {
+                    parameter: 1,
+                    value: 0.25,
+                }])
+                .unwrap()
+                .publish(43);
+            let seal = control.begin_capture(43).unwrap();
+            for _ in 0..QUANTUM {
+                runner.process_frame(&mut engine).unwrap();
+            }
+            echo_ready(&runner);
+            let mut quiesced = runner.quiesce(seal).map_err(|(_, error)| error).unwrap();
+            if cancel {
+                control.cancel_capture(seal).unwrap();
+            } else {
+                quiesced
+                    .endpoint
+                    .region
+                    .as_ref()
+                    .atomic(super::super::STATUS)
+                    .store(3, Ordering::Release);
+            }
+            assert!(quiesced.poll_drain(4).is_err());
+            assert!(!quiesced.is_drained());
+            assert!(control.snapshot().applied.is_none());
+            assert!(quiesced.finish().is_err());
+            assert!(control.snapshot().closed);
+        }
+    }
+    #[test]
+    fn capture_validates_each_output_before_acknowledging_its_command_block() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut engine, mut runner, control) = controlled_runner(&dir);
+        control
+            .reserve(&[super::super::control::ParameterAssignment {
+                parameter: 0,
+                value: 0.5,
+            }])
+            .unwrap()
+            .publish(43);
+        let seal = control.begin_capture(43).unwrap();
+        for _ in 0..QUANTUM {
+            runner.process_frame(&mut engine).unwrap();
+        }
+        echo_ready(&runner);
+        // A published child's nonzero per-block error must fail full validation.
+        runner
+            .endpoint
+            .region
+            .as_ref()
+            .atomic(super::super::HEADER + 4)
+            .store(1, Ordering::Release);
+        let mut quiesced = runner.quiesce(seal).map_err(|(_, error)| error).unwrap();
+        assert!(quiesced.poll_drain(1).is_err());
+        assert_eq!(quiesced.endpoint.received_blocks(), 0);
+        let snapshot = control.snapshot();
+        assert!(snapshot.applied.is_none());
+        assert_eq!(snapshot.outstanding_commands, 1);
+        assert_eq!(snapshot.failure, Some(ControlFault::Execution));
+        assert!(quiesced.finish().is_err());
     }
 }

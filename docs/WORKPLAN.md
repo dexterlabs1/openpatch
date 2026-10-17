@@ -181,6 +181,16 @@ save barrier, seamless graph/Scope rebuilding and active controls, then qualify
 the real Mac device. Internal startup requests 48 kHz/fixed 128; no public
 activation, device claim, packaging or installation follows this checkpoint.
 
+The internal coherent-save barrier now finishes real partial quanta and accepted
+commands, returns the whole frozen native graph, retains the reader through exact
+child drain and validates a stale-safe Session receipt. Actual-plugin checks cover
+130 queued commands from a 37-frame tail, full-return-queue freezing, native knob
+and HOLD persistence, save/reopen/resume, late timeout, newer edits and child death.
+Native DSP survives cancellation/restart, and failed captures never acknowledge a
+saved baseline. Next connect the asynchronous begin/poll workflow to native/MCP
+save entry points, then active panels and the actual Mac device gate. Ordinary
+synchronous hosted save remains explicitly refused; installed 0.2.7 is unchanged.
+
 ## Delivered: Core text and host boundary
 
 Exact Core Notes 2.6.6 now converts into editable native Notes, including legacy

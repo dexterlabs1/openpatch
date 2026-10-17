@@ -25,6 +25,8 @@ fn audio_callback(patch: &Patch, enabled: bool) -> (Audio, Callback) {
         .plan(patch, &callback.graphs.active.engine, 0)
         .unwrap();
     let audio = Audio {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        capture: callback.capture.take_control(),
         _stream: None,
         prepared_wave_banks: patch
             .prepare_wave_banks(&openpatch_core::WavePreparationCache::default())

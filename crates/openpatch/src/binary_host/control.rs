@@ -80,6 +80,37 @@ pub struct AppliedParameters {
     pub received_blocks: u64,
 }
 
+/// A control-issued admission cut. Only the issuing live control can validate it.
+/// Serialization is diagnostic; captures cannot be reconstructed by deserialization.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct HostedCaptureSeal {
+    incarnation: u64,
+    generation: u64,
+    plan_epoch: u64,
+    request_id: u64,
+    authored_revision: u64,
+    accepted_sequence: u64,
+}
+
+impl HostedCaptureSeal {
+    pub fn fence(&self) -> Fence {
+        Fence {
+            incarnation: self.incarnation,
+            generation: self.generation,
+            revision: self.plan_epoch,
+        }
+    }
+    pub fn request_id(&self) -> u64 {
+        self.request_id
+    }
+    pub fn authored_revision(&self) -> u64 {
+        self.authored_revision
+    }
+    pub fn accepted_sequence(&self) -> u64 {
+        self.accepted_sequence
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct HostedControlSnapshot {
     pub module_id: String,
@@ -91,6 +122,7 @@ pub struct HostedControlSnapshot {
     pub latest_accepted_sequence: u64,
     pub outstanding_commands: usize,
     pub reservation_outstanding: bool,
+    pub capture: Option<HostedCaptureSeal>,
     pub applied: Option<AppliedParameters>,
     pub available: bool,
     pub failure: Option<ControlFault>,
@@ -120,6 +152,9 @@ struct ControlState {
     requested: ParameterValues,
     queued: Option<QueuedReceipt>,
     last_sequence: u64,
+    last_authored_revision: u64,
+    last_capture_id: u64,
+    capture: Option<HostedCaptureSeal>,
 }
 
 /// Single callback writer, control-thread readers. All payload members are
@@ -199,6 +234,9 @@ pub struct HostedControl {
     state: Mutex<ControlState>,
     outstanding: AtomicUsize,
     latest_accepted: AtomicU64,
+    capture_id: AtomicU64,
+    capture_revision: AtomicU64,
+    capture_accepted: AtomicU64,
     effective: EffectiveState,
     failure: AtomicU32,
     closed: AtomicBool,
@@ -230,9 +268,15 @@ impl HostedControl {
                 requested: values,
                 queued: None,
                 last_sequence: 0,
+                last_authored_revision: initial_authored_revision,
+                last_capture_id: 0,
+                capture: None,
             }),
             outstanding: AtomicUsize::new(0),
             latest_accepted: AtomicU64::new(0),
+            capture_id: AtomicU64::new(0),
+            capture_revision: AtomicU64::new(0),
+            capture_accepted: AtomicU64::new(0),
             effective: EffectiveState::new(values, initial_authored_revision),
             failure: AtomicU32::new(0),
             closed: AtomicBool::new(false),
@@ -302,6 +346,66 @@ impl HostedControl {
         })
     }
 
+    /// Seal admission without revoking the audio execution lease. A reservation
+    /// must either publish or be dropped before this cut can be established.
+    pub fn begin_capture(&self, authored_revision: u64) -> Result<HostedCaptureSeal, String> {
+        let mut state = self.state();
+        if self.unavailable().is_some() {
+            return Err("hosted control is unavailable".into());
+        }
+        if state.reserved {
+            return Err("a hosted control reservation is outstanding".into());
+        }
+        if state.capture.is_some() {
+            return Err("a hosted capture is already active".into());
+        }
+        if authored_revision < state.last_authored_revision {
+            return Err("hosted capture authored revision precedes accepted state".into());
+        }
+        let request_id = state
+            .last_capture_id
+            .checked_add(1)
+            .ok_or("hosted capture request sequence exhausted")?;
+        let seal = HostedCaptureSeal {
+            incarnation: self.fence.incarnation,
+            generation: self.fence.generation,
+            plan_epoch: self.fence.revision,
+            request_id,
+            authored_revision,
+            accepted_sequence: state.last_sequence,
+        };
+        state.last_capture_id = request_id;
+        state.capture = Some(seal);
+        self.capture_revision
+            .store(authored_revision, Ordering::Release);
+        self.capture_accepted
+            .store(seal.accepted_sequence, Ordering::Release);
+        self.capture_id.store(request_id, Ordering::Release);
+        Ok(seal)
+    }
+
+    pub fn cancel_capture(&self, seal: HostedCaptureSeal) -> Result<(), String> {
+        let mut state = self.state();
+        self.validate_capture_state(&state, &seal)?;
+        self.capture_id.store(0, Ordering::Release);
+        state.capture = None;
+        Ok(())
+    }
+
+    fn validate_capture_state(
+        &self,
+        state: &ControlState,
+        seal: &HostedCaptureSeal,
+    ) -> Result<(), String> {
+        if self.unavailable().is_some()
+            || state.capture != Some(*seal)
+            || seal.fence() != self.fence
+        {
+            return Err("hosted capture seal is stale or control is unavailable".into());
+        }
+        Ok(())
+    }
+
     pub fn reserve(
         self: &Arc<Self>,
         assignments: &[ParameterAssignment],
@@ -318,6 +422,9 @@ impl HostedControl {
         let mut state = self.state();
         if self.unavailable().is_some() {
             return Err("hosted control is unavailable".into());
+        }
+        if state.capture.is_some() {
+            return Err("hosted control admission is sealed for capture".into());
         }
         if state.reserved {
             return Err("a hosted control reservation is already outstanding".into());
@@ -360,6 +467,7 @@ impl HostedControl {
             latest_accepted_sequence: state.last_sequence,
             outstanding_commands: self.outstanding.load(Ordering::Acquire),
             reservation_outstanding: state.reserved,
+            capture: state.capture,
             applied,
             available: applied.is_some() && failure.is_none() && !closed,
             failure,
@@ -412,6 +520,7 @@ impl HostedReservation {
             );
         }
         state.last_sequence = receipt.last_sequence;
+        state.last_authored_revision = state.last_authored_revision.max(authored_revision);
         state.queued = Some(receipt);
         state.reserved = false;
         self.published = true;
@@ -446,6 +555,49 @@ pub struct HostedControlReader {
 impl HostedControlReader {
     pub fn fence(&self) -> Fence {
         self.shared.fence
+    }
+
+    /// Callback-side seal check. Every payload field is atomic and a second ID
+    /// read rejects cancellation/resealing while checking the cut.
+    pub fn capture_matches(&self, seal: &HostedCaptureSeal) -> bool {
+        self.shared.unavailable().is_none()
+            && seal.fence() == self.shared.fence
+            && self.shared.capture_id.load(Ordering::Acquire) == seal.request_id
+            && self.shared.capture_revision.load(Ordering::Acquire) == seal.authored_revision
+            && self.shared.capture_accepted.load(Ordering::Acquire) == seal.accepted_sequence
+            && self.shared.capture_id.load(Ordering::Acquire) == seal.request_id
+    }
+
+    pub fn scheduled_sequence(&self) -> u64 {
+        self.last_sequence
+    }
+
+    pub(crate) fn validate_capture(&self, seal: &HostedCaptureSeal) -> Result<(), String> {
+        let state = self.shared.state();
+        self.shared.validate_capture_state(&state, seal)
+    }
+
+    /// Only the retained reader may certify its complete, validated ack history.
+    /// Closing under the admission mutex makes completion atomic against cancel.
+    pub(crate) fn finish_capture(
+        &self,
+        seal: &HostedCaptureSeal,
+        received_blocks: u64,
+    ) -> Result<u64, String> {
+        let state = self.shared.state();
+        self.shared.validate_capture_state(&state, seal)?;
+        if state.reserved
+            || state.last_sequence != seal.accepted_sequence
+            || self.last_sequence != seal.accepted_sequence
+            || self.applied.sequence != seal.accepted_sequence
+            || self.applied.received_blocks != received_blocks
+            || self.pending_len != 0
+            || self.shared.outstanding.load(Ordering::Acquire) != 0
+        {
+            return Err("hosted capture commands are not fully acknowledged".into());
+        }
+        self.shared.close();
+        Ok(self.applied.sequence)
     }
 
     pub fn next_for_sample(
@@ -872,5 +1024,75 @@ mod tests {
             Err(ControlFault::FrameRegression)
         );
         assert_eq!(control.snapshot().applied.unwrap().sequence, 0);
+    }
+    #[test]
+    fn capture_seals_admission_without_revoking_execution_and_exact_cancel_reopens_it() {
+        let (control, reader) = pair();
+        assert!(control.begin_capture(41).is_err());
+        let reservation = control.reserve(&[assignment(0, 0.25)]).unwrap();
+        assert!(control.begin_capture(42).is_err());
+        assert!(control.snapshot().capture.is_none());
+        reservation.publish(43);
+        assert!(control.begin_capture(42).is_err());
+        let seal = control.begin_capture(43).unwrap();
+        assert_eq!(seal.accepted_sequence(), 1);
+        assert!(control.is_open());
+        assert!(control.reserve(&[assignment(1, 0.5)]).is_err());
+        assert_eq!(control.snapshot().capture, Some(seal));
+        // A callback's two queries must also work while the control mutex is held.
+        {
+            let _held = control.state();
+            assert!(reader.capture_matches(&seal));
+            assert_eq!(reader.scheduled_sequence(), 0);
+        }
+        let mut wrong = seal;
+        wrong.plan_epoch += 1;
+        assert!(control.cancel_capture(wrong).is_err());
+        assert!(reader.capture_matches(&seal));
+        control.cancel_capture(seal).unwrap();
+        assert!(!reader.capture_matches(&seal));
+        let newer = control.begin_capture(44).unwrap();
+        assert!(newer.request_id() > seal.request_id());
+        assert!(control.cancel_capture(seal).is_err());
+        assert!(reader.capture_matches(&newer));
+        control.cancel_capture(newer).unwrap();
+        assert!(control.reserve(&[assignment(0, 0.5)]).is_ok());
+    }
+
+    #[test]
+    fn capture_and_reservation_race_has_exactly_one_admission_winner() {
+        use std::sync::Barrier;
+        for _ in 0..16 {
+            let (control, _reader) = pair();
+            let barrier = Arc::new(Barrier::new(2));
+            let producer = Arc::clone(&control);
+            let start = Arc::clone(&barrier);
+            let worker = std::thread::spawn(move || {
+                start.wait();
+                producer.reserve(&[assignment(0, 0.25)])
+            });
+            barrier.wait();
+            let capture = control.begin_capture(42);
+            let reservation = worker.join().unwrap();
+            assert_ne!(capture.is_ok(), reservation.is_ok());
+            if let Ok(reservation) = reservation {
+                reservation.publish(43);
+                assert_eq!(control.begin_capture(43).unwrap().accepted_sequence(), 1);
+            } else {
+                assert_eq!(capture.unwrap().accepted_sequence(), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn capture_request_exhaustion_and_closed_control_never_issue_a_seal() {
+        let (control, _reader) = pair();
+        control.state().last_capture_id = u64::MAX;
+        assert!(control.begin_capture(42).is_err());
+        assert!(control.snapshot().capture.is_none());
+        assert!(control.is_open());
+        let (control, replacement) = pair();
+        drop(replacement);
+        assert!(control.begin_capture(42).is_err());
     }
 }

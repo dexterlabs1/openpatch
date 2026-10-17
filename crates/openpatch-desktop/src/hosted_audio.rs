@@ -132,6 +132,49 @@ pub(super) struct HostedAudioController {
 }
 
 impl HostedAudioController {
+    pub(super) fn abort_capture(&mut self, fence: Fence) {
+        if let Some(index) = self.owners.iter().position(|owner| owner.fence() == fence) {
+            let owner = self.owners.swap_remove(index);
+            owner.control.close();
+            drop(owner);
+        }
+    }
+
+    pub(super) fn finish_capture(
+        &mut self,
+        capture: openpatch::binary_host::runner::QuiescedHostedRunner,
+    ) -> Result<
+        (
+            openpatch::binary_host::runner::HostedCaptureAcknowledgment,
+            Value,
+        ),
+        String,
+    > {
+        let fence = capture.seal().fence();
+        let index = self
+            .owners
+            .iter()
+            .position(|owner| owner.fence() == fence)
+            .ok_or("capture endpoint has no matching process owner")?;
+        let mut owner = self.owners.swap_remove(index);
+        if let Some(error) = owner
+            .observe_health()
+            .or_else(|| owner.health_error.clone())
+        {
+            drop(capture);
+            drop(owner);
+            return Err(error);
+        }
+        let (endpoint, acknowledgment) = capture.finish()?;
+        let captured = owner
+            .process
+            .finish(endpoint)
+            .map_err(|error| error.to_string())?;
+        if captured.fence != fence {
+            return Err("stopped child capture has a different execution fence".into());
+        }
+        Ok((acknowledgment, captured.state))
+    }
     pub(super) fn set_config(&mut self, config: HostedAudioConfig) {
         self.config = Some(config);
     }
