@@ -205,26 +205,7 @@ fn paint_atlas_voice_face(painter: &egui::Painter, rect: Rect, node: &Node, zoom
                     .x
                     .clamp(rect.left() + 7.5 * zoom, rect.right() - 7.5 * zoom);
             }
-            painter.circle_filled(
-                center + vec2(0.6, 1.0) * zoom,
-                11.0 * draw.unit(),
-                Color32::from_black_alpha(100),
-            );
-            painter.circle_filled(center, 10.0 * draw.unit(), Color32::from_rgb(22, 30, 24));
-            painter.circle_stroke(
-                center,
-                8.2 * draw.unit(),
-                Stroke::new(draw.unit(), Color32::from_rgb(133, 144, 127)),
-            );
-            for direction in [vec2(1.0, 0.0), vec2(0.0, 1.0)] {
-                painter.line_segment(
-                    [
-                        center - direction * 4.5 * draw.unit(),
-                        center + direction * 4.5 * draw.unit(),
-                    ],
-                    Stroke::new(2.4 * draw.unit(), Color32::from_rgb(5, 12, 8)),
-                );
-            }
+            crate::panel_skin::mounting_screw(painter, center, zoom);
         }
     }
     if node.kind == "blank" && draw.layout.width < 120.0 {

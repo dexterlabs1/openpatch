@@ -49,6 +49,16 @@ Emilie Gillet from Plaits, under the MIT license. Source revision and full notic
 are in Plaits-algorithms.txt in this directory.
 
 
+TIDAL FUNCTIONS adapts the Tides 2018 generator, clock extractor and tables
+by Emilie Gillet under the MIT license. Exact revisions, adaptation scope and
+full notice are in Tides-algorithms.txt in this directory.
+
+
+FRAME SCENE adapts the Frames integer keyframer and resources by Emilie Gillet
+under the MIT license. Revisions, native transfer scope and full notice are in
+Frames-algorithms.txt in this directory.
+
+
 Wavetable serialization, hashing and FFT dependencies
 =====================================================
 
@@ -946,3 +956,7 @@ have been licensed under extremely permissive terms.
 ------------------------------------------------------------------------------
 
 Copyright notices are retained in src/* files where relevant.
+
+Segment Garden adapts the MIT-licensed Stages standard segment generator and
+resources with stmlib/Tides dependencies. See Stages-algorithms.txt for full
+notices and the separately declared native bridge/voltage scope.

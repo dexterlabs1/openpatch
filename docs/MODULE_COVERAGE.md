@@ -1,5 +1,30 @@
 # Rust module coverage
 
+Segment Garden is the 89th development catalog kind: six STANDARD3 Stages-derived
+kernels with physical-gate grouping, loops, quantized/unquantized sequencing, source
+slave contours and separate activity outputs. It retains a fixed source clock with
+explicit native edge/voltage policies. Focused qualification is separate from full
+firmware/analog/VCV compatibility and installation. [Contract](SEGMENT_GARDEN.md).
+
+
+Development addition (not installed): [Frame Scene](FRAME_SCENE.md) is the 88th
+catalog kind and second of the twenty new creative instruments. It combines
+sanitizer-audited source-integer keyframing with an explicitly ideal native
+VCA transfer, physical jack normaling and 64 persistent stable-ID scenes.
+Shared UI/MCP/history/presets/reopen and callback no-heap checks have focused
+Mac coverage. This is not complete Frames hardware/firmware or VCV compatibility.
+
+
+Development addition (not installed): [Tidal Functions](TIDAL_FUNCTIONS.md) is the
+87th catalog kind and the first of the twenty new creative instruments. Its
+Tides 2018 generator/extractor is a pinned MIT Rust source adaptation, with
+explicit native timing/CV/startup policies, four related mono outputs, shared
+Signal Atlas controls and MCP/history/presets. The raw kernel comparison covers
+129,840 frames across 34 source cases; native lifecycle, callback no-heap,
+non-silent Engine samples and UI/MCP workflows have focused Mac checks. This
+adds no verified VCV import mapping, binary compatibility or hardware claim.
+
+
 Inventory verified **2026-10-12** against the official [VCV Core manual](https://vcvrack.com/manual/Core), [Core library listing](https://library.vcvrack.com/Core), and [VCV Free module manuals](https://vcvrack.com/Free).
 
 The first bounded compatibility target is the **12 Core modules plus 37 VCV Free modules** listed below. Core is built into Rack; Free is its included synthesis collection. This is an inventory and implementation plan, not a claim that OpenPatch implements 49 equivalents. The wider third-party plugin ecosystem is open-ended and is not covered by this inventory. Additional plugins need individually specified behavior, implementation scope, and validation.

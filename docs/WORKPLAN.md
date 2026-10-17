@@ -17,6 +17,40 @@ Rust tests and 123 Python/MCP tests, plus four bundled-release CLI smoke tests.
 native-window/audio-device qualification. Keep the installed app stable; macOS
 ARM remains first, Windows/Linux and MIDI/live performance remain deferred.
 
+## User-requested rack workflow and creative expansion (2026-10-17)
+
+This focused family branch adds the three source-derived instruments below and
+their shared seated-black-screw rendering. Other rack/toolbar work and experimental
+binary hosting remain preserved on `work/rack-binary-feasibility` at `71c0cba`;
+[recorded rack tools](https://github.com/dexterlabs1/openpatch/tree/71c0cba/design/reviews/rack-tools-v1)
+and [host tools](https://github.com/dexterlabs1/openpatch/tree/71c0cba/design/reviews/host-tools-v1)
+are separate pending integration work. No source change is installed; keep
+0.2.7 build 9 stable. Claude's Wordpatch work is independent.
+
+The user's next creative-library milestone is [twenty genuinely new instruments](CREATIVE_MODULES_20.md),
+with independent contracts rather than renamed existing kinds. **Tidal Functions,
+Frame Scene and Segment Garden are implemented development candidates; seventeen remain.** Tidal
+Functions’ native Rust generator/extractor matches 129,840 frames in 34 pinned C++ reference cases
+bit for bit, including nonzero amplitude scans, while preserving the original
+frame-zero clock failure as a negative and explicitly adapting native startup.
+Shared Signal Atlas controls, actual output lamps, matching browser thumbnails,
+MCP/history/presets/reopen and callback no-heap checks have focused Mac evidence.
+[Contract and bounds](TIDAL_FUNCTIONS.md), [actual panel capture](../design/reviews/tidal-functions-v1/README.md).
+Frame Scene adds 64 persistent stable-ID scenes, source-integer keyframing,
+explicit ideal VCA normaling, real UI telemetry and shared revision/history/MCP
+editing. Its 25 source cases match 163,013 integer records and pass an independent
+UBSan/bounds audit; source-undefined endpoints have explicit native extensions.
+[Contract and example](FRAME_SCENE.md), [actual shared panel review](../design/reviews/frame-scene-v1/README.md).
+Segment Garden adds six persistent source kernels, physical-gate grouping, all standard
+segment modes, source-clock buffering and ordered edge capture. Its shared panel, real
+telemetry, seeded controls, MCP/presets/reopen and callback no-heap paths have focused Mac
+evidence; raw source qualification covers 952,896 records across 69 cases, with guarded
+endpoints and the internal zero-division boundary kept separate.
+[Contract and source bounds](SEGMENT_GARDEN.md), [shared panel review](../design/reviews/segment-garden-v1/README.md).
+The focused family cut passes local Mac validation: **2,693 Rust tests and 127 Python/MCP tests**, strict workspace Clippy, formatting and doc tests. The three normal-room panel/thumbnail captures are byte-identical to their reviewed checkpoints; all 55 module/reference files match the qualified source. Three regression issues were corrected: content schema tests now select by type, the spacer geometry test recognizes seated screws, and two example guides fit their panels without changing graph or parameter data. The family PR/macOS CI gate is next. Source fidelity, shared UI/MCP/history, Custom plus functional tags for original instruments and Mac validation remain done requirements. Binary-host
+MCP save integration, active panels and actual device qualification remain open
+parallel goal requirements; no hosting-completion or new installation is claimed.
+
 ## Execution changes
 
 The recent process duplicated feature-push/PR CI, required two full capture reviews, ran benchmarks across every platform for routine UI edits, copied large manifests into chat and fragmented related work across small releases. These consume time without a matching product benefit.

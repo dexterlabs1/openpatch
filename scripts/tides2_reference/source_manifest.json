@@ -1,0 +1,111 @@
+{
+  "compile_sources": [
+    "tides2/poly_slope_generator.cc",
+    "tides2/resources.cc",
+    "tides2/ramp/ramp_extractor.cc",
+    "stmlib/dsp/units.cc"
+  ],
+  "files": {
+    "stmlib/dsp/dsp.h": {
+      "path": "dsp/dsp.h",
+      "repository": "stmlib",
+      "sha256": "98b42900c4accbe9fbb2cfe2ec6fada024b57ec9a1becff008b0f35bd4fd8ddb"
+    },
+    "stmlib/dsp/hysteresis_quantizer.h": {
+      "path": "dsp/hysteresis_quantizer.h",
+      "repository": "stmlib",
+      "sha256": "06032c1ec2e21cb7e904544f839a2a59b4c4a9f3f391918e6adfac7f68ecc243"
+    },
+    "stmlib/dsp/parameter_interpolator.h": {
+      "path": "dsp/parameter_interpolator.h",
+      "repository": "stmlib",
+      "sha256": "4b05028c320e6946418a36e9662a4e5a142e5bfab0423835a77d074d9c7fc217"
+    },
+    "stmlib/dsp/polyblep.h": {
+      "path": "dsp/polyblep.h",
+      "repository": "stmlib",
+      "sha256": "b36025a8a9b2e9a37156e45cfdee937451f788529089b51b9f490da1a5b0063b"
+    },
+    "stmlib/dsp/units.cc": {
+      "path": "dsp/units.cc",
+      "repository": "stmlib",
+      "sha256": "0acbe230ffaa2d181ba285fce54f2fd0b2339b3ec163a1dd00c946e6bf82ea4a"
+    },
+    "stmlib/dsp/units.h": {
+      "path": "dsp/units.h",
+      "repository": "stmlib",
+      "sha256": "70cf104c06f0e34ada90416f121417a13d17b6736116f0fc07063c1cd2084877"
+    },
+    "stmlib/stmlib.h": {
+      "path": "stmlib.h",
+      "repository": "stmlib",
+      "sha256": "3afc8589a951e882d9eea16b3eda8623dd6fb0079dd11dfbce817e65be6cfba9"
+    },
+    "stmlib/utils/gate_flags.h": {
+      "path": "utils/gate_flags.h",
+      "repository": "stmlib",
+      "sha256": "548608ba37ee125903db4ba36507a678d1cdcdecddad30b11998b19d6ad00ca3"
+    },
+    "tides2/poly_slope_generator.cc": {
+      "path": "tides2/poly_slope_generator.cc",
+      "repository": "eurorack",
+      "sha256": "3765745bd26b80469cd9ee7fca93c1a339b8e719ec626a9f005a439d1d07610a"
+    },
+    "tides2/poly_slope_generator.h": {
+      "path": "tides2/poly_slope_generator.h",
+      "repository": "eurorack",
+      "sha256": "d871990e563b700a76ea5ff24516864fe21f3886331fec7538595af5d06b39f9"
+    },
+    "tides2/ramp/ramp_extractor.cc": {
+      "path": "tides2/ramp/ramp_extractor.cc",
+      "repository": "eurorack",
+      "sha256": "6c4ea0aa136f073ef18428cb76e4f9c67b414a5b3845e85ffca48e29f728929b"
+    },
+    "tides2/ramp/ramp_extractor.h": {
+      "path": "tides2/ramp/ramp_extractor.h",
+      "repository": "eurorack",
+      "sha256": "b38a438bd37749a000e9e391bf758a20694a3bb7e7768120dddcb950f9ff412c"
+    },
+    "tides2/ramp/ratio.h": {
+      "path": "tides2/ramp/ratio.h",
+      "repository": "eurorack",
+      "sha256": "c0432a65de17f2ae5ec65e3ffa0bff3110f4d2d5a4e4c58dc65f2692c2325f93"
+    },
+    "tides2/ramp_generator.h": {
+      "path": "tides2/ramp_generator.h",
+      "repository": "eurorack",
+      "sha256": "ef737e9bf5041e2c49c1b0731088f7fdcc2c4d59a498035b4bf847b552940fe7"
+    },
+    "tides2/ramp_shaper.h": {
+      "path": "tides2/ramp_shaper.h",
+      "repository": "eurorack",
+      "sha256": "da7c348b7f7bc46c1892854d27d82f750c37aa85edebe6f02792811ef60a0e46"
+    },
+    "tides2/resources.cc": {
+      "path": "tides2/resources.cc",
+      "repository": "eurorack",
+      "sha256": "18ef4483a12b28072700862aa5bece0496573987dc2f21cf69c5f46ecf0a494e"
+    },
+    "tides2/resources.h": {
+      "path": "tides2/resources.h",
+      "repository": "eurorack",
+      "sha256": "c3c8bf8774851999906783e46b1de23c140d7b82fdd10b5aec7df45beb157b60"
+    }
+  },
+  "repositories": {
+    "eurorack": {
+      "commit": "f4cfa7697095a28d292bff758beb51deb49b5a86",
+      "url": "https://github.com/pichenettes/eurorack"
+    },
+    "stmlib": {
+      "commit": "e3bd7c9cc00e4364166f9905c0509b6ffd0535ec",
+      "parent_gitlink": {
+        "commit": "f4cfa7697095a28d292bff758beb51deb49b5a86",
+        "path": "stmlib",
+        "repository": "eurorack"
+      },
+      "url": "https://github.com/pichenettes/stmlib"
+    }
+  },
+  "schema": 1
+}

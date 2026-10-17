@@ -13,6 +13,8 @@ pub use project_saved::{
 #[cfg(test)]
 mod document_tests;
 #[cfg(test)]
+mod frame_scene_tests;
+#[cfg(test)]
 mod rack264_import_tests;
 mod rack_import;
 use crate::project_document::{
@@ -496,6 +498,7 @@ const EDIT_TOOLS: &[&str] = &[
     "set_score",
     "set_rackmcp_sequence",
     "set_module_content",
+    "edit_frame_scene",
     "set_bypass",
     "rotate_sequence",
     "rotate_scale",
@@ -1835,6 +1838,7 @@ impl Session {
                 | "move_cables"
                 | "promote_cables"
                 | "set_module_content"
+                | "edit_frame_scene"
                 | "set_wavetable"
         ) && candidate.reference_view() == self.patch.reference_view()
             && candidate.assets == self.patch.assets
@@ -1848,6 +1852,16 @@ impl Session {
                 history_group_key(&args)?.into(),
                 string(&args, "id")?.into(),
                 string(&args, "parameter")?.into(),
+            ));
+        }
+        if name == "edit_frame_scene" && args.get("history_group").is_some() {
+            if args["edit"]["operation"] != "update" {
+                return Err("Frame Scene history grouping is only valid for an update".into());
+            }
+            group = Some((
+                history_group_key(&args)?.into(),
+                string(&args, "id")?.into(),
+                format!("frame_scene:{}", args["edit"]["keyframe_id"]),
             ));
         }
         self.commit(candidate, expected_revision, group, &effects)?;
@@ -2244,6 +2258,27 @@ fn apply_edit(
                 .ok_or("module not found")?;
             node.content = Some(content);
             openpatch_core::validate_content(node)?;
+        }
+        "edit_frame_scene" => {
+            let id = string(args, "id")?;
+            let edit: openpatch_core::FrameSceneEdit =
+                serde_json::from_value(args.get("edit").cloned().ok_or("edit is required")?)
+                    .map_err(|error| error.to_string())?;
+            let node = candidate
+                .nodes
+                .iter_mut()
+                .find(|node| node.id == id)
+                .ok_or("module not found")?;
+            if node.kind != "frame_scene" {
+                return Err("edit_frame_scene requires a Frame Scene module".into());
+            }
+            if node.content.is_none() {
+                node.content = Some(openpatch_core::ModuleContent::FrameScene(Default::default()));
+            }
+            let Some(openpatch_core::ModuleContent::FrameScene(data)) = &mut node.content else {
+                return Err("Frame Scene has mismatched content".into());
+            };
+            data.apply(edit)?;
         }
         "set_rackmcp_sequence" => {
             let id = string(args, "id")?;
@@ -2776,7 +2811,8 @@ pub fn tools() -> Value {
         tool("move_cables","Move the input or output endpoint of 1..1024 unique existing cable IDs to a named port of the matching direction. Keeps IDs/colors and saved array positions; collision evaluation follows supplied ID order against unaffected routes and earlier accepted moves. duplicate_mode reject fails on identical routes; discard deletes only conflicting selected members; stack permits identical routes in version 2. Moved ends promote independently of the opposite plug ranks. Optional plug_order is a selected-ID permutation controlling bottom-to-top bundle order independently of collision winners. Unchanged endpoints are retained even in identical stacks; promote true applies order promotion even on same-origin return. A direct all-unchanged request without effective promotion is a validated no-op preserving redo. Destination validation and final graph validation are atomic; version 1 still rejects occupied inputs/cycles. Changed/deleted selected cable delay frames reset; source module and untouched cable state continue.",json!({"cable_ids":cable_ids,"end":{"type":"string","enum":["input","output"]},"node":module_id,"port":s,"duplicate_mode":{"type":"string","enum":["reject","discard","stack"],"default":"reject"},"promote":{"type":"boolean","default":false},"plug_order":cable_ids,"expected_revision":rev}),&["cable_ids","end","node","port"],false),
         tool("promote_cables","Promote 1..1024 unique existing cable plugs at the input or output end, preserving their current relative plug order. Only chosen-end rank metadata changes; IDs, colors, array order, opposite ranks, and DSP state are preserved. Already-top selections are validated no-ops preserving revision/history/redo. Supports preview and batches; exact ranks restore through undo/redo.",json!({"cable_ids":cable_ids,"end":{"type":"string","enum":["input","output"]},"expected_revision":rev}),&["cable_ids","end"],false),
         tool("clear_cables","Remove every cable atomically, preserving modules, parameters, output selection, and live module state. One revision and undo step restores exact cable IDs and order. Supports preview_edits/apply_edits and the full patch cable limit. A direct call on an empty patch validates expected_revision but does not change history or revision; an empty subedit follows normal transaction history semantics.",json!({"expected_revision":rev}),&[],false),
-        tool("set_module_content","Replace typed Notes text or Blank width. Notes permits multiline Unicode bounded to 8192 UTF-8 bytes; Blank width is 3..96 HP. Rejects mismatched kinds and version 1. Revision guarded, undoable, and valid in atomic edits and construction. Width changes preserve the left position; layout collision handling belongs to the host.",json!({"id":s,"content":preset_tools::content_schema(),"expected_revision":rev}),&["id","content"],false),
+        tool("edit_frame_scene","Add, update, remove or clear authored Frame Scene keyframes. Up to 64 sorted timestamps, four 16-bit levels and stable IDs. Update/remove address IDs, never sorted indices or live CV position. Collisions/capacity/stale IDs reject atomically. Revision guarded, undoable, usable in atomic edits/construction; optional history_group merges one update gesture on one keyframe. Does not capture live signal values.",json!({"id":s,"edit":openpatch_core::FrameSceneEdit::schema(),"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","edit"],false),
+        tool("set_module_content","Replace typed Notes, Blank, wavetable or Frame Scene content. Notes permits multiline Unicode bounded to 8192 UTF-8 bytes; Blank width is 3..96 HP. Rejects mismatched kinds and version 1. Revision guarded, undoable, and valid in atomic edits and construction. Width changes preserve the left position; layout collision handling belongs to the host.",json!({"id":s,"content":preset_tools::content_schema(),"expected_revision":rev}),&["id","content"],false),
         tool("set_rackmcp_sequence","Replace RackMCP source patterns and explicit native automation bindings atomically. Preserves transport; each native transaction loads its final sequence state once per module, including equal data. Reloads selection and lane caches. Undoable; valid in apply_edits and preview_edits. Only rackmcp_sequencer accepts this state; consult its catalog schema.",json!({"id":s,"rackmcp_sequence":{"type":"object"},"expected_revision":rev}),&["id","rackmcp_sequence"],false),
         tool("set_score","Replace structured score patterns and automation atomically. Only score_sequencer accepts score data; consult its catalog score_schema. Changed score data resets its transport; unrelated edits preserve playback. Undoable and valid in apply_edits.",json!({"id":s,"score":{"type":"object"},"expected_revision":rev}),&["id","score"],false),
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group (1..128 UTF-8 bytes) merges consecutive changes to the same parameter into one undo step when saved-state coverage and control-release obligations match, including apply_edits with matching history_parameter; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":history_group}),&["id","parameter","value"],false),

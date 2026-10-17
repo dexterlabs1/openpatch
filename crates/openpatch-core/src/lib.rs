@@ -13,8 +13,12 @@ pub const THIRD_PARTY_LICENSES: &str = include_str!("../LICENSE-THIRD-PARTY");
 
 use serde::{Deserialize, Serialize};
 mod cable_order;
+mod frame_scene_data;
 pub use cable_order::{
     assign_new_cable_orders, cable_endpoint_order, promote_cable_endpoints, CableEndpoint,
+};
+pub use frame_scene_data::{
+    FrameSceneData, FrameSceneEdit, FrameSceneKeyframe, MAX_FRAME_SCENE_KEYFRAMES,
 };
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -85,7 +89,10 @@ mod stock_seq3;
 pub use stock_seq3::initial_stock_seq3_state;
 #[doc(hidden)]
 pub use stock_seq3::{StockSeq3Probe, StockSeq3Snapshot};
+mod frame_scene;
+mod segment_garden;
 mod stock_lfo;
+mod tidal_functions;
 #[doc(hidden)]
 pub use stock_lfo::{StockLfoProbe, StockLfoSnapshot};
 mod stock_vca;
@@ -457,6 +464,18 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(stock_lfo::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(tidal_functions::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(frame_scene::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(segment_garden::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()

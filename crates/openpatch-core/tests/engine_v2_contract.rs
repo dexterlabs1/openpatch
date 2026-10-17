@@ -1950,3 +1950,180 @@ fn passive_compiled_registry_reports_stacked_and_legacy_routes_without_consuming
     assert_eq!(registry[2].destination_port, 1);
     assert_eq!(engine.host_module_snapshot(handle).unwrap(), before);
 }
+
+#[test]
+fn tidal_functions_first_blocks_high_clock_initialize_taps_and_adoption_use_no_heap() {
+    let mut p = patch(
+        vec![
+            node(
+                "clock",
+                "poly_constant",
+                &[("channels", 16.0), ("v1", 10.0)],
+            ),
+            node(
+                "tidal",
+                "tidal_functions",
+                &[("range", 1.0), ("ramp_mode", 2.0)],
+            ),
+        ],
+        vec![cable("clock", "out", "tidal", "clock")],
+        "tidal",
+    );
+    p.output_port = "out1".into();
+    let mut old = p.compile().unwrap();
+    let mut replacement = p.compile().unwrap();
+    p.nodes[1].bypassed = true;
+    let mut bypass = p.compile().unwrap();
+    let handle = replacement.resolve_module_lights("tidal").unwrap();
+    let taps = std::array::from_fn::<_, 4, _>(|i| {
+        Some(
+            old.resolve_tap("tidal", ["out1", "out2", "out3", "out4"][i], 0)
+                .unwrap(),
+        )
+    });
+    let mut audio = [[0.0; 2]; 129];
+    let mut tapped = [[openpatch_core::TapSample::default(); 4]; 129];
+    let mut frames = [PortFrame::default(); 129];
+    let mut initialized = false;
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    for length in [0, 1, 3, 6, 7, 64, 128, 129] {
+        old.process_audio_block_with_taps(&mut audio[..length], &taps, &mut tapped[..length]);
+        replacement.adopt_state_from(&old);
+        initialized = replacement.initialize_module_state(handle);
+        replacement.process_poly_block(&mut frames[..length]);
+        bypass.adopt_state_from(&old);
+        bypass.process_poly_block(&mut frames[..length]);
+    }
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(initialized);
+    assert!(frames
+        .iter()
+        .all(|frame| frame.channels == 1 && frame.values[0] == 0.0));
+    assert!(tapped
+        .iter()
+        .flatten()
+        .all(|sample| sample.active && sample.value.is_finite()));
+    let lights = replacement.module_lights(handle).unwrap();
+    assert_eq!(lights.count, 4);
+    assert!(lights
+        .brightness
+        .iter()
+        .flatten()
+        .all(|value| value.is_finite()));
+}
+
+#[test]
+fn frame_scene_first_callbacks_sixty_four_keys_initialize_and_replacement_use_no_heap() {
+    let mut p = patch(
+        vec![
+            node("all", "poly_constant", &[("channels", 16.0), ("v1", 2.0)]),
+            node("scene", "frame_scene", &[]),
+        ],
+        vec![cable("all", "out", "scene", "all")],
+        "scene",
+    );
+    p.output_port = "mix".into();
+    p.nodes[1].content = Some(openpatch_core::ModuleContent::FrameScene(
+        openpatch_core::FrameSceneData {
+            next_id: 64,
+            keyframes: (0..64)
+                .map(|i| openpatch_core::FrameSceneKeyframe {
+                    id: i,
+                    timestamp: i * 1000,
+                    values: [i * 1000; 4],
+                })
+                .collect(),
+        },
+    ));
+    let mut old = p.compile().unwrap();
+    p.nodes[1].params.insert("frame".into(), 0.9);
+    let mut replacement = p.compile().unwrap();
+    let handle = replacement.resolve_module_lights("scene").unwrap();
+    let taps = std::array::from_fn::<_, 6, _>(|i| {
+        Some(
+            old.resolve_tap(
+                "scene",
+                ["out1", "out2", "out3", "out4", "mix", "step"][i],
+                0,
+            )
+            .unwrap(),
+        )
+    });
+    let mut audio = [[0.0; 2]; 129];
+    let mut samples = [[openpatch_core::TapSample::default(); 6]; 129];
+    let mut frames = [PortFrame::default(); 129];
+    let mut initialized = false;
+    MEMORY_OPERATIONS.with(|c| c.set(0));
+    TRACK_MEMORY.with(|c| c.set(true));
+    for count in [0, 1, 3, 64, 129] {
+        old.process_audio_block_with_taps(&mut audio[..count], &taps, &mut samples[..count]);
+        replacement.adopt_state_from(&old);
+        initialized = replacement.initialize_module_state(handle);
+        replacement.process_poly_block(&mut frames[..count]);
+        let _ = replacement.module_lights(handle);
+    }
+    TRACK_MEMORY.with(|c| c.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(initialized);
+    assert!(samples
+        .iter()
+        .flatten()
+        .all(|s| s.active && s.value.is_finite()));
+}
+
+#[test]
+fn segment_garden_clock_bridge_repatch_initialize_and_adopt_use_no_heap() {
+    let mut engines = [8000, 44100, 48000, 96000, 192000].map(|rate| {
+        let mut p = patch(
+            vec![
+                node("clock", "stock_lfo", &[("rate", 7.0), ("pulse_width", 0.1)]),
+                node("cv", "poly_constant", &[("channels", 16.0), ("v1", 0.2)]),
+                node(
+                    "garden",
+                    "segment_garden",
+                    &[
+                        ("type1", 2.0),
+                        ("type2", 1.0),
+                        ("type3", 1.0),
+                        ("loop1", 0.0),
+                    ],
+                ),
+            ],
+            vec![
+                cable("clock", "square", "garden", "gate1"),
+                cable("clock", "square", "garden", "gate4"),
+                cable("cv", "out", "garden", "cv1"),
+            ],
+            "garden",
+        );
+        p.sample_rate = rate;
+        p.output_port = "out1".into();
+        let old = p.compile().unwrap();
+        p.cables[1].input = "gate2".into();
+        p.nodes[2].params.insert("seed".into(), 123.0);
+        let replacement = p.compile().unwrap();
+        let handle = replacement.resolve_module_lights("garden").unwrap();
+        (old, replacement, handle)
+    });
+    let mut frames = [PortFrame::default(); 129];
+    let mut initialized = false;
+    MEMORY_OPERATIONS.with(|c| c.set(0));
+    TRACK_MEMORY.with(|c| c.set(true));
+    for (old, replacement, handle) in &mut engines {
+        for count in [0, 1, 3, 64, 129] {
+            old.process_poly_block(&mut frames[..count]);
+            replacement.adopt_state_from(old);
+            replacement.process_poly_block(&mut frames[..count]);
+            let _ = replacement.module_lights(*handle);
+            initialized |= replacement.initialize_module_state(*handle);
+        }
+    }
+    TRACK_MEMORY.with(|c| c.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(initialized);
+    assert!(frames
+        .iter()
+        .all(|frame| frame.channels == 1 && frame.values[0].is_finite()));
+}

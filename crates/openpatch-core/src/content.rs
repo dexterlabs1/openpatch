@@ -1,4 +1,4 @@
-//! Persisted, control-thread content for modules without a signal path.
+//! Persisted, typed control-thread content for annotations and instruments.
 use crate::Node;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -12,6 +12,7 @@ pub const DEFAULT_BLANK_WIDTH_HP: u16 = 10;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ModuleContent {
+    FrameScene(crate::FrameSceneData),
     Notes {
         text: String,
     },
@@ -55,6 +56,7 @@ impl Node {
 pub fn validate_content(node: &Node) -> Result<(), String> {
     match (&node.content, node.kind.as_str()) {
         (None, _) => Ok(()),
+        (Some(ModuleContent::FrameScene(data)), "frame_scene") => data.validate(),
         (Some(ModuleContent::Notes { text }), "notes") => {
             if text.len() > MAX_NOTES_BYTES {
                 Err(format!(

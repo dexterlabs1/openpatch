@@ -3,6 +3,7 @@
 //! storage are resolved/allocated only during compilation.
 use crate::adsr_eg::{self, AdsrEg};
 use crate::colored_noise::{self, ColoredNoise};
+use crate::frame_scene::{self, FrameScene};
 use crate::gates::{self, Gates};
 use crate::host_ports::{
     self, HostCableSnapshot, HostContext, HostModuleSnapshot, HostPortLifecycle, HostPortSnapshot,
@@ -27,6 +28,7 @@ use crate::random_values::{self, RandomValues};
 use crate::routing::{self, Routing};
 use crate::scope::{self, Scope};
 use crate::score::{self, ScoreSequencer};
+use crate::segment_garden::{self, SegmentGarden};
 use crate::sequence::{self, ModuleAction, ModuleTelemetry, Seq3};
 use crate::shift_register::{self, ShiftRegister};
 use crate::signal::{self, ModuleControlState, ModuleLightState, Signal};
@@ -48,6 +50,7 @@ use crate::stock_vco::{self, StockVco};
 use crate::studio_fx::{self, StudioFx};
 use crate::studio_mixer::{self, StudioMixer};
 use crate::switch::{self, SequentialSwitch};
+use crate::tidal_functions::{self, TidalFunctions};
 use crate::utility_bank::{self, UtilityBank};
 use crate::voice_tools::{self, VoiceTools};
 use crate::wavetable_osc::{self, WavetableOscillator};
@@ -145,6 +148,9 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "rack264_vco"
                 | "stock_noise"
                 | "stock_lfo"
+                | "tidal_functions"
+                | "frame_scene"
+                | "segment_garden"
                 | "random_values"
                 | "random"
                 | "sh_asr"
@@ -212,6 +218,11 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
             .position(|port| *port == name),
         "stock_vco" | "rack264_vco" => stock_vco::INPUTS.iter().position(|port| *port == name),
         "stock_lfo" => stock_lfo::INPUTS.iter().position(|port| *port == name),
+        "frame_scene" => frame_scene::INPUTS.iter().position(|port| *port == name),
+        "segment_garden" => segment_garden::INPUTS.iter().position(|port| *port == name),
+        "tidal_functions" => tidal_functions::INPUTS
+            .iter()
+            .position(|port| *port == name),
         "multi_lfo" => multi_lfo::INPUTS.iter().position(|port| *port == name),
         "multi_vco" => multi_vco::INPUTS.iter().position(|port| *port == name),
         "stock_seq3" => stock_seq3::INPUTS.iter().position(|port| *port == name),
@@ -337,6 +348,16 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
             .position(|port| *port == name)
     } else if matches!(kind, "stock_vco" | "rack264_vco") {
         stock_vco::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "segment_garden" {
+        segment_garden::OUTPUTS
+            .iter()
+            .position(|port| *port == name)
+    } else if kind == "frame_scene" {
+        frame_scene::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "tidal_functions" {
+        tidal_functions::OUTPUTS
+            .iter()
+            .position(|port| *port == name)
     } else if kind == "stock_lfo" {
         stock_lfo::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "multi_lfo" {
@@ -564,6 +585,21 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
+    } else if kind == "segment_garden" {
+        segment_garden::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
+    } else if kind == "frame_scene" {
+        frame_scene::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
+    } else if kind == "tidal_functions" {
+        tidal_functions::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
     } else if kind == "stock_lfo" {
         stock_lfo::OUTPUTS
             .iter()
@@ -784,6 +820,15 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "stock_lfo" {
         stock_lfo::annotate(module);
     }
+    if kind == "tidal_functions" {
+        tidal_functions::annotate(module);
+    }
+    if kind == "frame_scene" {
+        frame_scene::annotate(module);
+    }
+    if kind == "segment_garden" {
+        segment_garden::annotate(module);
+    }
     if kind == "multi_vco" {
         multi_vco::annotate(module);
     }
@@ -895,6 +940,9 @@ enum Model {
     Routing(Routing),
     MultiLfo(Box<MultiLfo>),
     StockLfo(Box<StockLfo>),
+    TidalFunctions(Box<TidalFunctions>),
+    FrameScene(Box<FrameScene>),
+    SegmentGarden(Box<SegmentGarden>),
     StockVco(Box<StockVco>),
     Rack264Vco(Box<Rack264Vco>),
     StockNoise(Box<StockNoise>),
@@ -1061,6 +1109,19 @@ impl Model {
         if node.kind == "rack264_vco" {
             return Ok(Self::Rack264Vco(Box::new(Rack264Vco::build(node, rate)?)));
         }
+        if node.kind == "segment_garden" {
+            return Ok(Self::SegmentGarden(Box::new(SegmentGarden::build(
+                node, rate,
+            )?)));
+        }
+        if node.kind == "frame_scene" {
+            return Ok(Self::FrameScene(Box::new(FrameScene::build(node, rate)?)));
+        }
+        if node.kind == "tidal_functions" {
+            return Ok(Self::TidalFunctions(Box::new(TidalFunctions::build(
+                node, rate,
+            )?)));
+        }
         if node.kind == "stock_lfo" {
             return Ok(Self::StockLfo(Box::new(StockLfo::build(node, rate)?)));
         }
@@ -1170,6 +1231,9 @@ struct PolyNode {
     output_count: usize,
     input_count: u8,
     physical_input_mask: u16,
+    /// Cables only: inspection taps and the selected Engine output cannot
+    /// change jack normaling in native circuit-routing models.
+    physical_output_mask: u32,
     bypassed: bool,
     bypass_inputs: [Option<usize>; host_ports::OUTPUT_PORTS],
     connected_mask: u32,
@@ -1996,6 +2060,9 @@ impl PolyEngine {
             Some(Model::Gates(g)) => Some(g.lights()),
             Some(Model::Mixing(m)) => m.lights(),
             Some(Model::StockLfo(s)) => Some(s.lights()),
+            Some(Model::TidalFunctions(s)) => Some(s.lights()),
+            Some(Model::FrameScene(s)) => Some(s.lights()),
+            Some(Model::SegmentGarden(s)) => Some(s.lights()),
             Some(Model::StockVco(s)) => Some(s.lights()),
             Some(Model::Rack264Vco(s)) => Some(s.lights()),
             Some(Model::StockQuantizer(q)) => Some(q.lights()),
@@ -2490,6 +2557,9 @@ impl PolyEngine {
             Model::ColoredNoise(s) => s.reset_state(),
             Model::MultiLfo(lfo) => lfo.initialize_state(),
             Model::StockLfo(lfo) => lfo.initialize_state(),
+            Model::TidalFunctions(tidal) => tidal.initialize_state(),
+            Model::FrameScene(scene) => scene.initialize_state(),
+            Model::SegmentGarden(garden) => garden.initialize_state(),
             Model::StockVco(vco) => vco.initialize_state(),
             Model::Rack264Vco(vco) => vco.initialize_state(),
             Model::StockNoise(noise) => noise.initialize_state(),
@@ -2659,6 +2729,7 @@ impl PolyEngine {
                         .map_or(0, |ports| ports.len() as u8)
                 },
                 physical_input_mask: 0,
+                physical_output_mask: 0,
                 bypassed: node.bypassed,
                 bypass_inputs: [None; host_ports::OUTPUT_PORTS],
                 connected_mask: 0,
@@ -2701,6 +2772,9 @@ impl PolyEngine {
                     "midi_cv" => MIDI_OUTPUTS.len(),
                     "multi_lfo" => multi_lfo::OUTPUTS.len(),
                     "stock_lfo" => stock_lfo::OUTPUTS.len(),
+                    "tidal_functions" => tidal_functions::OUTPUTS.len(),
+                    "frame_scene" => frame_scene::OUTPUTS.len(),
+                    "segment_garden" => segment_garden::OUTPUTS.len(),
                     "stock_vco" => stock_vco::OUTPUTS.len(),
                     "rack264_vco" => rack264_vco::OUTPUTS.len(),
                     "stock_noise" => stock_noise::OUTPUTS.len(),
@@ -2879,6 +2953,7 @@ impl PolyEngine {
         for edge in &edges {
             let node = &mut nodes[edge.source_node];
             node.base_connected_mask |= 1 << (edge.source_port - node.output_start);
+            node.physical_output_mask |= 1 << (edge.source_port - node.output_start);
         }
         if let Some(output) = selected {
             for node in &mut nodes {
@@ -3548,6 +3623,51 @@ impl PolyEngine {
                             [node.output_start..node.output_start + rack264_vco::OUTPUTS.len()],
                     );
                 }
+                Model::SegmentGarden(garden) => {
+                    let mut inputs = [PortFrame::default(); 12];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    garden.process(
+                        &inputs,
+                        node.physical_input_mask,
+                        node.connected_mask as u16,
+                        &mut self.outputs
+                            [node.output_start..node.output_start + segment_garden::OUTPUTS.len()],
+                    );
+                }
+                Model::FrameScene(scene) => {
+                    let mut inputs = [PortFrame::default(); 6];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    scene.process(
+                        &inputs,
+                        node.physical_input_mask,
+                        node.physical_output_mask,
+                        node.connected_mask as u16,
+                        &mut self.outputs
+                            [node.output_start..node.output_start + frame_scene::OUTPUTS.len()],
+                    );
+                }
+                Model::TidalFunctions(tidal) => {
+                    let mut inputs = [PortFrame::default(); 7];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    tidal.process(
+                        &inputs,
+                        node.connected_mask as u16,
+                        &mut self.outputs
+                            [node.output_start..node.output_start + tidal_functions::OUTPUTS.len()],
+                    );
+                }
                 Model::StockLfo(lfo) => {
                     let mut inputs = [PortFrame::default(); 4];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -4120,6 +4240,9 @@ impl PolyEngine {
                 (Model::StockNoise(s), Model::StockNoise(old)) => s.adopt(old),
                 (Model::Stereo(s), Model::Stereo(old)) => s.adopt(old),
                 (Model::StockLfo(s), Model::StockLfo(old)) => s.adopt(old),
+                (Model::TidalFunctions(s), Model::TidalFunctions(old)) => s.adopt(old),
+                (Model::FrameScene(s), Model::FrameScene(old)) => s.adopt(old),
+                (Model::SegmentGarden(s), Model::SegmentGarden(old)) => s.adopt(old),
                 (Model::StockVco(s), Model::StockVco(old)) => s.adopt(old),
                 (Model::Rack264Vco(s), Model::Rack264Vco(old)) => s.adopt(old),
                 (Model::StockQuantizer(q), Model::StockQuantizer(old)) => q.adopt(old),

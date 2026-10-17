@@ -254,7 +254,7 @@ impl Rack {
             for x in [8., 172.] {
                 for y in [8., PANEL_HEIGHT - 8.] {
                     let center = rect.min + vec2(x, y) * z;
-                    painter.circle_filled(center, 3. * z, Color32::from_rgb(104, 106, 92));
+                    crate::panel_skin::mounting_screw(painter, center, z);
                 }
             }
             let response = ui.interact(
