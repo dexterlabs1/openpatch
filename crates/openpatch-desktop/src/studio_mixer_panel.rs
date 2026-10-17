@@ -203,6 +203,43 @@ impl Rack {
                 );
             }
         }
+        // Accepted MCP values are authoritative immediately. The construction
+        // cursor follows this control's actual travel without replaying edits.
+        if paint {
+            if let Some(cue) = self
+                .construction_animation
+                .parameter(&node.id, &node.kind, name)
+            {
+                let old = normalize(cue.old, min, max, name == "frequency");
+                let new = normalize(cue.new, min, max, name == "frequency");
+                let marker = if fader {
+                    crate::construction_motion::Marker::VerticalSlider {
+                        rect: track,
+                        old,
+                        new,
+                    }
+                } else {
+                    crate::construction_motion::Marker::Rotary {
+                        center,
+                        radius: radius * z,
+                        old,
+                        new,
+                    }
+                };
+                self.register_construction_anchor(
+                    ui,
+                    node,
+                    name,
+                    crate::construction_motion::Anchor {
+                        rect: hit,
+                        old_text: parameter_value(name, cue.old, spec),
+                        new_text: parameter_value(name, cue.new, spec),
+                        marker: Some(marker),
+                    },
+                    &[response.id],
+                );
+            }
+        }
         let mut action = None;
         if direct_interactive {
             let input = if fader {
@@ -451,6 +488,23 @@ impl Rack {
                     selected,
                     z,
                 );
+                if let Some(cue) = self
+                    .construction_animation
+                    .parameter(&node.id, &node.kind, &key)
+                {
+                    self.register_construction_anchor(
+                        ui,
+                        node,
+                        &key,
+                        crate::construction_motion::Anchor {
+                            rect: r.rect,
+                            old_text: if cue.old > 0.5 { "ON" } else { "OFF" }.into(),
+                            new_text: if cue.new > 0.5 { "ON" } else { "OFF" }.into(),
+                            marker: None,
+                        },
+                        &[r.id],
+                    );
+                }
                 if direct_interactive && r.clicked() {
                     action = Some(RackAction::Command(
                         "set_parameter",

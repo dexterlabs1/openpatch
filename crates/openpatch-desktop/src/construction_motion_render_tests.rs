@@ -1064,6 +1064,10 @@ fn committed_rotary_edits_have_a_moving_angular_cursor_without_delaying_values()
         ("stock_vco", "frequency", -12.0, 24.0),
         ("stock_lfo", "rate", 0.0, 2.0),
         ("audio_stereo", "gain", 0.25, 1.25),
+        ("studio_mixer", "send_a1", 0.1, 0.8),
+        ("studio_mixer", "send_b8", 0.1, 0.8),
+        ("studio_mixer", "pan8", -0.5, 0.5),
+        ("studio_mixer", "send_a_master", 0.2, 0.8),
         ("scope", "time", 0.01, 1.0),
         ("scope", "x_offset", -2.0, 3.0),
         ("scope", "y_offset", -2.0, 3.0),
@@ -1400,4 +1404,169 @@ fn scope_rotary_cues_yield_to_knob_and_precision_field_presses() {
             }
         }
     }
+}
+
+#[test]
+fn studio_mixer_fader_cues_follow_real_tracks_and_yield_after_pan_zoom() {
+    for name in ["level1", "level8", "master", "return_a", "return_b"] {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let before = patch("studio_mixer", name, 0.2);
+        let after = patch("studio_mixer", name, 0.9);
+        let now = Instant::now();
+        frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+        rack.observe_construction_transition_at(
+            &before,
+            &after,
+            9,
+            10,
+            &snapshot(9, 10, "studio_mixer", name, 0.2, 0.9),
+            MotionMode::Full,
+            now,
+        );
+        let mut positions = Vec::new();
+        for (frame, millis) in [90, 180].into_iter().enumerate() {
+            rack.set_construction_clock_override(Some(now + Duration::from_millis(millis)));
+            let (action, output) = frame_revision_state(
+                &ctx,
+                &mut rack,
+                &after,
+                0.1 + frame as f64 * 0.1,
+                vec![],
+                true,
+                true,
+                10,
+            );
+            assert!(action.is_none());
+            assert_eq!(after.nodes[0].params[name], 0.9);
+            let anchor = &rack.construction_anchors[&("target".into(), name.into())];
+            let Some(Marker::VerticalSlider { rect, .. }) = anchor.marker else {
+                panic!("{name}: visible fader needs its actual track");
+            };
+            let y = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::LineSegment { points, stroke }
+                        if (points[0].x - (rect.left() - 5.0 * rack.zoom)).abs() < 0.001
+                            && (points[1].x - (rect.right() + 5.0 * rack.zoom)).abs() < 0.001
+                            && (stroke.width - 1.3 * rack.zoom).abs() < 0.001
+                            && stroke.color.a() > 0 =>
+                    {
+                        Some(points[0].y)
+                    }
+                    _ => None,
+                })
+                .expect("construction cursor is drawn on the real fader");
+            assert!(y >= rect.top() && y <= rect.bottom());
+            positions.push((rect, y));
+        }
+        assert!(
+            positions[1].1 < positions[0].1,
+            "{name}: rising gain moves upward"
+        );
+        rack.pan += vec2(55.0, 30.0);
+        rack.set_zoom(0.85);
+        frame_revision_state(&ctx, &mut rack, &after, 0.3, vec![], true, true, 10);
+        let anchor = &rack.construction_anchors[&("target".into(), name.into())];
+        let Some(Marker::VerticalSlider { rect, .. }) = anchor.marker else {
+            panic!("pan/zoom retains fader cue")
+        };
+        assert_ne!(positions[0].0, rect);
+        let at = rect.center();
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &after,
+            0.4,
+            vec![egui::Event::PointerMoved(at), button(at, true)],
+            true,
+            true,
+            10,
+        );
+        assert!(
+            rack.construction_animation.parameters.is_empty(),
+            "human fader press takes over: {name}"
+        );
+    }
+}
+
+#[test]
+fn studio_mixer_saved_switch_cues_use_actual_caps_and_hidden_strips_keep_fallbacks() {
+    for name in ["mute1", "solo8"] {
+        let ctx = egui::Context::default();
+        let mut rack = Rack::default();
+        let before = patch("studio_mixer", name, 0.0);
+        let after = patch("studio_mixer", name, 1.0);
+        let now = Instant::now();
+        frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+        rack.observe_construction_transition_at(
+            &before,
+            &after,
+            9,
+            10,
+            &snapshot(9, 10, "studio_mixer", name, 0.0, 1.0),
+            MotionMode::Full,
+            now,
+        );
+        rack.set_construction_clock_override(Some(now + Duration::from_millis(140)));
+        let (action, output) =
+            frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10);
+        assert!(action.is_none());
+        let anchor = &rack.construction_anchors[&("target".into(), name.into())];
+        assert!(anchor.marker.is_none());
+        assert!(text(&output).iter().any(|label| label == "OFF → ON"));
+        let at = anchor.rect.center();
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &after,
+            0.2,
+            vec![egui::Event::PointerMoved(at), button(at, true)],
+            true,
+            true,
+            10,
+        );
+        assert!(rack.construction_animation.parameters.is_empty());
+        let (action, _) = frame_revision_state(
+            &ctx,
+            &mut rack,
+            &after,
+            0.3,
+            vec![button(at, false)],
+            true,
+            true,
+            10,
+        );
+        assert!(
+            matches!(action, Some(RackAction::Command("set_parameter", ref args))
+            if args["parameter"] == name && args["value"] == 0 && args["expected_revision"] == 10)
+        );
+    }
+    // Default eight-strip layout must not invent a visible control for strip 16.
+    let ctx = egui::Context::default();
+    let mut rack = Rack::default();
+    let before = patch("studio_mixer", "send_a16", 0.0);
+    let after = patch("studio_mixer", "send_a16", 1.0);
+    let now = Instant::now();
+    frame_revision_state(&ctx, &mut rack, &before, 0.0, vec![], true, true, 9);
+    rack.observe_construction_transition_at(
+        &before,
+        &after,
+        9,
+        10,
+        &snapshot(9, 10, "studio_mixer", "send_a16", 0.0, 1.0),
+        MotionMode::Full,
+        now,
+    );
+    rack.set_construction_clock_override(Some(now + Duration::from_millis(140)));
+    let (action, output) =
+        frame_revision_state(&ctx, &mut rack, &after, 0.1, vec![], true, true, 10);
+    assert!(action.is_none());
+    assert!(!rack
+        .construction_anchors
+        .contains_key(&("target".into(), "send_a16".into())));
+    assert!(text(&output)
+        .iter()
+        .any(|label| label.starts_with(&format!("{}  ", parameter_label("send_a16")))));
 }
