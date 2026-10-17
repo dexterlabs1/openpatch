@@ -55,6 +55,29 @@ fn run() -> Result<(), String> {
             .map_err(|e| e.to_string())?;
             Ok(())
         }
+        Some("patch-engine") if args.len() >= 4 => {
+            let mut seed = 1u64;
+            let mut mode = "patch";
+            let mut rest = args[4..].iter();
+            while let Some(a) = rest.next() {
+                match a.as_str() {
+                    "--seed" => seed = rest.next().and_then(|s| s.parse().ok()).ok_or("--seed needs a number")?,
+                    "--info" => mode = "info",
+                    "--reveal" => mode = "reveal",
+                    "--showtime" => mode = "showtime",
+                    _ => return Err(format!("unknown option {a}")),
+                }
+            }
+            let r = openpatch::patch_engine::Recipe::new(&args[1], &args[2], &args[3], seed)?;
+            let out = match mode {
+                "info" => r.info(),
+                "reveal" => { let (modules, steps) = r.reveal(); serde_json::json!({"modules": modules, "steps": steps}) }
+                "showtime" => serde_json::json!(r.showtime()),
+                _ => r.patch(),
+            };
+            println!("{out}");
+            Ok(())
+        }
         Some("catalog") if args.len() == 1 => {
             println!(
                 "{}",
@@ -71,7 +94,7 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         None | Some("--help") | Some("help") => {
-            println!("OpenPatch — modular synthesis with native MCP\n\nCommands:\n  mcp --workspace DIRECTORY\n  sessions\n  attach [--session ID | --workspace DIRECTORY]\n  demo OUTPUT.wav\n  render PATCH.json OUTPUT.wav SECONDS [--midi EVENTS.json]\n  visualizer OUTPUT.html\n  catalog\n  --version\n  --third-party-licenses  Print bundled algorithm notices and licenses\n\nMCP uses stdio. Attach connects to an already-open native rack on macOS/Linux; it never opens a window or starts playback. Files are never overwritten. Rendering is offline; audio_stereo exports L/R, other outputs export mono.");
+            println!("OpenPatch — modular synthesis with native MCP\n\nCommands:\n  mcp --workspace DIRECTORY\n  sessions\n  attach [--session ID | --workspace DIRECTORY]\n  demo OUTPUT.wav\n  render PATCH.json OUTPUT.wav SECONDS [--midi EVENTS.json]\n  visualizer OUTPUT.html\n  catalog\n  patch-engine GENRE MOOD TEXTURE [--seed N] [--info|--reveal|--showtime]\n  --version\n  --third-party-licenses  Print bundled algorithm notices and licenses\n\nMCP uses stdio. Attach connects to an already-open native rack on macOS/Linux; it never opens a window or starts playback. Files are never overwritten. Rendering is offline; audio_stereo exports L/R, other outputs export mono.");
             Ok(())
         }
         _ => Err("unknown command or arguments; run openpatch --help".into()),

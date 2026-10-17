@@ -9,6 +9,7 @@ pub mod control;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub mod local_mcp;
 pub mod mcp;
+pub mod patch_engine;
 pub mod presets;
 pub mod project_document;
 pub mod vcv_archive;

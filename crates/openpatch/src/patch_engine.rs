@@ -1,0 +1,1344 @@
+//! Patch Engine: three words (genre · mood · texture) plus a seed compose a complete, laid-out patch.
+//!
+//! The words set the style; the seed composes a new piece inside it (key, progression, voicing, drum,
+//! bass, chord and melody patterns, optional layers, sound design, song form). Output is the same edit
+//! vocabulary `apply_edits` and `start_construction` accept, so a build reuses preflight, pacing, undo
+//! and construction motion. Voices are clean subtractive designs (filtered saw/square/triangle/sine).
+use serde_json::{json, Map, Value};
+use std::collections::{BTreeMap, HashMap};
+
+#[cfg(test)]
+#[path = "patch_engine_tests.rs"]
+mod tests;
+
+pub const GENRES: [&str; 8] = ["Deep House", "Dub Techno", "Techno", "Ambient", "Lo-fi Hip Hop", "Synthwave", "Downtempo", "UK Garage"];
+pub const MOODS: [&str; 8] = ["Dreamy", "Dark", "Euphoric", "Melancholy", "Hypnotic", "Warm", "Mysterious", "Playful"];
+pub const TEXTURES: [&str; 8] = ["Glitchy", "Dusty", "Spacious", "Crisp", "Liquid", "Minimal", "Echoing", "Pulsing"];
+
+/// Noun used in the sentence "A dreamy Deep House track …".
+pub fn genre_noun(genre: &str) -> &'static str {
+    match genre {
+        "Deep House" => "Deep House track",
+        "Dub Techno" => "Dub Techno groove",
+        "Techno" => "Techno track",
+        "Ambient" => "Ambient piece",
+        "Lo-fi Hip Hop" => "Lo-fi Hip Hop beat",
+        "Synthwave" => "Synthwave tune",
+        "Downtempo" => "Downtempo groove",
+        _ => "UK Garage track",
+    }
+}
+
+/// Phrase that completes the sentence for a texture.
+pub fn texture_phrase(texture: &str) -> &'static str {
+    match texture {
+        "Glitchy" => "full of glitches",
+        "Dusty" => "with a dusty tape feel",
+        "Spacious" => "with endless space",
+        "Crisp" => "with a crisp edge",
+        "Liquid" => "that flows like liquid",
+        "Minimal" => "stripped right back",
+        "Echoing" => "drenched in echoes",
+        _ => "that pulses and breathes",
+    }
+}
+
+pub fn texture_text(texture: &str) -> &'static str {
+    match texture {
+        "Glitchy" => "stutter and bit-crush bus between the mixer and the master, sequenced on the drum clock",
+        "Dusty" => "tape hiss bed, gentle tape wow on the chords, darker filters and a lazier swing",
+        "Spacious" => "long hall, longer echo and a slow wind band sweeping underneath",
+        "Crisp" => "tighter drums, brighter filters, drier reverb",
+        "Liquid" => "slow filter tide on the chords, smeared ping-pong echo, gliding lead",
+        "Minimal" => "stripped back: fewer layers, more echo on what is left",
+        "Echoing" => "dub echo throws on the chords and lead, long feedback",
+        _ => "rhythmic gate chopping the chords on the grid, deeper kick pump",
+    }
+}
+
+// ---------------------------------------------------------------- random
+struct Rng(u64);
+impl Rng {
+    fn new(text: &str) -> Self {
+        let mut h = 0xcbf2_9ce4_8422_2325u64;
+        for b in text.bytes() {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x0100_0000_01b3);
+        }
+        Rng(h)
+    }
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+    fn f(&mut self) -> f64 { (self.next() >> 11) as f64 / (1u64 << 53) as f64 }
+    fn uni(&mut self, a: f64, b: f64) -> f64 { a + (b - a) * self.f() }
+    fn int(&mut self, a: i64, b: i64) -> i64 { a + (self.next() % ((b - a + 1) as u64)) as i64 }
+    fn idx(&mut self, n: usize) -> usize { (self.next() % n as u64) as usize }
+    fn pick<T: Copy>(&mut self, v: &[T]) -> T { v[self.idx(v.len())] }
+    fn chance(&mut self, p: f64) -> bool { self.f() < p }
+    fn weighted<T: Copy>(&mut self, v: &[(T, f64)]) -> T {
+        let total: f64 = v.iter().map(|x| x.1).sum();
+        let mut r = self.f() * total;
+        for &(item, w) in v {
+            r -= w;
+            if r <= 0.0 { return item; }
+        }
+        v[v.len() - 1].0
+    }
+    fn sample(&mut self, n: usize, k: usize) -> Vec<usize> {
+        let mut all: Vec<usize> = (0..n).collect();
+        for i in 0..k.min(n) {
+            let j = i + self.idx(n - i);
+            all.swap(i, j);
+        }
+        all.truncate(k.min(n));
+        all
+    }
+}
+
+fn r3(v: f64) -> f64 { (v * 1000.0).round() / 1000.0 }
+
+// ---------------------------------------------------------------- score helpers
+fn st(step: i64, notes: &[i64], vel: f64, gate: f64, prob: f64, slide: bool) -> Value {
+    let mut s = json!({"step": step, "notes": notes, "velocity": r3(vel), "gate": r3(gate)});
+    if prob < 1.0 { s["probability"] = json!(r3(prob)); }
+    if slide { s["slide"] = json!(true); }
+    s
+}
+fn hit(step: i64, vel: f64) -> Value { st(step, &[0], vel, 0.4, 1.0, false) }
+fn held(start: i64, len: i64, notes: &[i64], vel: f64, last_gate: f64) -> Vec<Value> {
+    (0..len).map(|k| st(start + k, notes, vel, if k < len - 1 { 1.0 } else { last_gate }, 1.0, k < len - 1)).collect()
+}
+fn trk(steps: Vec<Value>, voices: u32, glide: u32) -> Value {
+    let mut by: BTreeMap<i64, Value> = BTreeMap::new();
+    for s in steps {
+        let k = s["step"].as_i64().unwrap_or(-1);
+        if (0..64).contains(&k) { by.insert(k, s); }
+    }
+    json!({"voices": voices, "glide_ms": glide, "steps": by.into_values().collect::<Vec<_>>()})
+}
+fn lane(points: &[(f64, f64, &str)]) -> Value {
+    json!({"length_bars": 32, "looped": true,
+           "points": points.iter().map(|(b, v, c)| json!({"bar": b, "value": r3(*v), "curve": c})).collect::<Vec<_>>()})
+}
+fn euclid(k: i64, n: i64, rot: i64) -> Vec<i64> {
+    let mut v: Vec<i64> = (0..k).map(|i| (i * n / k + rot) % n).collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+// ---------------------------------------------------------------- harmony
+fn quality(q: &str) -> &'static [i64] {
+    match q {
+        "maj9" => &[4, 7, 11, 14],
+        "m9" => &[3, 7, 10, 14],
+        "m7" => &[0, 3, 7, 10],
+        "maj7" => &[0, 4, 7, 11],
+        "dom9" => &[4, 7, 10, 14],
+        "m11" => &[3, 7, 10, 17],
+        _ => &[4, 7, 11, 18], // maj7#11
+    }
+}
+fn qname(q: &str) -> &'static str {
+    match q { "maj9" => "maj9", "m9" => "m9", "m7" => "m7", "maj7" => "maj7", "dom9" => "9", "m11" => "m11", _ => "maj7♯11" }
+}
+const NOTE: [&str; 12] = ["C", "D♭", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
+
+type Prog = &'static [(i64, &'static str)];
+struct MoodDef { keys: &'static [i64], mode: &'static str, scale: &'static [i64], bright: f64, space: f64, bpm: i64, progs: &'static [Prog] }
+
+fn mood_def(m: &str) -> MoodDef {
+    match m {
+        "Dreamy" => MoodDef { keys: &[2, 7, 4], mode: "lydian", scale: &[0, 2, 4, 6, 7, 9, 11], bright: 0.0, space: 0.8, bpm: -1, progs: &[
+            &[(0, "maj9"), (9, "m9"), (5, "maj9"), (2, "m9")], &[(0, "maj9"), (2, "dom9"), (5, "maj9"), (0, "maj9")],
+            &[(5, "maj9"), (0, "maj9"), (5, "maj9"), (4, "m7")], &[(0, "maj9"), (4, "m9"), (9, "m9"), (5, "maj9")],
+            &[(0, "maj7s11"), (2, "dom9"), (0, "maj7s11"), (7, "maj9")], &[(0, "maj9"), (7, "maj9"), (9, "m9"), (7, "maj9")]] },
+        "Dark" => MoodDef { keys: &[5, 0, 7], mode: "minor", scale: &[0, 2, 3, 5, 7, 8, 10], bright: -0.7, space: 0.5, bpm: 0, progs: &[
+            &[(0, "m9"), (8, "maj7"), (5, "m7"), (7, "m7")], &[(0, "m11"), (0, "m11"), (10, "dom9"), (8, "maj7")],
+            &[(0, "m9"), (5, "m9"), (0, "m9"), (5, "m9")], &[(0, "m9"), (1, "maj7"), (0, "m9"), (10, "dom9")],
+            &[(0, "m9"), (3, "maj7"), (8, "maj7"), (7, "m7")], &[(0, "m11"), (5, "m7"), (8, "maj7"), (10, "dom9")]] },
+        "Euphoric" => MoodDef { keys: &[5, 0, 9], mode: "major", scale: &[0, 2, 4, 5, 7, 9, 11], bright: 0.4, space: 0.6, bpm: 2, progs: &[
+            &[(9, "m9"), (5, "maj9"), (0, "maj9"), (7, "dom9")], &[(0, "maj9"), (7, "dom9"), (9, "m9"), (5, "maj9")],
+            &[(5, "maj9"), (7, "dom9"), (4, "m7"), (9, "m9")], &[(0, "maj9"), (4, "m9"), (5, "maj9"), (7, "dom9")],
+            &[(9, "m9"), (7, "dom9"), (5, "maj9"), (7, "dom9")], &[(0, "maj9"), (9, "m9"), (5, "maj9"), (7, "dom9")]] },
+        "Melancholy" => MoodDef { keys: &[9, 4, 11], mode: "minor", scale: &[0, 2, 3, 5, 7, 8, 10], bright: -0.3, space: 0.7, bpm: -2, progs: &[
+            &[(0, "m9"), (5, "m9"), (10, "dom9"), (3, "maj9")], &[(0, "m9"), (8, "maj9"), (3, "maj9"), (10, "dom9")],
+            &[(5, "m9"), (7, "m9"), (0, "m9"), (0, "m9")], &[(0, "m9"), (10, "dom9"), (8, "maj7"), (7, "m7")],
+            &[(0, "m9"), (3, "maj9"), (10, "dom9"), (5, "m9")], &[(8, "maj7"), (10, "dom9"), (0, "m9"), (0, "m9")]] },
+        "Hypnotic" => MoodDef { keys: &[2, 9, 7], mode: "dorian", scale: &[0, 2, 3, 5, 7, 9, 10], bright: -0.2, space: 0.5, bpm: 0, progs: &[
+            &[(0, "m11"), (0, "m11"), (5, "m9"), (0, "m11")], &[(0, "m11"), (10, "dom9"), (0, "m11"), (10, "dom9")],
+            &[(0, "m11"), (0, "m11"), (0, "m11"), (0, "m11")], &[(0, "m9"), (8, "maj7"), (0, "m9"), (8, "maj7")],
+            &[(0, "m9"), (5, "dom9"), (0, "m9"), (5, "dom9")], &[(0, "m11"), (2, "m7"), (0, "m11"), (10, "maj7")]] },
+        "Warm" => MoodDef { keys: &[3, 8, 10], mode: "major", scale: &[0, 2, 4, 5, 7, 9, 11], bright: -0.2, space: 0.55, bpm: -1, progs: &[
+            &[(0, "maj9"), (2, "m9"), (4, "m9"), (5, "maj9")], &[(0, "maj9"), (9, "m9"), (2, "m9"), (7, "dom9")],
+            &[(5, "maj9"), (4, "m9"), (2, "m9"), (0, "maj9")], &[(0, "maj9"), (5, "maj9"), (0, "maj9"), (5, "maj9")],
+            &[(0, "maj9"), (4, "m9"), (5, "maj9"), (7, "dom9")], &[(5, "maj9"), (7, "dom9"), (9, "m9"), (0, "maj9")]] },
+        "Mysterious" => MoodDef { keys: &[4, 11, 6], mode: "phrygian", scale: &[0, 1, 3, 5, 7, 8, 10], bright: -0.4, space: 0.75, bpm: -1, progs: &[
+            &[(0, "m11"), (1, "maj7"), (0, "m11"), (1, "maj7")], &[(0, "m7"), (10, "m7"), (8, "maj7"), (1, "maj7")],
+            &[(0, "m11"), (8, "maj7"), (1, "maj7"), (0, "m11")], &[(0, "m7"), (3, "dom9"), (1, "maj7"), (0, "m7")],
+            &[(0, "m11"), (0, "m11"), (1, "maj7"), (10, "m7")], &[(0, "m7"), (5, "m7"), (1, "maj7"), (0, "m7")]] },
+        _ => MoodDef { keys: &[0, 5, 7], mode: "mixolydian", scale: &[0, 2, 4, 5, 7, 9, 10], bright: 0.3, space: 0.45, bpm: 2, progs: &[
+            &[(0, "maj9"), (10, "maj7"), (5, "maj9"), (0, "maj9")], &[(0, "maj9"), (9, "m7"), (2, "m9"), (7, "dom9")],
+            &[(5, "maj9"), (7, "dom9"), (0, "maj9"), (0, "maj9")], &[(0, "dom9"), (5, "dom9"), (0, "dom9"), (7, "dom9")],
+            &[(0, "maj9"), (2, "m9"), (5, "maj9"), (7, "dom9")], &[(0, "maj9"), (5, "maj9"), (9, "m7"), (7, "dom9")]] },
+    }
+}
+
+struct GenreDef {
+    bpm: (i64, i64), swing: (i64, i64), div: i64, drums: &'static str,
+    bass: &'static [&'static str], voices: &'static [&'static str], rhythm: &'static [&'static str],
+    leads: &'static [(&'static str, f64)], counter: f64, perc: f64, perc2: f64, pad: f64, pump: bool,
+    kick: (f64, f64, f64, f64), hats: &'static [&'static str], ohat: &'static [&'static str],
+}
+fn genre_def(g: &str) -> GenreDef {
+    match g {
+        "Deep House" => GenreDef { bpm: (120, 124), swing: (54, 58), div: 1, drums: "four", bass: &["house", "gen", "sub"],
+            voices: &["keys", "pluck", "organ", "pad_saw"], rhythm: &["stabs", "stabs", "syncop", "held"],
+            leads: &[("hook", 4.0), ("arp", 2.0), ("bells", 1.0), ("none", 3.0)], counter: 0.3, perc: 0.75, perc2: 0.3, pad: 0.35, pump: true,
+            kick: (50.0, 0.45, 0.15, 0.3), hats: &["16", "16", "euclid", "shuffle"], ohat: &["off", "off", "half"] },
+        "Dub Techno" => GenreDef { bpm: (117, 123), swing: (52, 56), div: 2, drums: "dub", bass: &["pulse", "gen", "sub"],
+            voices: &["stab", "pluck", "pad_square"], rhythm: &["stabs", "stabs", "syncop"],
+            leads: &[("none", 5.0), ("hook", 2.0), ("bells", 2.0)], counter: 0.2, perc: 0.6, perc2: 0.2, pad: 0.5, pump: true,
+            kick: (46.0, 0.55, 0.2, 0.3), hats: &["16", "euclid", "shuffle"], ohat: &["off", "half", "none"] },
+        "Techno" => GenreDef { bpm: (126, 134), swing: (50, 52), div: 1, drums: "techno", bass: &["roll", "gen", "sub"],
+            voices: &["stab", "pluck", "pad_square"], rhythm: &["stabs", "syncop", "pulse8"],
+            leads: &[("arp", 4.0), ("riff", 4.0), ("none", 2.0)], counter: 0.15, perc: 0.5, perc2: 0.25, pad: 0.3, pump: true,
+            kick: (48.0, 0.38, 0.4, 0.35), hats: &["16", "off8", "euclid"], ohat: &["off", "off", "half"] },
+        "Ambient" => GenreDef { bpm: (70, 90), swing: (50, 52), div: 2, drums: "ambient", bass: &["drone"],
+            voices: &["pad_saw", "pad_square", "organ", "keys"], rhythm: &["held", "held", "restrike"],
+            leads: &[("bells", 5.0), ("hook", 2.0), ("counter", 3.0), ("arp", 1.0)], counter: 0.4, perc: 0.35, perc2: 0.1, pad: 0.0, pump: false,
+            kick: (44.0, 0.6, 0.0, 0.2), hats: &["sparse", "none"], ohat: &["none"] },
+        "Lo-fi Hip Hop" => GenreDef { bpm: (76, 90), swing: (58, 66), div: 1, drums: "boombap", bass: &["lofi", "gen", "sub"],
+            voices: &["keys", "organ", "pluck", "pad_square"], rhythm: &["stabs", "held", "restrike"],
+            leads: &[("hook", 4.0), ("bells", 2.0), ("counter", 1.0), ("none", 3.0)], counter: 0.25, perc: 0.5, perc2: 0.25, pad: 0.3, pump: false,
+            kick: (52.0, 0.35, 0.25, 0.25), hats: &["8", "8", "16", "shuffle"], ohat: &["sparse", "none"] },
+        "Synthwave" => GenreDef { bpm: (96, 112), swing: (50, 50), div: 1, drums: "rock", bass: &["octave", "gen"],
+            voices: &["pad_saw", "pluck", "pad_square"], rhythm: &["held", "pulse8", "restrike"],
+            leads: &[("arp", 5.0), ("hook", 4.0), ("riff", 1.0)], counter: 0.3, perc: 0.4, perc2: 0.1, pad: 0.3, pump: true,
+            kick: (54.0, 0.32, 0.3, 0.4), hats: &["8", "16"], ohat: &["none", "none", "half"] },
+        "Downtempo" => GenreDef { bpm: (90, 104), swing: (54, 60), div: 1, drums: "broken", bass: &["broken", "gen", "sub"],
+            voices: &["keys", "pad_saw", "pluck", "organ"], rhythm: &["held", "stabs", "syncop", "restrike"],
+            leads: &[("hook", 4.0), ("bells", 2.0), ("counter", 2.0), ("arp", 1.0), ("none", 1.0)], counter: 0.35, perc: 0.6, perc2: 0.35, pad: 0.35, pump: false,
+            kick: (52.0, 0.42, 0.2, 0.3), hats: &["16", "shuffle", "euclid", "8"], ohat: &["half", "sparse", "none"] },
+        _ => GenreDef { bpm: (128, 134), swing: (60, 66), div: 1, drums: "twostep", bass: &["garage", "gen", "sub"],
+            voices: &["organ", "stab", "keys", "pluck"], rhythm: &["stabs", "syncop"],
+            leads: &[("hook", 4.0), ("none", 4.0), ("arp", 1.0)], counter: 0.2, perc: 0.5, perc2: 0.3, pad: 0.25, pump: true,
+            kick: (52.0, 0.4, 0.25, 0.3), hats: &["shuffle", "16", "euclid"], ohat: &["off", "half"] },
+    }
+}
+
+/// Mixer strip trims (dB) per voice, from offline stem measurements (56 random builds, all layers on) so each
+/// voice lands at its target level relative to the kick: chords ≈ 0…−3 dB, sub −2, bass −7, lead −3…−5.
+fn trim_db(name: &str) -> f64 {
+    match name {
+        "keys" => 0.0, "pluck" => 7.4, "organ" => -5.4, "pad_saw" => 6.5, "pad_square" => 5.8, "stab" => 6.0,
+        "bass:pwm" => -2.3, "bass:round" | "bass:square" => -2.9,
+        "lead:hook" => -5.3, "lead:arp" => -5.2, "lead:bells" => -6.2, "lead:riff" => -0.5, "lead:counter" => -9.0,
+        _ => 0.0,
+    }
+}
+
+/// Final out gain by genre: fitted on 96 random full-mix renders so peaks stay ≤ ~0.9 (the limiter misses
+/// fast kick transients), which also evens loudness between genres.
+fn out_gain(genre: &str) -> f64 {
+    match genre {
+        "Deep House" => 1.05, "Dub Techno" => 1.25, "Techno" => 0.95, "Ambient" => 1.4, "Lo-fi Hip Hop" => 1.3,
+        "Synthwave" => 0.95, "Downtempo" => 1.1, _ => 1.25,
+    }
+}
+
+// ---------------------------------------------------------------- graph model
+struct Module { kind: &'static str, row: u8, params: Value, label: String, content: Option<Value> }
+#[derive(Clone)]
+enum Op { Add(String), Con(String, String, String, String, String, bool), Out(String), Move(String, String, String) }
+struct Strip { name: String, level: f64, pan: f64, hpf: f64, send_a: f64, send_b: f64, high_db: f64 }
+
+/// A composed piece: graph, scores and the human-readable recipe.
+pub struct Recipe {
+    pub genre: String, pub mood: String, pub texture: String, pub seed: u64,
+    pub title: String, pub sentence: String, pub description: String, pub notes: Vec<String>,
+    pub bpm: i64, pub swing: i64, pub key_name: String, pub chord_names: Vec<String>,
+    modules: HashMap<String, Module>, ops: Vec<Op>, cid: usize, strips: Vec<Strip>, lanes: Vec<&'static str>,
+    scores: HashMap<String, Value>,
+    kinds: BTreeMap<&'static str, String>,
+}
+
+struct Ctx {
+    rng: Rng, g: GenreDef, m: MoodDef, genre: &'static str, texture: &'static str,
+    tonic: i64, chords: Vec<Vec<i64>>, roots: Vec<i64>, bright: f64, space: f64, six: f64,
+    lead: &'static str, counter: bool, clap: bool, perc: Option<&'static str>, perc2: Option<&'static str>,
+    pad: bool, voice: &'static str, bass_style: &'static str, form: &'static str,
+}
+
+fn find(list: &[&'static str], s: &str) -> Option<&'static str> { list.iter().copied().find(|x| *x == s) }
+
+fn voice_chords(rng: &mut Rng, tonic: i64, prog: Prog) -> (Vec<Vec<i64>>, Vec<i64>) {
+    let target = rng.pick(&[0.0, 2.0, 3.0, 5.0]);
+    let spread = rng.chance(0.35);
+    let mut out: Vec<Vec<i64>> = Vec::new();
+    for &(root, q) in prog {
+        let base: Vec<i64> = quality(q).iter().map(|i| tonic + root + i).collect();
+        let centre = |v: &Vec<i64>| v.iter().sum::<i64>() as f64 / v.len() as f64;
+        let want = out.last().map(centre).unwrap_or(target);
+        let mut best: Option<Vec<i64>> = None;
+        for o in -3..3 {
+            let mut v: Vec<i64> = base.iter().map(|n| n + 12 * o).collect();
+            if spread {
+                // open voicing: lift the second voice an octave when that keeps every interval ≥ a minor third
+                let mut w = v.clone();
+                w[1] += 12;
+                w.sort();
+                if w.windows(2).all(|p| p[1] - p[0] >= 3) && *w.last().unwrap() <= 16 { v = w; }
+            }
+            let lo = *v.iter().min().unwrap();
+            if !(-9..=4).contains(&lo) || *v.iter().max().unwrap() > 17 { continue; }
+            if best.as_ref().is_none_or(|b| (centre(&v) - want).abs() < (centre(b) - want).abs()) { best = Some(v); }
+        }
+        out.push(best.unwrap_or(base));
+    }
+    let roots = prog.iter().map(|&(root, _)| {
+        let mut r = (tonic + root).rem_euclid(12) - 36;
+        while r < -33 { r += 12; }
+        r
+    }).collect();
+    (out, roots)
+}
+
+impl Recipe {
+    pub fn new(genre: &str, mood: &str, texture: &str, seed: u64) -> Result<Recipe, String> {
+        let genre = find(&GENRES, genre).ok_or("unknown genre")?;
+        let mood_name = find(&MOODS, mood).ok_or("unknown mood")?;
+        let texture = find(&TEXTURES, texture).ok_or("unknown texture")?;
+        let mut rng = Rng::new(&format!("{genre}|{mood_name}|{texture}|{seed}"));
+        let g = genre_def(genre);
+        let m = mood_def(mood_name);
+        let tonic = rng.pick(m.keys);
+        let prog = m.progs[rng.idx(m.progs.len())];
+        let (chords, roots) = voice_chords(&mut rng, tonic, prog);
+        let bpm = (rng.int(g.bpm.0, g.bpm.1) + m.bpm).max(60);
+        let swing = (rng.int(g.swing.0, g.swing.1) + if texture == "Dusty" { 4 } else { 0 }).clamp(50, 70);
+        let bright = (m.bright + match texture { "Crisp" => 0.35, "Dusty" => -0.35, _ => 0.0 } + rng.uni(-0.15, 0.15)).clamp(-1.0, 1.0);
+        let space = (m.space + match texture { "Spacious" => 0.3, "Crisp" => -0.25, "Minimal" | "Echoing" => 0.1, _ => 0.0 } + rng.uni(-0.1, 0.1)).clamp(0.2, 1.0);
+        let minimal = texture == "Minimal";
+        let lead = if minimal && rng.chance(0.6) { "none" } else { rng.weighted(g.leads) };
+        let counter = !minimal && lead != "counter" && rng.chance(g.counter);
+        let kinds = ["conga", "tom", "wood", "shaker", "rim"];
+        let perc = rng.chance(g.perc).then(|| rng.pick(&kinds));
+        let perc2 = (perc.is_some() && !minimal && rng.chance(g.perc2)).then(|| rng.pick(&kinds)).filter(|k| Some(*k) != perc);
+        let voice = rng.pick(g.voices);
+        let pad = !voice.starts_with("pad") && !minimal && rng.chance(g.pad);
+        let bass_style = rng.pick(g.bass);
+        let form = rng.pick(&["steady", "classic", "breathe", "build"]);
+        let mut c = Ctx {
+            rng, genre, texture, tonic, chords, roots, bright, space, six: 60.0 / bpm as f64 / 4.0,
+            lead, counter, clap: !minimal && genre != "Ambient", perc, perc2, pad, voice, bass_style, form, g, m,
+        };
+        let key_name = format!("{} {}", NOTE[tonic as usize], c.m.mode);
+        let chord_names: Vec<String> = prog.iter().map(|&(r, q)| format!("{}{}", NOTE[(tonic + r).rem_euclid(12) as usize], qname(q))).collect();
+        let mut r = Recipe {
+            genre: genre.into(), mood: mood_name.into(), texture: texture.into(), seed,
+            title: format!("{mood_name} {genre} · {texture}"),
+            sentence: format!("A {} {} {}.", mood_name.to_lowercase(), genre_noun(genre), texture_phrase(texture)),
+            description: String::new(), notes: Vec::new(), bpm, swing, key_name, chord_names,
+            modules: HashMap::new(), ops: Vec::new(), cid: 0, strips: Vec::new(), lanes: Vec::new(), scores: HashMap::new(), kinds: BTreeMap::new(),
+        };
+        r.compose(&mut c);
+        r.assemble(&mut c);
+        Ok(r)
+    }
+
+    // ------------------------------------------------------------ builder helpers
+    fn cut(bright: f64, hz: f64, amt: f64) -> f64 { r3((hz * 2f64.powf(bright * amt)).clamp(60.0, 9000.0)) }
+    fn module(&mut self, id: &str, kind: &'static str, row: u8, params: Value, label: impl Into<String>) {
+        self.modules.insert(id.into(), Module { kind, row, params, label: label.into(), content: None });
+        self.ops.push(Op::Add(id.into()));
+    }
+    fn label(&mut self, row: u8, text: String) {
+        let id = format!("label_{row}");
+        self.modules.insert(id.clone(), Module { kind: "notes", row, params: json!({}), label: format!("Row {row} label"),
+                                                 content: Some(json!({"type": "notes", "text": text})) });
+        self.ops.push(Op::Add(id));
+    }
+    fn con(&mut self, from: &str, out: &str, to: &str, input: &str) { self.con_mode(from, out, to, input, false) }
+    fn con_mode(&mut self, from: &str, out: &str, to: &str, input: &str, stack: bool) {
+        self.cid += 1;
+        self.ops.push(Op::Con(format!("c{}", self.cid), from.into(), out.into(), to.into(), input.into(), stack));
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn strip(&mut self, name: &str, node: &str, port: &str, level: f64, pan: f64, hpf: f64, send_a: f64, send_b: f64, high_db: f64) {
+        let n = self.strips.len() + 1;
+        self.strips.push(Strip { name: name.into(), level, pan, hpf, send_a, send_b, high_db });
+        self.con(node, port, "mixer", &format!("in{n}"));
+    }
+    fn lane_out(&self, name: &str) -> String { format!("out{}", self.lanes.iter().position(|l| *l == name).unwrap() + 1) }
+    fn note(&mut self, s: impl Into<String>) { self.notes.push(s.into()); }
+
+    // ------------------------------------------------------------ scores
+    fn compose(&mut self, c: &mut Ctx) {
+        let div = c.g.div;
+        let spb = 16 / div;                      // seq_music steps per bar
+        let bpc = if div == 1 { 1 } else { 2 };  // bars per chord
+        let chord_at = |s: i64| ((s / spb) / bpc % 4) as usize;
+        let rng = &mut c.rng;
+
+        // ---- drums (seq_drums, 4 bars of 16ths)
+        let (mut kick, mut clap, mut hats, mut ohat) = (vec![], vec![], vec![], vec![]);
+        match c.g.drums {
+            "boombap" | "broken" | "twostep" => {
+                let pats: &[&[i64]] = match c.g.drums {
+                    "boombap" => &[&[0, 10], &[0, 7, 10], &[0, 3, 10], &[0, 10, 13], &[0, 8, 10]],
+                    "broken" => &[&[0, 10], &[0, 6, 10], &[0, 3, 8, 11], &[0, 7, 13], &[0, 10, 14]],
+                    _ => &[&[0, 10], &[0, 7, 10], &[0, 11], &[0, 6, 10], &[0, 3, 10]],
+                };
+                let (a, b) = (rng.pick(pats), rng.pick(pats));
+                for bar in 0..4 { for &s in if bar % 2 == 0 { a } else { b } { kick.push(hit(bar * 16 + s, if s == 0 { 1.0 } else { 0.8 })); } }
+                self.note(format!("{} kick", match c.g.drums { "boombap" => "boom-bap", "broken" => "broken-beat", _ => "2-step" }));
+            }
+            "ambient" => {
+                let style = rng.pick(&["heartbeat", "pulse", "lone"]);
+                for bar in 0..4 {
+                    match style {
+                        "heartbeat" if bar % 2 == 0 => { kick.push(hit(bar * 16, 0.7)); kick.push(hit(bar * 16 + 3, 0.45)); }
+                        "pulse" => kick.push(hit(bar * 16, 0.6)),
+                        "lone" if bar == 0 => kick.push(hit(0, 0.55)),
+                        _ => {}
+                    }
+                }
+                self.note(format!("{style} kick"));
+            }
+            _ => {
+                let rock = c.g.drums == "rock" && rng.chance(0.4);
+                for bar in 0..4 { for s in if rock { vec![0, 8, 10] } else { vec![0, 4, 8, 12] } { kick.push(hit(bar * 16 + s, if s == 10 { 0.75 } else { 1.0 })); } }
+                if rock { self.note("rock kick"); }
+                if rng.chance(0.4) { kick.retain(|k| k["step"] != 60); kick.push(hit(62, 0.6)); kick.push(st(63, &[0], 0.5, 0.4, 0.6, false)); }
+                if c.g.drums == "techno" && rng.chance(0.5) { kick.push(hit(30, 0.45)); kick.push(hit(62, 0.45)); }
+            }
+        }
+        if c.g.drums == "dub" {
+            let rims: &[&[i64]] = &[&[6, 14], &[3, 10, 14], &[6, 11, 14], &[2, 8, 14], &[5, 10, 13]];
+            let rim = rng.pick(rims);
+            for bar in 0..4 { for (k, &s) in rim.iter().enumerate() { clap.push(st(bar * 16 + s, &[0], rng.pick(&[0.5, 0.6, 0.7]), 0.3, if k == 0 { 1.0 } else { 0.85 }, false)); } }
+        } else if c.g.drums != "ambient" {
+            for bar in 0..4 { clap.push(hit(bar * 16 + 4, 1.0)); clap.push(hit(bar * 16 + 12, 1.0)); }
+            if rng.chance(0.5) { clap.push(st(63, &[0], 0.45, 0.3, 0.5, false)); }
+            if rng.chance(0.35) { for bar in [1, 3] { clap.push(st(bar * 16 + 7, &[0], 0.35, 0.3, 0.5, false)); } }
+            if c.g.drums == "twostep" || c.g.drums == "broken" { for bar in 0..4 { clap.push(st(bar * 16 + rng.pick(&[9, 14, 15]), &[0], 0.35, 0.3, 0.6, false)); } }
+        }
+        let hstyle = rng.pick(c.g.hats);
+        let acc = rng.pick(&[[0.35, 0.2, 0.75, 0.25], [0.6, 0.25, 0.45, 0.25], [0.3, 0.3, 0.8, 0.3], [0.5, 0.2, 0.6, 0.35], [0.7, 0.3, 0.5, 0.3]]);
+        let hname = match hstyle {
+            "16" => { for s in 0..64 { hats.push(st(s, &[0], acc[(s % 4) as usize], 0.3, if s % 4 == 1 { 0.7 } else { 1.0 }, false)); } "16ths".to_string() }
+            "8" => { for s in (0..64).step_by(2) { hats.push(hit(s, if s % 4 == 2 { 0.8 } else { 0.5 })); } "8ths".into() }
+            "off8" => { for s in (2..64).step_by(4) { hats.push(hit(s, 0.8)); } for s in (1..64).step_by(4) { hats.push(st(s, &[0], 0.35, 0.3, 0.5, false)); } "offbeats".into() }
+            "shuffle" => { for b in 0..8 { for (k, s) in [0, 3, 6].iter().enumerate() { hats.push(hit(b * 8 + s, [0.7, 0.45, 0.55][k])); } } "3-3-2 shuffle".into() }
+            "sparse" => { for s in (2..64).step_by(4) { hats.push(st(s, &[0], 0.4, 0.3, 0.35, false)); } "sparse".into() }
+            "none" => "none".into(),
+            _ => {
+                let k = rng.pick(&[5, 7, 9, 11]);
+                let rot = rng.int(0, 15);
+                for b in 0..4 { for (i, s) in euclid(k, 16, rot).into_iter().enumerate() { hats.push(hit(b * 16 + s, if i % 2 == 0 { 0.75 } else { 0.4 })); } }
+                format!("E({k},16)")
+            }
+        };
+        self.note(format!("hats {hname}"));
+        match rng.pick(c.g.ohat) {
+            "off" => for s in (2..64).step_by(4) { ohat.push(hit(s, 0.85)); },
+            "half" => for b in 0..4 { ohat.push(hit(b * 16 + 6, 0.85)); ohat.push(hit(b * 16 + 14, 0.85)); },
+            "sparse" => for b in [1, 3] { ohat.push(hit(b * 16 + 14, 0.6)); },
+            _ => {}
+        }
+        if !c.clap { clap.clear(); }
+
+        // ---- chords
+        let ch = &c.chords;
+        let mut chords = vec![];
+        let rhythm = rng.pick(c.g.rhythm);
+        match rhythm {
+            "held" | "restrike" => {
+                for ci in 0..4 {
+                    let o = ci as i64 * spb * bpc;
+                    if rhythm == "restrike" { for bar in 0..bpc { chords.extend(held(o + bar * spb, spb, &ch[ci], 0.9, 0.85)); } }
+                    else { chords.extend(held(o, spb * bpc, &ch[ci], 1.0, 0.95)); }
+                }
+                self.note(if rhythm == "held" { "held chords" } else { "chords re-strike every bar" });
+            }
+            "pulse8" => {
+                for s in (0..64).step_by(2) { chords.push(st(s, &ch[chord_at(s)], if s % 4 == 0 { 0.9 } else { 0.65 }, 0.45, 1.0, false)); }
+                self.note("chords pulse in 8ths");
+            }
+            _ => {
+                let pool: Vec<Vec<(i64, f64)>> = if rhythm == "syncop" {
+                    (0..3).map(|_| {
+                        let n = rng.int(2, 4) as usize;
+                        let weights = [0.2, 0.3, 1.0, 0.8, 0.3, 0.6, 1.0, 0.7, 0.2, 0.5, 1.0, 0.8, 0.3, 0.6, 0.9, 0.5];
+                        let mut on: Vec<i64> = vec![];
+                        while on.len() < n {
+                            let s = rng.weighted(&(0..16).map(|i| (i as i64, weights[i])).collect::<Vec<_>>()) * spb / 16;
+                            if !on.contains(&s) { on.push(s); }
+                        }
+                        on.sort();
+                        on.into_iter().map(|s| (s, rng.pick(&[0.6, 0.75, 0.9]))).collect()
+                    }).collect()
+                } else if div == 2 {
+                    vec![vec![(1, 1.0), (4, 0.6), (6, 0.8)], vec![(1, 1.0), (3, 0.6), (6, 0.8)], vec![(2, 1.0), (5, 0.7)], vec![(1, 1.0), (6, 0.7), (7, 0.5)]]
+                } else {
+                    vec![vec![(2, 0.9), (5, 0.6), (10, 0.85), (13, 0.55)], vec![(3, 0.9), (6, 0.6), (11, 0.8), (14, 0.6)], vec![(0, 0.85), (3, 0.6), (6, 0.8), (10, 0.6)],
+                         vec![(2, 0.9), (7, 0.7), (10, 0.85)], vec![(3, 0.85), (10, 0.6)], vec![(0, 0.9), (7, 0.55), (10, 0.7)], vec![(4, 0.8), (11, 0.7), (14, 0.6)]]
+                };
+                let (a, b) = (pool[rng.idx(pool.len())].clone(), pool[rng.idx(pool.len())].clone());
+                let sparse = c.genre == "Techno" && rng.chance(0.3);
+                for bar in 0..(64 / spb) {
+                    if sparse && bar % 2 == 1 { continue; }
+                    for &(s, v) in if bar % 2 == 0 { &a } else { &b } {
+                        let step = bar * spb + s;
+                        chords.push(st(step, &ch[chord_at(step)], v, 0.3, 1.0, false));
+                    }
+                }
+                let pat: String = (0..spb).map(|k| if a.iter().any(|x| x.0 == k) { 'x' } else { '.' }).collect();
+                self.note(format!("{}chord rhythm {pat}", if sparse { "sparse " } else { "" }));
+            }
+        }
+
+        // ---- bass
+        let roots = &c.roots;
+        let mut bass = vec![];
+        let bstyle = c.bass_style;
+        if bstyle == "drone" {
+            let split = rng.chance(0.5);
+            for ci in 0..4 {
+                let (o, span) = (ci as i64 * spb * bpc, spb * bpc);
+                if split {
+                    bass.extend(held(o, span / 2, &[roots[ci]], 0.9, 0.95));
+                    bass.extend(held(o + span / 2, span / 2, &[roots[ci] + rng.pick(&[7, 12, 0])], 0.8, 0.95));
+                } else { bass.extend(held(o, span, &[roots[ci]], 0.9, 0.95)); }
+            }
+            self.note(if split { "drone moves within the chord" } else { "held drone" });
+        } else {
+            let templates: Vec<Vec<(i64, i64, f64, f64)>> = match bstyle {
+                "house" => vec![vec![(2, 0, 0.95, 0.55), (5, 0, 0.6, 0.3), (7, 12, 0.7, 0.25), (10, 0, 0.9, 0.5), (13, 7, 0.65, 0.3), (14, 0, 0.75, 0.4)],
+                                vec![(3, 0, 0.9, 0.5), (6, 0, 0.6, 0.3), (10, 12, 0.8, 0.3), (11, 0, 0.7, 0.4), (14, 7, 0.7, 0.3)],
+                                vec![(2, 0, 0.95, 0.7), (6, 0, 0.7, 0.4), (9, 7, 0.6, 0.3), (10, 0, 0.9, 0.5), (14, 12, 0.6, 0.25)],
+                                vec![(2, 0, 0.9, 0.6), (6, 0, 0.9, 0.6), (10, 0, 0.9, 0.6), (14, 12, 0.8, 0.4)]],
+                "pulse" => vec![vec![(1, 0, 0.9, 0.6), (3, 0, 0.7, 0.6), (5, 0, 0.9, 0.6), (7, 0, 0.7, 0.6)], vec![(1, 0, 0.9, 0.6), (3, 0, 0.7, 0.5), (5, 0, 0.9, 0.6), (6, 7, 0.6, 0.4), (7, 0, 0.7, 0.5)],
+                                vec![(1, 0, 0.9, 0.9), (5, 0, 0.9, 0.9)], vec![(1, 0, 0.9, 0.6), (4, 0, 0.6, 0.4), (5, 0, 0.9, 0.6), (7, 12, 0.6, 0.3)]],
+                "roll" => vec![(0..16).filter(|s| s % 4 != 0).map(|s| (s, 0, if s % 4 == 2 { 0.9 } else { 0.65 }, 0.4)).collect(),
+                               (0..16).filter(|s| s % 4 >= 2).map(|s| (s, 0, 0.85, 0.4)).collect(),
+                               (0..16).filter(|s| s % 4 != 0).map(|s| (s, if s % 4 == 3 { 12 } else { 0 }, 0.8, 0.35)).collect(),
+                               (0..16).filter(|s| s % 2 == 1).map(|s| (s, 0, 0.85, 0.45)).collect()],
+                "lofi" => vec![vec![(0, 0, 0.9, 0.9), (10, 0, 0.7, 0.5), (14, 7, 0.6, 0.4)], vec![(0, 0, 0.9, 0.6), (6, 0, 0.6, 0.4), (10, 7, 0.7, 0.5)],
+                               vec![(0, 0, 0.9, 0.8), (3, 12, 0.5, 0.25), (10, 0, 0.8, 0.6)], vec![(0, 0, 0.9, 0.5), (8, 7, 0.6, 0.4), (10, 0, 0.8, 0.5), (14, 12, 0.5, 0.3)]],
+                "octave" => vec![(0..16).step_by(2).map(|s| (s, if s % 4 == 2 { 12 } else { 0 }, if s % 4 == 0 { 0.85 } else { 0.65 }, 0.45)).collect(),
+                                 (0..16).filter(|s| s % 4 != 1).map(|s| (s, 0, if s % 4 == 0 { 0.85 } else { 0.6 }, 0.4)).collect(),
+                                 (0..16).step_by(2).map(|s| (s, if s % 8 == 6 { 12 } else { 0 }, 0.8, 0.45)).collect()],
+                "broken" => vec![vec![(0, 0, 0.9, 0.7), (6, 0, 0.7, 0.4), (10, 7, 0.7, 0.4), (11, 0, 0.8, 0.5)], vec![(0, 0, 0.9, 0.5), (3, 0, 0.6, 0.3), (8, 12, 0.6, 0.3), (10, 0, 0.8, 0.6)],
+                                 vec![(0, 0, 0.9, 1.0), (7, 7, 0.6, 0.4), (14, 0, 0.7, 0.3)]],
+                "garage" => vec![vec![(0, 0, 0.9, 0.4), (3, 0, 0.7, 0.3), (6, 12, 0.6, 0.25), (10, 0, 0.85, 0.4), (13, 7, 0.6, 0.3)],
+                                 vec![(0, 0, 0.9, 0.6), (7, 0, 0.7, 0.3), (10, 0, 0.8, 0.5), (14, 12, 0.6, 0.25)],
+                                 vec![(2, 0, 0.9, 0.4), (6, 0, 0.7, 0.3), (9, 7, 0.7, 0.3), (12, 0, 0.8, 0.4)]],
+                "sub" => vec![vec![(0, 0, 0.9, 0.9)], vec![(0, 0, 0.9, 0.5), (10, 0, 0.8, 0.5)], vec![(2, 0, 0.9, 0.8), (10, 0, 0.8, 0.6)]],
+                _ => {
+                    // generative: weighted onsets that avoid the strongest kick positions, root/fifth/octave notes
+                    (0..2).map(|_| {
+                        let w = [0.15, 0.3, 1.0, 0.6, 0.2, 0.5, 0.9, 0.7, 0.15, 0.45, 1.0, 0.6, 0.2, 0.55, 0.9, 0.6];
+                        let n = rng.int(3, 6) as usize;
+                        let mut on: Vec<i64> = vec![];
+                        while on.len() < n {
+                            let s = rng.weighted(&(0..16).map(|i| (i as i64, w[i])).collect::<Vec<_>>());
+                            if !on.contains(&s) { on.push(s); }
+                        }
+                        on.sort();
+                        on.iter().map(|&s| (s, rng.weighted(&[(0, 6.0), (12, 1.5), (7, 1.5)]), rng.pick(&[0.65, 0.8, 0.95]), rng.pick(&[0.3, 0.45, 0.6]))).collect()
+                    }).collect()
+                }
+            };
+            let ti = rng.idx(templates.len());
+            let (a, b) = (templates[ti].clone(), templates[rng.idx(templates.len())].clone());
+            for bar in 0..(64 / spb) {
+                for &(s, iv, v, gt) in if bar % 2 == 0 { &a } else { &b } {
+                    if s >= spb { continue; }
+                    let step = bar * spb + s;
+                    let iv = if iv == 0 && rng.chance(0.1) { rng.pick(&[7, 12]) } else { iv };
+                    bass.push(st(step, &[roots[chord_at(step)] + iv], v, gt, 1.0, false));
+                }
+            }
+            self.note(if bstyle == "gen" { "generated bass line".to_string() } else { format!("{bstyle} bass {}", (b'A' + ti as u8) as char) });
+        }
+
+        // ---- melody (lead) and counter-line, all from chord tones (+ scale passing tones on weak steps)
+        let tones = |ci: usize, lo: i64, hi: i64| -> Vec<i64> {
+            let mut t: Vec<i64> = ch[ci].iter().flat_map(|n| (-2..3).map(move |k| n + 12 * k)).filter(|n| (lo..=hi).contains(n)).collect();
+            t.sort(); t.dedup(); t
+        };
+        let scale: Vec<i64> = (-24..=24).filter(|n| c.m.scale.contains(&(n - c.tonic).rem_euclid(12))).collect();
+        let mut lead = vec![];
+        match c.lead {
+            "arp" => {
+                let orders: [&[usize]; 6] = [&[0, 1, 2, 3], &[0, 1, 2, 3, 2, 1], &[0, 2, 1, 3], &[3, 2, 1, 0], &[0, 1, 2, 3, 4, 3, 2, 1], &[0, 2, 4, 1, 3]];
+                let order = orders[rng.idx(orders.len())];
+                let rate = if div == 1 { rng.pick(&[1, 1, 2]) } else { 1 };
+                let (lo, hi) = rng.pick(&[(-3, 12), (0, 14), (-5, 9)]);
+                let gate = rng.pick(&[0.3, 0.45, 0.6]);
+                let rest = rng.pick(&[0.0, 0.1, 0.2]);
+                for (k, s) in (0..64).step_by(rate as usize).enumerate() {
+                    if rng.chance(rest) { continue; }
+                    let t = tones(chord_at(s), lo, hi);
+                    lead.push(st(s, &[t[order[k % order.len()] % t.len()]], if s % 4 == 0 { 0.9 } else { 0.6 }, gate, 1.0, false));
+                }
+                self.note(format!("arp {} in {}", order.iter().map(|x| x.to_string()).collect::<Vec<_>>().join("-"), if rate == 1 && div == 1 { "16ths" } else { "8ths" }));
+            }
+            "riff" => {
+                let n = rng.int(4, 7) as usize;
+                let mut on: Vec<i64> = rng.sample(16, n).into_iter().map(|x| x as i64).collect();
+                on.sort();
+                let shape: Vec<usize> = (0..n).map(|_| rng.idx(4)).collect();
+                for bar in 0..4 {
+                    for (k, &s) in on.iter().enumerate() {
+                        if bar == 3 && k == n - 1 { continue; }
+                        let step = bar * 16 + s;
+                        let t = tones(chord_at(step), -2, 10);
+                        lead.push(st(step, &[t[shape[k] % t.len()]], if k == 0 { 0.9 } else { 0.7 }, 0.35, 1.0, false));
+                    }
+                }
+                self.note(format!("{n}-note riff"));
+            }
+            "hook" => {
+                let motifs: [&[(i64, i64)]; 8] = [&[(2, 3), (6, 2), (8, 6)], &[(0, 2), (3, 3), (10, 4)], &[(4, 2), (6, 2), (8, 4), (14, 2)], &[(2, 2), (5, 3), (12, 3)],
+                                                  &[(0, 3), (4, 1), (6, 6)], &[(3, 2), (6, 2), (9, 2), (12, 4)], &[(0, 1), (2, 1), (4, 6), (12, 2)], &[(6, 2), (8, 2), (10, 6)]];
+                let mo = motifs[rng.idx(motifs.len())];
+                let shape = rng.pick(&["falling", "rising", "arching", "dipping"]);
+                let plan = rng.pick(&[[1, 1, 1, 0], [1, 0, 1, 1], [1, 1, 0, 1], [1, 0, 1, 0]]);
+                let passing = rng.chance(0.5);
+                let bars = 64 / spb;
+                for bar in 0..bars {
+                    if plan[(bar % 4) as usize] == 0 { continue; }
+                    let ci = chord_at(bar * spb);
+                    let t = tones(ci, 0, 12);
+                    let n = mo.len();
+                    let seq: Vec<i64> = (0..n as i64).map(|i| match shape {
+                        "falling" => t.len() as i64 - 1 - i,
+                        "rising" => i,
+                        "arching" => i.min(n as i64 - 1 - i) + 1,
+                        _ => t.len() as i64 - 1 - i.min(n as i64 - 1 - i),
+                    } + if bar % 4 == 3 { rng.int(-1, 1) } else { 0 }).collect();
+                    for (k, (&(s, ln), &x)) in mo.iter().zip(seq.iter()).enumerate() {
+                        let (s2, l2) = if div == 1 { (s, ln) } else { (s / 2, (ln / 2).max(1)) };
+                        let mut note = t[x.clamp(0, t.len() as i64 - 1) as usize];
+                        if passing && k + 1 < n && l2 <= 1 {
+                            // a short weak note may step to a neighbouring scale tone
+                            if let Some(&p) = scale.iter().find(|&&p| p > note && p - note <= 2) { note = p; }
+                        }
+                        lead.extend(held(bar * spb + s2, l2, &[note], 0.9, 0.9));
+                    }
+                }
+                self.note(format!("hook: {shape} motif"));
+            }
+            "bells" => {
+                let per = rng.int(1, 3) as usize;
+                for ci in 0..4 {
+                    let t = tones(ci, 0, 14);
+                    for s in rng.sample(8, per) { lead.extend(held(ci as i64 * 16 + s as i64 * 2, 2, &[t[rng.idx(t.len())]], rng.pick(&[0.6, 0.8]), 0.9)); }
+                }
+                self.note(format!("{per} bell{} per chord", if per > 1 { "s" } else { "" }));
+            }
+            "counter" => {} // the counter-line below takes the melody slot
+            _ => {}
+        }
+        // counter-line: long guide tones (3rd/7th) moving smoothly, one or two per chord
+        let mut counter = vec![];
+        if c.counter || c.lead == "counter" {
+            let per = rng.int(1, 2);
+            let mut prev = 4;
+            for ci in 0..4 {
+                let span = spb * bpc;
+                let t = tones(ci, -3, 9);
+                for k in 0..per {
+                    let n = *t.iter().min_by_key(|&&n| ((n - prev).abs(), n)).unwrap();
+                    let n = if k == 1 { *t.iter().filter(|&&x| x != n).min_by_key(|&&x| (x - n).abs()).unwrap_or(&n) } else { n };
+                    let len = span / per;
+                    counter.extend(held(ci as i64 * span + k * len, len, &[n], 0.8, 0.95));
+                    prev = n;
+                }
+            }
+            self.note("counter-line on guide tones");
+        }
+        let melody_track = if c.lead == "counter" { std::mem::take(&mut counter) } else { lead };
+
+        // ---- percussion (seq_perc, 16ths) + Pulsing chop gates
+        let mut percs: Vec<Vec<Value>> = vec![vec![], vec![], vec![]];
+        for (slot, kind) in [c.perc, c.perc2].into_iter().enumerate() {
+            let Some(kind) = kind else { continue };
+            let k = rng.pick(&[3, 5, 7]);
+            let rot = rng.int(0, 15);
+            for b in 0..4 {
+                for (i, s) in euclid(k, 16, rot).into_iter().enumerate() {
+                    percs[slot].push(st(b * 16 + s, &[0], rng.pick(&[0.5, 0.7, 0.9]), 0.3, if i == 0 { 1.0 } else { rng.pick(&[1.0, 0.8, 0.6]) }, false));
+                }
+            }
+            self.note(format!("{kind} E({k},16)"));
+        }
+        if c.texture == "Pulsing" {
+            let pats: [&[i64]; 5] = [&[0, 2, 4, 6, 8, 10, 12, 14], &[0, 3, 6, 8, 11, 14], &[0, 2, 3, 6, 8, 10, 11, 14], &[0, 1, 4, 5, 8, 9, 12, 13], &[0, 3, 4, 7, 8, 11, 12, 15]];
+            let p = pats[rng.idx(pats.len())];
+            for b in 0..4 { for &s in p { percs[2].push(st(b * 16 + s, &[0], 1.0, 0.5, 1.0, false)); } }
+            self.note("trance-gate pattern");
+        }
+
+        // ---- song form: lanes on seq_drums (32-bar loop)
+        let brk = if c.genre == "Ambient" { None } else { rng.pick(&[Some(24.0), Some(24.0), Some(16.0), None]) };
+        let on = |pts: &[(f64, f64)]| -> Vec<(f64, f64, &'static str)> {
+            let mut v: Vec<(f64, f64, &str)> = pts.iter().map(|&(b, x)| (b, x, "hold")).collect();
+            v.push((32.0, pts[0].1, "hold"));
+            v
+        };
+        let (kick_l, bass_l, lead_l, perc_l, hats_l): (Vec<(f64, f64)>, Vec<(f64, f64)>, Vec<(f64, f64)>, Vec<(f64, f64)>, Vec<(f64, f64)>) = match c.form {
+            "classic" => (vec![(0.0, 10.0), (24.0, 0.0), (28.0, 10.0)], vec![(0.0, 0.0), (8.0, 10.0), (24.0, 0.0), (28.0, 10.0)],
+                          vec![(0.0, 0.0), (16.0, 10.0)], vec![(0.0, 10.0)], vec![(0.0, 10.0), (24.0, 4.0), (28.0, 10.0)]),
+            "breathe" => (vec![(0.0, 10.0)], vec![(0.0, 10.0), (12.0, 0.0), (16.0, 10.0)], vec![(0.0, 0.0), (8.0, 10.0), (16.0, 0.0), (24.0, 10.0)],
+                          vec![(0.0, 0.0), (8.0, 10.0)], vec![(0.0, 10.0)]),
+            "build" => (vec![(0.0, 10.0), (28.0, 0.0)], vec![(0.0, 0.0), (8.0, 10.0), (28.0, 0.0)], vec![(0.0, 0.0), (16.0, 10.0)],
+                        vec![(0.0, 0.0), (4.0, 10.0)], vec![(0.0, 0.0), (4.0, 10.0)]),
+            _ => (match brk { Some(b) => vec![(0.0, 10.0), (b, 0.0), (b + 4.0, 10.0)], None => vec![(0.0, 10.0)] }, vec![(0.0, 10.0)], vec![(0.0, 10.0)], vec![(0.0, 10.0)], vec![(0.0, 10.0)]),
+        };
+        let kick_l = if c.genre == "Ambient" { vec![(0.0, 6.0)] } else { kick_l };
+        let bass_l = if c.bass_style == "drone" { vec![(0.0, 10.0)] } else { bass_l };
+        self.note(format!("{} form", c.form));
+        let sweep: Vec<(f64, f64, &str)> = match rng.idx(3) {
+            0 => vec![(0.0, -0.6, "hold"), (16.0, 0.3, "linear"), (24.0, 0.6, "linear"), (28.0, -0.1, "ease_in_out"), (32.0, -0.6, "linear")],
+            1 => vec![(0.0, 0.0, "hold"), (8.0, 0.5, "ease_in"), (16.0, -0.4, "ease_out"), (24.0, 0.6, "ease_in"), (32.0, 0.0, "linear")],
+            _ => vec![(0.0, -0.3, "hold"), (28.0, 0.7, "linear"), (32.0, -0.3, "ease_out")],
+        };
+        let throws = c.texture == "Echoing";
+        let fx: Vec<(f64, f64, &str)> = if throws {
+            vec![(0.0, 4.0, "hold"), (7.0, 10.0, "hold"), (8.0, 4.0, "hold"), (15.0, 10.0, "hold"), (16.0, 4.0, "hold"), (23.0, 10.0, "hold"), (28.0, 6.0, "hold"), (31.0, 10.0, "hold"), (32.0, 4.0, "hold")]
+        } else { vec![(0.0, 5.0, "hold"), (20.0, 5.0, "hold"), (24.0, 10.0, "ease_in"), (28.0, 7.0, "hold"), (32.0, 5.0, "linear")] };
+        let lanes: Vec<(&'static str, Vec<(f64, f64, &str)>)> = vec![
+            ("kick", on(&kick_l)), ("bass", on(&bass_l)), ("lead", on(&lead_l)), ("perc", on(&perc_l)), ("hats", on(&hats_l)), ("cut", sweep), ("fx", fx)];
+        self.lanes = lanes.iter().map(|l| l.0).collect();
+        self.scores.insert("seq_drums".into(), json!({"version": 1, "seed": self.seed % 1_000_000, "length": 64, "steps_per_beat": 4,
+            "tracks": [trk(kick, 1, 0), trk(clap, 1, 0), trk(hats, 1, 0), trk(ohat, 1, 0)],
+            "lanes": lanes.iter().map(|l| lane(&l.1)).collect::<Vec<_>>()}));
+        let glide = if matches!(bstyle, "house" | "lofi" | "gen" | "sub" | "garage") { 25 } else { 0 };
+        self.scores.insert("seq_music".into(), json!({"version": 1, "seed": (self.seed + 7) % 1_000_000, "length": 64, "steps_per_beat": 4 / div,
+            "tracks": [trk(chords, 4, 0), trk(bass, 1, glide), trk(melody_track, 1, if c.texture == "Liquid" { 60 } else { 20 }), trk(counter, 1, 40)]}));
+        let [p1, p2, p3]: [Vec<Value>; 3] = percs.try_into().unwrap();
+        self.scores.insert("seq_perc".into(), json!({"version": 1, "seed": (self.seed + 13) % 1_000_000, "length": 64, "steps_per_beat": 4,
+            "tracks": [trk(p1, 1, 0), trk(p2, 1, 0), trk(p3, 1, 0)]}));
+        if c.texture == "Glitchy" {
+            let stut_pool = [(28, 3), (44, 2), (60, 4), (12, 2), (22, 2), (54, 3), (38, 2)];
+            let crush_pool = [(14, 2), (36, 4), (54, 2), (6, 2), (46, 4), (30, 2)];
+            let mut stutter: Vec<Value> = rng.sample(stut_pool.len(), 3).into_iter().flat_map(|i| held(stut_pool[i].0, stut_pool[i].1, &[0], 1.0, 0.9)).collect();
+            let mut crush: Vec<Value> = rng.sample(crush_pool.len(), 3).into_iter().flat_map(|i| held(crush_pool[i].0, crush_pool[i].1, &[0], 1.0, 0.9)).collect();
+            for s in stutter.iter_mut().take(2).chain(crush.iter_mut().take(2)) { s["probability"] = json!(0.6); }
+            let amt = rng.pick(&[4.0, 6.0]);
+            self.scores.insert("seq_glitch".into(), json!({"version": 1, "seed": (self.seed + 99) % 1_000_000, "length": 64, "steps_per_beat": 4,
+                "tracks": [trk(stutter, 1, 0), trk(crush, 1, 0)],
+                "lanes": [lane(&[(0.0, 0.0, "hold"), (4.0, amt, "hold"), (16.0, 8.0, "hold"), (22.0, 10.0, "hold"), (28.0, 4.0, "hold"), (32.0, 0.0, "hold")])]}));
+        }
+    }
+
+    // ------------------------------------------------------------ graph
+    fn assemble(&mut self, c: &mut Ctx) {
+        let (genre, tex) = (c.genre, c.texture);
+        let (sp, six) = (c.space, c.six);
+        let names = self.chord_names.join(" | ");
+        let voice_word = match c.voice {
+            "keys" => "soft electric-piano chords (triangle + sine)", "pluck" => "plucked saw chords", "organ" => "organ chords (stacked sines)",
+            "pad_saw" => "a detuned saw pad", "pad_square" => "a soft square pad", _ => "dub chord stabs (saw + square)",
+        };
+        let lead_word = match c.lead {
+            "hook" => "a sung hook", "arp" => "an arpeggio", "bells" => "sparse bell tones", "riff" => "a looping riff", "counter" => "a slow counter-melody", _ => "",
+        };
+        let mut extras = vec![];
+        if c.pad { extras.push("a pad layer".to_string()); }
+        if c.counter && c.lead != "counter" { extras.push("a counter-line".into()); }
+        for p in [c.perc, c.perc2].into_iter().flatten() { extras.push(format!("{p} percussion")); }
+        let bass_word = if c.bass_style == "drone" { "a deep sine drone".to_string() } else { format!("a {} bass", if c.bass_style == "gen" { "generated" } else { c.bass_style }) };
+        self.description = format!("{}: {} BPM in {}, {names}. {}{}, {bass_word}{}{}; texture: {}.",
+            self.title, self.bpm, self.key_name, voice_word[..1].to_uppercase(), &voice_word[1..],
+            if lead_word.is_empty() { String::new() } else { format!(", {lead_word}") },
+            if extras.is_empty() { String::new() } else { format!(", {}", extras.join(", ")) }, texture_text(tex));
+
+        // row 0 · mix, row 7 · master
+        self.label(0, format!("ROW 0 · MIX\n\n{} · seed {}\nStudio mixer · A → echo · B → reverb", self.title, self.seed));
+        self.module("mixer", "studio_mixer", 0, json!({}), "Studio mixer");
+        self.label(7, "ROW 7 · MASTER\n\nGlue 2:1 → limiter → stereo out".into());
+        self.module("glue", "sidechain_compressor", 7, json!({"threshold_db": -14, "ratio": 2, "attack_ms": 20, "release_ms": 200, "detector_ms": 10, "knee_db": 8, "makeup_db": 1}), "Glue 2:1");
+        self.module("limit", "sidechain_compressor", 7, json!({"threshold_db": -5, "ratio": 20, "attack_ms": 0.1, "release_ms": 80, "detector_ms": 0.1, "knee_db": 2, "makeup_db": 0}), "Limiter");
+        // Crisp builds keep brighter, sharper transients: leave them a little more headroom
+        let gain = r3(out_gain(genre) * if tex == "Crisp" { 0.9 } else { 1.0 });
+        self.module("out", "audio_stereo", 7, json!({"gain": gain, "dc_block": 1}), "Stereo out");
+        self.con("mixer", "left", "glue", "left");
+        self.con("mixer", "right", "glue", "right");
+        let (master_l, master_r) = (format!("c{}", self.cid - 1), format!("c{}", self.cid));
+        self.con("glue", "left", "limit", "left"); self.con("glue", "right", "limit", "right");
+        self.con("limit", "left", "out", "left"); self.con("limit", "right", "out", "right");
+        self.ops.push(Op::Out("out".into()));
+        let damp = Self::cut(c.bright, 3200.0, 0.4);
+        let predelay = c.rng.pick(&[0.01, 0.02, 0.04]);
+        self.module("verb", "stereo_reverb", 0, json!({"decay": r3(0.6 + 0.32 * sp), "size": r3(0.55 + 0.4 * sp), "wet": 1.0, "dry": 0.0, "predelay": predelay, "damping": damp}), "Reverb");
+        self.con("mixer", "send_b_left", "verb", "left"); self.con("mixer", "send_b_right", "verb", "right");
+        self.con("verb", "left", "mixer", "return_b"); self.con_mode("verb", "right", "mixer", "return_b", true);
+        let (mut dl, mut dr): (f64, f64) = c.rng.pick(&[(3.0, 4.0), (3.0, 6.0), (2.0, 3.0), (6.0, 8.0), (4.0, 6.0)]);
+        if genre == "Ambient" { dl *= 2.0; dr *= 2.0; }
+        while six * dl.max(dr) > 1.9 { dl /= 2.0; dr /= 2.0; }
+        let fb = if tex == "Echoing" { 0.62 } else { 0.35 + 0.2 * sp };
+        self.module("echo", "stereo_delay", 0, json!({"time_left": r3(six * dl * 1000.0) / 1000.0, "time_right": r3(six * dr * 1000.0) / 1000.0, "feedback": r3(fb),
+            "crossfeed": if tex == "Liquid" { 0.7 } else { 0.45 }, "wet": 1.0, "dry": 0.0, "low_cut": 300, "high_cut": Self::cut(c.bright, 2600.0, 0.4),
+            "mod_depth": if tex == "Liquid" { 0.08 } else { 0.03 }, "mod_rate": 0.3}), "Echo");
+        self.note(format!("echo {dl}/16 · {dr}/16"));
+        self.con("mixer", "send_a_left", "echo", "left"); self.con("mixer", "send_a_right", "echo", "right");
+        self.con("echo", "left", "mixer", "return_a"); self.con_mode("echo", "right", "mixer", "return_a", true);
+
+        // row 1 · sequencing
+        let div = c.g.div;
+        self.label(1, format!("ROW 1 · SEQUENCING\n\nseq_drums = master clock ({} BPM, swing {}%) + song-form lanes ({}) → seq_music ({names}{}) · seq_perc",
+                              self.bpm, self.swing, c.form, if div == 2 { ", 2 bars each" } else { "" }));
+        self.module("seq_drums", "score_sequencer", 1, json!({"tempo": self.bpm, "swing": self.swing, "running": 1}), "Drums + master clock");
+        self.module("lanes", "poly_split", 1, json!({}), "Song-form lanes");
+        self.con("seq_drums", "automation", "lanes", "signal");
+        let fx = self.lane_out("fx");
+        self.con("lanes", &fx, "mixer", "send_a_cv");
+        let mut clk = ("seq_drums", "clock");
+        if div == 2 {
+            self.module("clk_div", "gates", 1, json!({"length": 0.05}), "Clock ÷2");
+            self.con("seq_drums", "clock", "clk_div", "in"); self.con("seq_drums", "reset", "clk_div", "reset");
+            clk = ("clk_div", "flip");
+        }
+        self.module("seq_music", "score_sequencer", 1, json!({"tempo": self.bpm, "running": 1}), "Harmony: chords · bass · melody · counter");
+        self.con(clk.0, clk.1, "seq_music", "clock"); self.con("seq_drums", "reset", "seq_music", "reset");
+        self.module("seq_perc", "score_sequencer", 1, json!({"tempo": self.bpm, "running": 1}), "Percussion + gates");
+        self.con("seq_drums", "clock", "seq_perc", "clock"); self.con("seq_drums", "reset", "seq_perc", "reset");
+        let lfo_hz = if tex == "Liquid" { 0.25 } else { r3(c.rng.uni(0.04, 0.09)) };
+        self.module("motion", "multi_lfo", 1, json!({"frequency": lfo_hz}), "Slow motion LFO");
+
+        // row 2 · drums
+        let drum_notes: Vec<String> = self.notes.iter().filter(|n| ["kick", "hats", "E("].iter().any(|w| n.contains(w))).cloned().collect();
+        self.label(2, format!("ROW 2 · DRUMS\n\n{genre} kit · {}", drum_notes.join(" · ")));
+        let (kp, kd, kdr, kt) = c.g.kick;
+        let crisp = tex == "Crisp";
+        let kick_p = json!({"mode": 0, "pitch": r3(kp + c.rng.uni(-3.0, 3.0)), "decay": r3(kd * c.rng.uni(0.85, 1.15)), "drive": r3((kdr + c.rng.uni(-0.1, 0.1)).max(0.0)), "tone": kt, "level": 2.0});
+        self.module("kick", "drum_voice", 2, kick_p, "Kick");
+        self.con("seq_drums", "gate1", "kick", "trigger");
+        self.module("kick_vca", "stock_vca", 2, json!({"level": 1.0}), "Kick lane VCA");
+        self.con("kick", "out", "kick_vca", "signal");
+        let kl = self.lane_out("kick");
+        self.con("lanes", &kl, "kick_vca", "cv");
+        self.strip("kick", "kick_vca", "out", if genre == "Ambient" { 1.2 } else { 1.6 }, 0.0, 20.0, 0.0, 0.0, 0.0);
+        if c.clap {
+            let snare = matches!(genre, "Lo-fi Hip Hop" | "Synthwave" | "Downtempo" | "UK Garage");
+            let p = json!({"mode": 1, "pitch": c.rng.int(850, 1200), "decay": r3(if genre == "Synthwave" { 0.3 } else { 0.2 } * c.rng.uni(0.85, 1.2)), "tone": if crisp { 0.4 } else { 0.25 }, "level": 1.4});
+            self.module("clap", "drum_voice", 2, p, if genre == "Dub Techno" { "Rim" } else if snare { "Snare" } else { "Clap" });
+            self.con("seq_drums", "gate2", "clap", "trigger"); self.con("seq_drums", "velocity2", "clap", "accent");
+            self.strip("clap", "clap", "out", if genre == "Dub Techno" { 1.2 } else { 1.5 }, 0.0, 200.0, if genre == "Dub Techno" { 0.08 } else { 0.0 }, if genre == "Synthwave" { 0.45 } else { 0.25 }, -3.0);
+        }
+        let hp = json!({"mode": 2, "pitch": if crisp { c.rng.int(3400, 3800) } else { c.rng.int(2800, 3300) },
+                        "decay": r3(if genre == "Lo-fi Hip Hop" { 0.05 } else { 0.03 } * c.rng.uni(0.8, 1.3)), "tone": if crisp { 0.35 } else { 0.2 }, "level": 1.0});
+        self.module("hats", "drum_voice", 2, hp, "Hats");
+        self.con("seq_drums", "gate3", "hats", "trigger"); self.con("seq_drums", "velocity3", "hats", "accent");
+        self.module("hats_vca", "stock_vca", 2, json!({"level": 1.0}), "Hats lane VCA");
+        self.con("hats", "out", "hats_vca", "signal");
+        let hl = self.lane_out("hats");
+        self.con("lanes", &hl, "hats_vca", "cv");
+        let pan = c.rng.pick(&[-0.2, 0.2]);
+        self.strip("hats", "hats_vca", "out", 2.0, pan, 500.0, 0.0, 0.08, if crisp { -3.0 } else { -6.0 });
+        if self.scores["seq_drums"]["tracks"][3]["steps"].as_array().is_some_and(|s| !s.is_empty()) {
+            self.module("ohat", "drum_voice", 2, json!({"mode": 2, "pitch": 2600, "decay": if crisp { 0.1 } else { 0.16 }, "tone": 0.2, "level": 0.9}), "Open hat");
+            self.con("seq_drums", "gate4", "ohat", "trigger");
+            self.strip("open hat", "ohat", "out", 1.4, -0.15, 400.0, 0.0, 0.08, -6.0);
+        }
+        let pl = self.lane_out("perc");
+        for (slot, kind) in [c.perc, c.perc2].into_iter().enumerate() {
+            let Some(kind) = kind else { continue };
+            let id = if slot == 0 { "perc" } else { "perc2" };
+            let pc = (c.tonic + c.rng.pick(&[0, 7])).rem_euclid(12);
+            let mut hz = 261.62558 * 2f64.powf(pc as f64 / 12.0);
+            while hz > 400.0 { hz /= 2.0; }
+            while hz < 180.0 { hz *= 2.0; }
+            let p = match kind {
+                "tom" => json!({"mode": 0, "pitch": r3(hz / 2.0), "decay": 0.25, "drive": 0.0, "tone": 0.15, "level": 1.3}),
+                "wood" => json!({"mode": 0, "pitch": r3(hz * 2.0), "decay": 0.05, "drive": 0.0, "tone": 0.1, "level": 1.1}),
+                "shaker" => json!({"mode": 2, "pitch": 2300, "decay": 0.07, "tone": 0.1, "level": 0.8}),
+                "rim" => json!({"mode": 1, "pitch": 1500, "decay": 0.05, "tone": 0.2, "level": 1.0}),
+                _ => json!({"mode": 0, "pitch": r3(hz), "decay": 0.12, "drive": 0.0, "tone": 0.15, "level": 1.3}),
+            };
+            let tuned = matches!(kind, "tom" | "wood" | "conga");
+            self.module(id, "drum_voice", 2, p, format!("{}{}", kind[..1].to_uppercase() + &kind[1..], if tuned { format!(" ({})", NOTE[pc as usize]) } else { String::new() }));
+            self.con("seq_perc", &format!("gate{}", slot + 1), id, "trigger");
+            self.con("seq_perc", &format!("velocity{}", slot + 1), id, "accent");
+            let vca = format!("{id}_vca");
+            self.module(&vca, "stock_vca", 2, json!({"level": 1.0}), "Percussion lane VCA");
+            self.con(id, "out", &vca, "signal");
+            self.con("lanes", &pl, &vca, "cv");
+            let pan = c.rng.pick(&[-0.35, 0.35]);
+            self.strip(id, &vca, "out", if kind == "shaker" { 1.27 } else { 0.95 }, pan, 120.0, 0.15, 0.2, -2.0);
+        }
+
+        // row 3 · bass
+        let bstyle = c.bass_style;
+        let drone = bstyle == "drone";
+        let bass_kind = if drone { "sine" } else { c.rng.pick(&["ladder_saw", "ladder_saw", "square", "round", "pwm", "sub"]) };
+        self.label(3, format!("ROW 3 · BASS\n\n{} · {}{}", match bass_kind {
+            "sine" => "sine drone on the roots", "ladder_saw" => "saw through a ladder low-pass (envelope + sweep) over a sine sub",
+            "square" => "square through a ladder low-pass over a sine sub", "round" => "round triangle bass over a sine sub",
+            "pwm" => "slowly pulse-width-modulated square, low-passed", _ => "pure sine sub",
+        }, self.notes.iter().find(|n| n.contains("bass") || n.contains("drone")).cloned().unwrap_or_default(), if c.g.pump { " · ducked by the kick" } else { "" }));
+        self.module("bass_osc", "multi_vco", 3, json!({"frequency": 261.62558, "pulse_width": if bass_kind == "pwm" { 0.4 } else { 0.5 }, "pwm_amount": if bass_kind == "pwm" { 0.3 } else { 0.0 }}), "Bass oscillator");
+        self.con("seq_music", "pitch2", "bass_osc", "pitch");
+        if bass_kind == "pwm" { self.con("motion", "sine", "bass_osc", "pwm"); }
+        let env = if drone { json!({"attack": 0.5, "decay": 0.25, "sustain": 0.8, "release": 1.2}) }
+                  else { json!({"attack": 0.004, "decay": r3(0.25 * c.rng.uni(0.8, 1.3)), "sustain": 0.45, "release": 0.09}) };
+        self.module("bass_env", "adsr", 3, env, "Bass envelope");
+        self.con("seq_music", "gate2", "bass_env", "gate");
+        self.module("bass_gate", "stock_vca", 3, json!({"level": 1.0}), "Envelope × song-form lane");
+        self.con("bass_env", "out", "bass_gate", "signal");
+        let bl = self.lane_out("bass");
+        self.con("lanes", &bl, "bass_gate", "cv");
+        self.kinds.insert("bass", bass_kind.into());
+        let filtered = !matches!(bass_kind, "sine" | "sub");
+        if filtered {
+            let wave = match bass_kind { "square" | "pwm" => "square", "round" => "triangle", _ => "saw" };
+            self.module("bass_fcv", "cv_mix", 3, json!({"level1": 0.5, "level2": r3(c.rng.uni(0.15, 0.26)), "level3": 0.0}), "Filter CV: sweep + envelope");
+            let cl = self.lane_out("cut");
+            self.con("lanes", &cl, "bass_fcv", "in1"); self.con("bass_env", "out", "bass_fcv", "in2");
+            let base = if bstyle == "octave" { 380.0 } else if bass_kind == "round" { 500.0 } else { 260.0 };
+            let cutoff = Self::cut(c.bright, base * c.rng.uni(0.8, 1.25), 0.5);
+            self.module("bass_vcf", "ladder_vcf", 3, json!({"cutoff": cutoff, "resonance": r3(c.rng.uni(0.2, 0.4)), "drive": 0.9}), format!("Ladder low-pass ({wave})"));
+            self.con("bass_osc", wave, "bass_vcf", "signal"); self.con("bass_fcv", "out", "bass_vcf", "cutoff_cv");
+            self.module("bass_vca", "analog_vca", 3, json!({"gain": 1.0}), "Bass VCA");
+            self.con("bass_vcf", "out", "bass_vca", "signal"); self.con("bass_gate", "out", "bass_vca", "cv");
+        }
+        self.module("sub_vca", "analog_vca", 3, json!({"gain": 1.0}), "Sub VCA");
+        self.con("bass_osc", "sine", "sub_vca", "signal"); self.con("bass_gate", "out", "sub_vca", "cv");
+        let (bass_src, sub_src) = if c.g.pump {
+            self.module("low_pump", "sidechain_compressor", 3, json!({"threshold_db": -26, "ratio": 5, "attack_ms": 0.5, "release_ms": 120, "detector_ms": 2, "knee_db": 4, "makeup_db": 0}), "Kick ducks the bass");
+            self.con(if filtered { "bass_vca" } else { "sub_vca" }, "out", "low_pump", "left");
+            self.con("sub_vca", "out", "low_pump", "right");
+            self.con("kick_vca", "out", "low_pump", "sidechain");
+            (("low_pump", "left"), ("low_pump", "right"))
+        } else { (("bass_vca", "out"), ("sub_vca", "out")) };
+        if filtered {
+            let level = if bstyle == "octave" { 1.2 } else { 1.3 } * 10f64.powf(trim_db(&format!("bass:{bass_kind}")) / 20.0);
+            self.strip("bass", bass_src.0, bass_src.1, level, 0.0, 40.0, 0.0, 0.0, -2.0);
+        }
+        let sub_level = match (drone, bass_kind) { (true, _) => 0.31, (_, "sub") => 1.35, _ => 1.12 };
+        self.strip("sub", sub_src.0, sub_src.1, sub_level, 0.0, 20.0, 0.0, 0.0, 0.0);
+
+        // row 4 · chords (+ optional pad layer)
+        self.label(4, format!("ROW 4 · CHORDS\n\n{}{} · 4 voices · low-pass on the sweep lane{}{}", voice_word[..1].to_uppercase(), &voice_word[1..],
+            if c.pad { " · plus a held pad layer" } else { "" }, if c.g.pump { " · pumped by the kick" } else { "" }));
+        let mut pitch = ("seq_music".to_string(), "pitch1".to_string());
+        if tex == "Dusty" {
+            self.module("wow", "cv_mix", 4, json!({"level1": 1.0, "level2": 0.0012, "level3": 0.0}), "Tape wow (± a few cents)");
+            self.con("seq_music", "pitch1", "wow", "in1"); self.con("motion", "sine", "wow", "in2");
+            pitch = ("wow".into(), "out".into());
+        }
+        let cl = self.lane_out("cut");
+        let mut fcv = ("lanes".to_string(), cl.clone());
+        if tex == "Liquid" {
+            self.module("tide", "cv_mix", 4, json!({"level1": 1.0, "level2": 0.25, "level3": 0.0}), "Filter tide: sweep + LFO");
+            self.con("lanes", &cl, "tide", "in1"); self.con("motion", "sine", "tide", "in2");
+            fcv = ("tide".into(), "out".into());
+        }
+        self.kinds.insert("chords", c.voice.into());
+        self.kinds.insert("lead", c.lead.into());
+        let chord_out = self.chord_voice(c, "chord", c.voice, &pitch, ("seq_music", "gate1"), &fcv);
+        self.module("chord_sum", "poly_sum", 4, json!({"level": 1.0}), "Sum voices");
+        self.con(&chord_out.0, &chord_out.1, "chord_sum", "signal");
+        let mut chord_src = ("chord_sum".to_string(), "out".to_string());
+        if tex == "Pulsing" {
+            self.module("chop_env", "adsr", 4, json!({"attack": 0.003, "decay": 0.1, "sustain": 1.0, "release": r3(c.six * 0.6)}), "Trance-gate envelope");
+            self.con("seq_perc", "gate3", "chop_env", "gate");
+            self.module("chop", "stock_vca", 4, json!({"level": 1.0}), "Trance gate");
+            self.con("chord_sum", "out", "chop", "signal"); self.con("chop_env", "out", "chop", "cv");
+            chord_src = ("chop".into(), "out".into());
+        }
+        if c.pad {
+            self.module("pad_hold", "constant", 4, json!({"value": 10.0}), "Pad hold (always on)");
+            let pad_kind = c.rng.pick(&["pad_saw", "pad_square"]);
+            let p = self.chord_voice(c, "pad", pad_kind, &pitch, ("pad_hold", "out"), &fcv);
+            self.module("pad_sum", "poly_sum", 4, json!({"level": 1.0}), "Sum pad voices");
+            self.con(&p.0, &p.1, "pad_sum", "signal");
+        }
+        let (csrc, psrc) = if c.g.pump || tex == "Pulsing" {
+            let release = c.rng.pick(&[180, 220, 260]);
+            self.module("pump", "sidechain_compressor", 4, json!({"threshold_db": if tex == "Pulsing" { -30 } else { -24 }, "ratio": 3, "attack_ms": 2, "release_ms": release, "detector_ms": 6, "knee_db": 8, "makeup_db": 1}), "Kick pump: chords (L) · pad (R)");
+            self.con(&chord_src.0, &chord_src.1, "pump", "left");
+            self.con(if c.pad { "pad_sum" } else { "chord_sum" }, "out", "pump", "right");
+            self.con("kick_vca", "out", "pump", "sidechain");
+            (("pump".to_string(), "left".to_string()), ("pump".to_string(), "right".to_string()))
+        } else { (chord_src, ("pad_sum".to_string(), "out".to_string())) };
+        let dub = genre == "Dub Techno" || tex == "Minimal" || tex == "Echoing";
+        let lvl = match c.voice { "pad_saw" | "pad_square" => 0.6, "keys" => 0.9, "organ" => 0.7, "pluck" => 0.8, _ => 0.9 } * 10f64.powf(trim_db(c.voice) / 20.0);
+        self.strip("chords", &csrc.0, &csrc.1, lvl, 0.0, 150.0, if dub { 0.6 } else if c.voice.starts_with("pad") { 0.1 } else { 0.35 }, 0.25 + 0.2 * sp, -3.0);
+        if c.pad { self.strip("pad", &psrc.0, &psrc.1, 0.124, 0.0, 150.0, 0.05, 0.35 + 0.2 * sp, -4.0); }
+
+        // row 5 · melody (lead + counter-line)
+        let has_lead = c.lead != "none";
+        let has_counter = c.counter && c.lead != "counter";
+        if has_lead || has_counter {
+            let mel_notes: Vec<String> = self.notes.iter().filter(|n| ["arp", "hook", "bell", "riff", "counter"].iter().any(|w| n.contains(w))).cloned().collect();
+            self.label(5, format!("ROW 5 · MELODY\n\n{} built from the chord tones (always in key) · {}", if has_lead { lead_word } else { "a counter-line" }, mel_notes.join(" · ")));
+            let ll = self.lane_out("lead");
+            if has_lead {
+                let (osc_wave, base, env, level) = match c.lead {
+                    "arp" => (c.rng.pick(&["saw", "square", "triangle"]), 800.0, json!({"attack": 0.003, "decay": r3(0.18 * c.rng.uni(0.7, 1.5)), "sustain": 0.2, "release": 0.12}), 0.7),
+                    "riff" => (c.rng.pick(&["saw", "square"]), 700.0, json!({"attack": 0.003, "decay": 0.15, "sustain": 0.3, "release": 0.1}), 0.7),
+                    "bells" => ("triangle", 1800.0, json!({"attack": 0.005, "decay": 1.2, "sustain": 0.0, "release": r3(1.5 * c.rng.uni(0.7, 1.3))}), 1.0),
+                    "counter" => ("triangle", 1200.0, json!({"attack": 0.12, "decay": 0.5, "sustain": 0.8, "release": 0.6}), 0.8),
+                    _ => (c.rng.pick(&["triangle", "triangle", "square", "sine"]), 1500.0, json!({"attack": 0.03, "decay": 0.4, "sustain": 0.7, "release": r3(0.35 * c.rng.uni(0.7, 1.4))}), 0.9),
+                };
+                let base = if osc_wave == "square" { base * 0.6 } else { base };
+                let level = level * 10f64.powf((trim_db(&format!("lead:{}", c.lead)) + if genre == "Ambient" { 9.0 } else { 0.0 }) / 20.0);
+                self.mono_voice(c, "lead", "pitch3", "gate3", osc_wave, base, env, &ll);
+                let pan = c.rng.pick(&[-0.1, 0.1]);
+                self.strip("lead", "lead_vca", "out", level * if osc_wave == "square" { 0.85 } else { 1.0 }, pan, 200.0, 0.45, 0.35, -3.0);
+            }
+            if has_counter {
+                let wave = c.rng.pick(&["triangle", "sine", "square"]);
+                self.mono_voice(c, "counter", "pitch4", "gate4", wave, 1000.0, json!({"attack": 0.12, "decay": 0.5, "sustain": 0.8, "release": 0.6}), &ll);
+                self.strip("counter", "counter_vca", "out", 0.17, 0.25, 200.0, 0.3, 0.4, -4.0);
+            }
+        }
+
+        // row 6 · texture
+        self.label(6, format!("ROW 6 · TEXTURE · {}\n\n{}{}", tex.to_uppercase(), texture_text(tex)[..1].to_uppercase(), &texture_text(tex)[1..]));
+        if tex == "Dusty" || tex == "Spacious" {
+            self.module("noise", "colored_noise", 6, json!({"level": 1, "seed": self.seed % 100_000}), "Noise");
+            if tex == "Dusty" {
+                self.module("hiss", "svf_filter", 6, json!({"cutoff": 2200, "resonance": 0.05}), "Hiss low-pass");
+                self.con("noise", "pink", "hiss", "signal");
+                self.strip("tape hiss", "hiss", "low", 0.018, 0.0, 300.0, 0.0, 0.0, -4.0);
+            } else {
+                self.module("wind", "svf_filter", 6, json!({"cutoff": 600, "resonance": 0.15, "cutoff_cv_amount": 1.0}), "Wind band-pass");
+                self.con("noise", "white", "wind", "signal"); self.con("motion", "triangle", "wind", "cutoff_cv");
+                self.strip("wind", "wind", "band", 0.076, -0.3, 150.0, 0.0, 0.3, -4.0);
+            }
+        }
+        if tex == "Glitchy" { self.glitch_bus(c, &master_l, &master_r); }
+
+        let about = format!("PATCH ENGINE · {} · seed {}\n\n{}\n\n{}", self.title.to_uppercase(), self.seed, self.description, self.notes.join(" · "));
+        self.modules.insert("about".into(), Module { kind: "notes", row: 7, params: json!({}), label: "About".into(), content: Some(json!({"type": "notes", "text": about})) });
+        self.ops.push(Op::Add("about".into()));
+
+        // mixer parameters
+        let mut p = Map::new();
+        p.insert("channels".into(), json!(self.strips.len()));
+        p.insert("master".into(), json!(0.8));
+        p.insert("return_a".into(), json!(0.7));
+        p.insert("return_b".into(), json!(r3(0.6 + 0.25 * sp)));
+        for (i, s) in self.strips.iter().enumerate() {
+            let n = i + 1;
+            let (trim, level) = if s.level > 2.0 { (s.level / 2.0, 2.0) } else { (1.0, s.level) };
+            for (k, v) in [("trim", trim), ("level", level), ("pan", s.pan), ("hpf", s.hpf), ("send_a", s.send_a), ("send_b", s.send_b), ("high_db", s.high_db)] {
+                p.insert(format!("{k}{n}"), json!(r3(v)));
+            }
+        }
+        let legend = self.strips.iter().enumerate().map(|(i, s)| format!("{} {}", i + 1, s.name)).collect::<Vec<_>>().join(" · ");
+        if let Some(m) = self.modules.get_mut("mixer") { m.params = Value::Object(p); m.label = format!("Studio mixer ({} strips)", self.strips.len()); }
+        if let Some(Value::Object(content)) = self.modules.get_mut("label_0").and_then(|m| m.content.as_mut()) {
+            let text = content["text"].as_str().unwrap_or_default().to_string();
+            content.insert("text".into(), json!(format!("{text}\n\n{legend}")));
+        }
+    }
+
+    /// A polyphonic chord voice. Returns the poly output (before summing).
+    fn chord_voice(&mut self, c: &mut Ctx, id: &str, kind: &str, pitch: &(String, String), gate: (&str, &str), fcv: &(String, String)) -> (String, String) {
+        let row = 4;
+        let detune = |cents: f64| r3(261.62558 * 2f64.powf(cents / 1200.0));
+        let osc = format!("{id}_osc");
+        let mut src: (String, String);
+        match kind {
+            "pad_saw" | "stab" => {
+                let cents = c.rng.uni(5.0, 12.0);
+                self.module(&osc, "analog_vco", row, json!({"frequency": detune(cents), "waveform": 0}), "Saw A");
+                self.con(&pitch.0, &pitch.1, &osc, "pitch");
+                let b = format!("{id}_osc2");
+                let (b_kind, b_params, b_out) = if kind == "stab" {
+                    ("multi_vco", json!({"frequency": detune(-cents), "pulse_width": 0.45}), "square")
+                } else { ("analog_vco", json!({"frequency": detune(-cents), "waveform": 0}), "out") };
+                self.module(&b, b_kind, row, b_params, if kind == "stab" { "Square B" } else { "Saw B (detuned)" });
+                self.con(&pitch.0, &pitch.1, &b, "pitch");
+                let mix = format!("{id}_mix");
+                self.module(&mix, "cv_mix", row, json!({"level1": 0.5, "level2": 0.5, "level3": 0.0}), "Blend oscillators");
+                self.con(&osc, "out", &mix, "in1"); self.con(&b, b_out, &mix, "in2");
+                src = (mix, "out".into());
+            }
+            "pad_square" => {
+                self.module(&osc, "multi_vco", row, json!({"frequency": 261.62558, "pulse_width": r3(c.rng.uni(0.3, 0.5))}), "Square");
+                self.con(&pitch.0, &pitch.1, &osc, "pitch");
+                src = (osc.clone(), "square".into());
+            }
+            "organ" => {
+                self.module(&osc, "multi_vco", row, json!({"frequency": 261.62558}), "Sine 8′");
+                self.con(&pitch.0, &pitch.1, &osc, "pitch");
+                let b = format!("{id}_osc2");
+                self.module(&b, "multi_vco", row, json!({"frequency": 523.25116}), "Sine 4′ (octave)");
+                self.con(&pitch.0, &pitch.1, &b, "pitch");
+                let mix = format!("{id}_mix");
+                self.module(&mix, "cv_mix", row, json!({"level1": 0.6, "level2": r3(c.rng.uni(0.25, 0.45)), "level3": 0.0}), "Drawbars");
+                self.con(&osc, "sine", &mix, "in1"); self.con(&b, "sine", &mix, "in2");
+                src = (mix, "out".into());
+            }
+            "keys" => {
+                self.module(&osc, "multi_vco", row, json!({"frequency": 261.62558}), "Keys oscillator");
+                self.con(&pitch.0, &pitch.1, &osc, "pitch");
+                let mix = format!("{id}_mix");
+                self.module(&mix, "cv_mix", row, json!({"level1": 0.55, "level2": 0.45, "level3": 0.0}), "Triangle + sine");
+                self.con(&osc, "triangle", &mix, "in1"); self.con(&osc, "sine", &mix, "in2");
+                src = (mix, "out".into());
+            }
+            _ => { // pluck
+                self.module(&osc, "analog_vco", row, json!({"frequency": 261.62558, "waveform": 0}), "Saw");
+                self.con(&pitch.0, &pitch.1, &osc, "pitch");
+                src = (osc.clone(), "out".into());
+            }
+        }
+        let (a, d, s, r) = match kind {
+            "pad_saw" | "pad_square" => (c.rng.uni(0.25, 0.8), 0.8, 0.85, c.rng.uni(0.8, 1.6)),
+            "organ" => (0.005, 0.2, 1.0, 0.08),
+            "keys" => (0.003, c.rng.uni(0.6, 1.2), 0.15, 0.4),
+            "stab" => (0.003, c.rng.uni(0.15, 0.3), 0.0, 0.15),
+            _ => (0.002, c.rng.uni(0.2, 0.45), 0.0, 0.25),
+        };
+        let env = format!("{id}_env");
+        self.module(&env, "adsr", row, json!({"attack": r3(a), "decay": r3(d), "sustain": s, "release": r3(r)}), "Envelope");
+        self.con(gate.0, gate.1, &env, "gate");
+        let vcf = format!("{id}_vcf");
+        let pluck = kind == "pluck" || kind == "stab";
+        let base = match kind { "pad_saw" => 800.0, "pad_square" => 700.0, "organ" => 2200.0, "keys" => 1800.0, "stab" => 900.0, _ => 600.0 };
+        let cutoff = Self::cut(c.bright, base * c.rng.uni(0.8, 1.2), 0.6);
+        if pluck {
+            // per-voice filter envelope: sweep lane + envelope
+            let fm = format!("{id}_fcv");
+            self.module(&fm, "cv_mix", row, json!({"level1": 1.0, "level2": r3(c.rng.uni(0.2, 0.35)), "level3": 0.0}), "Filter CV: sweep + envelope");
+            self.con(&fcv.0, &fcv.1, &fm, "in1"); self.con(&env, "out", &fm, "in2");
+            self.module(&vcf, "ladder_vcf", row, json!({"cutoff": cutoff, "resonance": r3(c.rng.uni(0.15, 0.3)), "drive": 0.8}), "Ladder low-pass");
+            self.con(&src.0, &src.1, &vcf, "signal"); self.con(&fm, "out", &vcf, "cutoff_cv");
+            src = (vcf.clone(), "out".into());
+        } else {
+            self.module(&vcf, "svf_filter", row, json!({"cutoff": cutoff, "resonance": 0.1, "cutoff_cv_amount": 1}), "Low-pass");
+            self.con(&src.0, &src.1, &vcf, "signal"); self.con(&fcv.0, &fcv.1, &vcf, "cutoff_cv");
+            src = (vcf.clone(), "low".into());
+        }
+        let vca = format!("{id}_vca");
+        self.module(&vca, "stock_vca", row, json!({"level": 1.0}), "VCA");
+        self.con(&src.0, &src.1, &vca, "signal"); self.con(&env, "out", &vca, "cv");
+        (vca, "out".into())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn mono_voice(&mut self, c: &mut Ctx, id: &str, pitch: &str, gate: &str, wave: &str, base: f64, env: Value, lane_port: &str) {
+        let osc = format!("{id}_osc");
+        self.module(&osc, "multi_vco", 5, json!({"frequency": 261.62558}), format!("{} oscillator ({wave})", if id == "lead" { "Melody" } else { "Counter-line" }));
+        self.con("seq_music", pitch, &osc, "pitch");
+        let vcf = format!("{id}_vcf");
+        let cutoff = Self::cut(c.bright, base * c.rng.uni(0.8, 1.2), 0.6);
+        self.module(&vcf, "svf_filter", 5, json!({"cutoff": cutoff, "resonance": r3(c.rng.uni(0.1, 0.2)), "cutoff_cv_amount": 1}), "Low-pass");
+        self.con(&osc, wave, &vcf, "signal"); self.con("motion", "sine", &vcf, "cutoff_cv");
+        let e = format!("{id}_env");
+        self.module(&e, "adsr", 5, env, "Envelope");
+        self.con("seq_music", gate, &e, "gate");
+        let g = format!("{id}_gate");
+        self.module(&g, "stock_vca", 5, json!({"level": 1.0}), "Envelope × song-form lane");
+        self.con(&e, "out", &g, "signal"); self.con("lanes", lane_port, &g, "cv");
+        let vca = format!("{id}_vca");
+        self.module(&vca, "analog_vca", 5, json!({"gain": 1.0}), "VCA");
+        self.con(&vcf, "low", &vca, "signal"); self.con(&g, "out", &vca, "cv");
+    }
+
+    fn glitch_bus(&mut self, c: &mut Ctx, master_l: &str, master_r: &str) {
+        let r = 6;
+        let six = c.six;
+        self.module("seq_glitch", "score_sequencer", r, json!({"tempo": self.bpm, "running": 1}), "Glitch sequencer: stutter · crush + amount lane");
+        self.con("seq_drums", "clock", "seq_glitch", "clock"); self.con("seq_drums", "reset", "seq_glitch", "reset");
+        self.module("g_in", "poly_merge", r, json!({"channels": 2}), "Mix → stereo bus");
+        self.con("mixer", "left", "g_in", "in1"); self.con("mixer", "right", "g_in", "in2");
+        let rep = c.rng.pick(&[1.0, 1.0, 2.0]);
+        let len = (six * rep * 100_000.0).round() / 100_000.0;
+        self.module("cap_gate", "gates", r, json!({"length": len}), format!("Capture window (1/{})", 16.0 / rep));
+        self.con("seq_glitch", "gate1", "cap_gate", "in");
+        self.module("cap_vca", "stock_vca", r, json!({"level": 1.0}), "Capture the slice");
+        self.con("g_in", "out", "cap_vca", "signal"); self.con("cap_gate", "gate", "cap_vca", "cv");
+        self.module("cap_split", "poly_split", r, json!({}), "Split L/R");
+        self.con("cap_vca", "out", "cap_split", "signal");
+        self.module("loop", "stereo_delay", r, json!({"time_left": len, "time_right": len, "feedback": 0.92, "crossfeed": 0.0, "wet": 1.0, "dry": 0.0,
+                                                  "low_cut": 10, "high_cut": 20000, "mod_depth": 0.0, "mod_rate": 0.0}), format!("Stutter loop (1/{})", 16.0 / rep));
+        self.con("cap_split", "out1", "loop", "left"); self.con("cap_split", "out2", "loop", "right");
+        self.module("loop_m", "poly_merge", r, json!({"channels": 2}), "Loop → stereo");
+        self.con("loop", "left", "loop_m", "in1"); self.con("loop", "right", "loop_m", "in2");
+        self.module("g_amt", "poly_merge", r, json!({"channels": 2}), "Switches: stutter · crush");
+        self.con("cap_gate", "delay", "g_amt", "in1"); self.con("seq_glitch", "gate2", "g_amt", "in2");
+        self.module("g_lane", "stock_vca", r, json!({"level": 1.0}), "Switches × amount lane");
+        self.con("g_amt", "out", "g_lane", "signal"); self.con("seq_glitch", "automation", "g_lane", "cv");
+        self.module("g_sw", "poly_split", r, json!({}), "Split switches");
+        self.con("g_lane", "out", "g_sw", "signal");
+        self.module("stut_fade", "fade", r, json!({"position": 0.0, "cv_amount": 1.0, "law": 0}), "Dry ↔ stutter");
+        self.con("g_in", "out", "stut_fade", "a"); self.con("loop_m", "out", "stut_fade", "b"); self.con("g_sw", "out1", "stut_fade", "cv");
+        let mask = c.rng.pick(&[65, 273]);
+        self.module("crush", "quantizer", r, json!({"scale_mask": mask}), "Bit-crush (coarse voltage grid)");
+        self.con("stut_fade", "out", "crush", "pitch");
+        self.module("crush_lp", "svf_filter", r, json!({"cutoff": 3000, "resonance": 0.05}), "Crush low-pass 3 kHz");
+        self.con("crush", "out", "crush_lp", "signal");
+        self.module("crush_fade", "fade", r, json!({"position": 0.0, "cv_amount": 1.0, "law": 0}), "Dry ↔ crushed");
+        self.con("stut_fade", "out", "crush_fade", "a"); self.con("crush_lp", "low", "crush_fade", "b"); self.con("g_sw", "out2", "crush_fade", "cv");
+        self.module("g_out", "poly_split", r, json!({}), "Glitch bus out → master");
+        self.con("crush_fade", "out", "g_out", "signal");
+        self.ops.push(Op::Move(master_l.into(), "g_out".into(), "out1".into()));
+        self.ops.push(Op::Move(master_r.into(), "g_out".into(), "out2".into()));
+        self.note(format!("stutter 1/{}", 16.0 / rep));
+    }
+
+    // ------------------------------------------------------------ outputs
+    fn node_json(&self, id: &str) -> Value {
+        let m = &self.modules[id];
+        let mut n = json!({"id": id, "kind": m.kind, "params": m.params});
+        if let Some(content) = &m.content { n["content"] = content.clone(); }
+        if let Some(score) = self.scores.get(id) { n["score"] = score.clone(); }
+        n
+    }
+
+    /// The finished patch (engine v2) for offline rendering.
+    pub fn patch(&self) -> Value {
+        let mut nodes = vec![];
+        let mut cables: Vec<Value> = vec![];
+        let mut output = Value::Null;
+        for op in &self.ops {
+            match op {
+                Op::Add(id) => nodes.push(self.node_json(id)),
+                Op::Con(id, f, o, t, i, _) => cables.push(json!({"id": id, "from": f, "output": o, "to": t, "input": i})),
+                Op::Move(id, node, port) => for cab in cables.iter_mut().filter(|cab| cab["id"] == *id.as_str()) {
+                    cab["from"] = json!(node); cab["output"] = json!(port);
+                },
+                Op::Out(id) => output = json!(id),
+            }
+        }
+        json!({"version": 2, "sample_rate": 48000, "output": output, "nodes": nodes, "cables": cables})
+    }
+
+    fn edit(&self, op: &Op) -> Value {
+        match op {
+            Op::Add(id) => {
+                let m = &self.modules[id];
+                let mut a = json!({"id": id, "kind": m.kind, "row": m.row});
+                if m.params.as_object().is_some_and(|p| !p.is_empty()) { a["params"] = m.params.clone(); }
+                if let Some(content) = &m.content { a["content"] = content.clone(); }
+                if let Some(score) = self.scores.get(id) { a["score"] = score.clone(); }
+                json!({"tool": "add_module", "arguments": a})
+            }
+            Op::Con(id, f, o, t, i, stack) => {
+                let mut a = json!({"cable_id": id, "from": f, "output": o, "to": t, "input": i});
+                if *stack { a["mode"] = json!("stack"); }
+                json!({"tool": "connect", "arguments": a})
+            }
+            Op::Out(id) => json!({"tool": "set_output", "arguments": {"id": id}}),
+            Op::Move(id, node, port) => json!({"tool": "move_cables", "arguments": {"cable_ids": [id], "end": "output", "node": node, "port": port}}),
+        }
+    }
+
+    /// Ops reordered so every cable lands right after the module that completes it.
+    fn ordered(&self) -> Vec<Op> {
+        let mut added = std::collections::HashSet::new();
+        let (mut pending, mut out): (Vec<Op>, Vec<Op>) = (vec![], vec![]);
+        let ready = |op: &Op, added: &std::collections::HashSet<String>| match op {
+            Op::Con(_, f, _, t, _, _) => added.contains(f) && added.contains(t),
+            Op::Move(_, node, _) => added.contains(node),
+            Op::Out(id) | Op::Add(id) => added.contains(id),
+        };
+        for op in &self.ops {
+            if let Op::Add(id) = op {
+                out.push(op.clone());
+                added.insert(id.clone());
+                let (now, rest): (Vec<Op>, Vec<Op>) = pending.into_iter().partition(|p| ready(p, &added));
+                out.extend(now);
+                pending = rest;
+            } else if ready(op, &added) { out.push(op.clone()); } else { pending.push(op.clone()); }
+        }
+        debug_assert!(pending.is_empty());
+        out
+    }
+
+    /// Every edit in dependency order (for instant builds; chunk to ≤256 per apply_edits).
+    pub fn edits(&self) -> Vec<Value> { self.ordered().iter().map(|op| self.edit(op)).collect() }
+
+    pub fn module_count(&self) -> usize { self.modules.len() }
+
+    /// Recipe card for UIs and tools.
+    pub fn info(&self) -> Value {
+        json!({"title": self.title, "sentence": self.sentence, "description": self.description, "notes": self.notes,
+               "genre": self.genre, "mood": self.mood, "texture": self.texture, "seed": self.seed, "bpm": self.bpm, "swing": self.swing,
+               "key": self.key_name, "chords": self.chord_names, "modules": self.modules.len(), "cables": self.cid,
+               "strips": self.strips.iter().map(|s| s.name.clone()).collect::<Vec<_>>(), "kinds": self.kinds})
+    }
+    pub fn cable_count(&self) -> usize { self.cid }
+
+    /// Reveal: all modules (placed in their rows) for one instant transaction, then cable steps grouped by section.
+    pub fn reveal(&self) -> (Vec<Value>, Vec<Value>) {
+        const ORDER: [u8; 8] = [0, 7, 1, 2, 3, 4, 5, 6];
+        let rank = |r: u8| ORDER.iter().position(|x| *x == r).unwrap();
+        let mut mods = vec![];
+        let mut by_row: BTreeMap<usize, Vec<Value>> = BTreeMap::new();
+        for op in self.ordered() {
+            match &op {
+                Op::Add(_) => mods.push(self.edit(&op)),
+                Op::Con(_, f, _, t, _, _) => {
+                    let r = rank(self.modules[f].row).max(rank(self.modules[t].row));
+                    by_row.entry(if r <= 1 { 0 } else { r }).or_default().push(self.edit(&op));
+                }
+                Op::Out(_) => by_row.entry(0).or_default().push(self.edit(&op)),
+                Op::Move(..) => by_row.entry(rank(6)).or_default().push(self.edit(&op)),
+            }
+        }
+        let names = ["Master + returns", "Master + returns", "Clock + sequencers", "Drums", "Bass", "Chords", "Melody", "Texture"];
+        let mut steps = vec![];
+        for (r, edits) in by_row {
+            let chunks: Vec<&[Value]> = edits.chunks(8).collect();
+            for (k, chunk) in chunks.iter().enumerate() {
+                let label = if chunks.len() > 1 { format!("{} ({})", names[r], k + 1) } else { names[r].to_string() };
+                steps.push(json!({"label": label, "edits": chunk}));
+            }
+        }
+        (mods, steps)
+    }
+
+    /// Showtime: one module per step with the cables it completes, pairing modules when the plan would exceed 64 steps.
+    pub fn showtime(&self) -> Vec<Value> {
+        let mut groups: Vec<Vec<Op>> = vec![];
+        for op in self.ordered() {
+            if matches!(op, Op::Add(_)) || groups.is_empty() { groups.push(vec![op]); } else { groups.last_mut().unwrap().push(op); }
+        }
+        let mut steps: Vec<(String, Vec<Value>)> = vec![];
+        for g in &groups {
+            let label = match &g[0] { Op::Add(id) => self.modules[id].label.clone(), _ => "Patch cables".into() };
+            let edits: Vec<Value> = g.iter().map(|op| self.edit(op)).collect();
+            for (k, chunk) in edits.chunks(8).enumerate() {
+                steps.push((if k == 0 { label.clone() } else { format!("{label} (cables)") }, chunk.to_vec()));
+            }
+        }
+        // merge neighbours until the plan fits the 64-step cap
+        while steps.len() > 64 {
+            let mut merged: Vec<(String, Vec<Value>)> = vec![];
+            for s in steps.drain(..) {
+                if let Some(last) = merged.last_mut() {
+                    if last.1.len() + s.1.len() <= 8 && !last.0.contains(" + ") {
+                        last.0 = format!("{} + {}", last.0, s.0);
+                        last.1.extend(s.1);
+                        continue;
+                    }
+                }
+                merged.push(s);
+            }
+            if merged.len() == steps.len() { break; }
+            steps = merged;
+            if steps.len() > 64 { for s in steps.iter_mut() { s.0 = s.0.replace(" + ", " · "); } }
+        }
+        steps.into_iter().map(|(label, edits)| {
+            let label: String = label.chars().take(150).collect();
+            json!({"label": label, "edits": edits})
+        }).collect()
+    }
+}
