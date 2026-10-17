@@ -51,7 +51,7 @@ result, not hardware accuracy or whole-patch equivalence. VCF explicitly uses
 recorded initial history because the C++ constructor leaves it uninitialized;
 Rust starts fresh histories at zero. Its legacy loader distinguishes absent
 `params` from a present array missing newer CV-depth entries. The 19 focused
-processor cases, three actual Core voice/adoption/no-heap checks, strict Core
+processor cases, four actual Core voice/bypass/adoption/no-heap checks, strict Core
 Clippy and desktop compilation pass. Source-adaptation GPL notices and combined
 binary licensing are included; original OpenPatch code remains MIT. Existing
 Stock oracles are unchanged.
@@ -64,7 +64,7 @@ source slots and legacy CV-depth defaults. The actual user fixture now has
 **29 mapped / 26 unresolved** modules; all 55 modules, 83 cables, source JSON and
 assets survive save/reopen. A real shared-session mono/16-channel voice passes
 parameter edit/undo/redo and fresh saved reopen; the MCP stdio test renders a
-non-silent WAV after the same workflow. Full macOS candidate CI is next; no
+non-silent WAV after the same workflow. The older filter bypasses raw signal to both outputs and freezes its integrator/RNG history; an actual Core regression covers empty, mono and 16-channel routes. Full macOS candidate CI is next; no
 installation yet. Installed 0.2.6 build 8 is unchanged.
 
 Reuse this integration checkout; do not create another worktree for a small slice. The import milestone's local evidence is `native-test-output/rack-import/STATE.json`; Stock Scope's frozen evidence remains under `native-test-output/stock-scope/`. Start one compact current state for the version-correct voice work, referencing those completed records rather than copying their histories.

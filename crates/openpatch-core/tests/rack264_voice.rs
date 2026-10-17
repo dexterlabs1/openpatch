@@ -134,3 +134,61 @@ fn voice_callback_and_state_adoption_do_not_allocate_or_deallocate() {
     let operations = MEMORY_OPERATIONS.with(Cell::get);
     assert_eq!(operations, 0);
 }
+
+fn filter_patch(width: u8, bypassed: bool, output: &str) -> Patch {
+    let mut params = serde_json::Map::from_iter([("channels".into(), json!(width))]);
+    for lane in 1..=16 {
+        params.insert(format!("v{lane}"), json!(lane as f32 / 16.0 - 0.5));
+    }
+    let mut patch: Patch = serde_json::from_value(json!({
+        "version":2,"sample_rate":48000,
+        "nodes":[
+            {"id":"dc","kind":"poly_constant","params":params},
+            {"id":"filter","kind":"rack264_vcf","bypassed":bypassed,
+             "params":{"frequency":0.6,"resonance":0.3,"drive":0.2}}
+        ],
+        "cables":[{"from":"dc","to":"filter","input":"signal"}],
+        "output":"filter","output_port":output
+    }))
+    .unwrap();
+    patch.assign_missing_cable_ids().unwrap();
+    patch
+}
+
+#[test]
+fn rack264_filter_bypass_routes_raw_signal_to_both_outputs_and_freezes_history() {
+    for output in ["lowpass", "highpass"] {
+        for width in [0, 1, 16] {
+            let mut engine = filter_patch(width, true, output).compile().unwrap();
+            let frames = render(&mut engine);
+            for frame in &frames[2..] {
+                assert_eq!(frame.channels, width.max(1));
+                for lane in 0..16 {
+                    let expected = if lane < usize::from(width) {
+                        (lane + 1) as f32 / 16.0 - 0.5
+                    } else {
+                        0.0
+                    };
+                    assert_eq!(
+                        frame.values[lane], expected,
+                        "{output}, width{width}, lane{lane}"
+                    );
+                }
+            }
+        }
+        let patch = filter_patch(16, false, output);
+        let mut running = patch.compile().unwrap();
+        let mut control = patch.compile().unwrap();
+        assert_eq!(render(&mut running), render(&mut control));
+        let mut bypassed = filter_patch(16, true, output).compile().unwrap();
+        bypassed.adopt_state_from(&running);
+        render(&mut bypassed);
+        let mut resumed = patch.compile().unwrap();
+        resumed.adopt_state_from(&bypassed);
+        assert_eq!(
+            render(&mut resumed),
+            render(&mut control),
+            "{output}: bypass must freeze integrator and RNG history"
+        );
+    }
+}
