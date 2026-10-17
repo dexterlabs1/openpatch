@@ -49,6 +49,11 @@ Emilie Gillet from Plaits, under the MIT license. Source revision and full notic
 are in Plaits-algorithms.txt in this directory.
 
 
+TIDAL FUNCTIONS adapts the Tides 2018 generator, clock extractor and tables
+by Emilie Gillet under the MIT license. Exact revisions, adaptation scope and
+full notice are in Tides-algorithms.txt in this directory.
+
+
 Wavetable serialization, hashing and FFT dependencies
 =====================================================
 

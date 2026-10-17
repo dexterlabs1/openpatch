@@ -90,6 +90,7 @@ pub use stock_seq3::initial_stock_seq3_state;
 #[doc(hidden)]
 pub use stock_seq3::{StockSeq3Probe, StockSeq3Snapshot};
 mod stock_lfo;
+mod tidal_functions;
 #[doc(hidden)]
 pub use stock_lfo::{StockLfoProbe, StockLfoSnapshot};
 mod stock_vca;
@@ -461,6 +462,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(stock_lfo::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(tidal_functions::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()

@@ -1,6 +1,6 @@
 # Twenty creative module contracts
 
-Research/design checkpoint: 2026-10-17. **All twenty entries below are proposed, not implemented or qualified.** This is an implementation backlog with explicit source and behavior boundaries, not twenty additions to the shipped catalog. Keep installed OpenPatch 0.2.7 build 9 stable until an authorized upgrade.
+Research/design checkpoint: 2026-10-17. **Tidal Functions is implemented with focused local Mac qualification; nineteen entries remain proposed.** This is an implementation backlog with explicit source and behavior boundaries, not twenty additions to the shipped catalog. The first [development candidate](TIDAL_FUNCTIONS.md) is not installed; family-level macOS CI remains pending. Keep installed OpenPatch 0.2.7 build 9 stable until an authorized upgrade.
 
 ## Scope and existing instruments
 

@@ -1,5 +1,15 @@
 # Rust module coverage
 
+Development addition (not installed): [Tidal Functions](TIDAL_FUNCTIONS.md) is the
+87th catalog kind and the first of the twenty new creative instruments. Its
+Tides 2018 generator/extractor is a pinned MIT Rust source adaptation, with
+explicit native timing/CV/startup policies, four related mono outputs, shared
+Signal Atlas controls and MCP/history/presets. The raw kernel comparison covers
+129,840 frames across 34 source cases; native lifecycle, callback no-heap,
+non-silent Engine samples and UI/MCP workflows have focused Mac checks. This
+adds no verified VCV import mapping, binary compatibility or hardware claim.
+
+
 Inventory verified **2026-10-12** against the official [VCV Core manual](https://vcvrack.com/manual/Core), [Core library listing](https://library.vcvrack.com/Core), and [VCV Free module manuals](https://vcvrack.com/Free).
 
 The first bounded compatibility target is the **12 Core modules plus 37 VCV Free modules** listed below. Core is built into Rack; Free is its included synthesis collection. This is an inventory and implementation plan, not a claim that OpenPatch implements 49 equivalents. The wider third-party plugin ecosystem is open-ended and is not covered by this inventory. Additional plugins need individually specified behavior, implementation scope, and validation.

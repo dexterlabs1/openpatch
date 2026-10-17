@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "scope": "portable source-kernel inputs; not calibrated complete hardware",
   "cases": [
     {
@@ -23,7 +23,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 0,
+      "initial_clock_high": false
     },
     {
       "id": "ad_amplitude",
@@ -46,7 +48,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 0,
+      "initial_clock_high": false
     },
     {
       "id": "ad_slope_phase",
@@ -69,7 +73,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 0,
+      "initial_clock_high": false
     },
     {
       "id": "ad_frequency",
@@ -92,7 +98,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 0,
+      "initial_clock_high": false
     },
     {
       "id": "looping_gates",
@@ -115,7 +123,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 0,
+      "initial_clock_high": false
     },
     {
       "id": "looping_amplitude",
@@ -138,7 +148,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 0,
+      "initial_clock_high": false
     },
     {
       "id": "looping_slope_phase",
@@ -161,7 +173,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 0,
+      "initial_clock_high": false
     },
     {
       "id": "looping_frequency",
@@ -184,7 +198,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 0,
+      "initial_clock_high": false
     },
     {
       "id": "ar_gates",
@@ -207,7 +223,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 0,
+      "initial_clock_high": false
     },
     {
       "id": "ar_amplitude",
@@ -230,7 +248,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 0,
+      "initial_clock_high": false
     },
     {
       "id": "ar_slope_phase",
@@ -253,7 +273,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 0,
+      "initial_clock_high": false
     },
     {
       "id": "ar_frequency",
@@ -276,7 +298,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 0,
+      "initial_clock_high": false
     },
     {
       "id": "clocked_gates",
@@ -299,7 +323,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 1,
+      "initial_clock_high": false
     },
     {
       "id": "clocked_ar_audio_gates",
@@ -322,7 +348,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 1,
+      "initial_clock_high": false
     },
     {
       "id": "clocked_amplitude",
@@ -345,7 +373,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 1,
+      "initial_clock_high": false
     },
     {
       "id": "clocked_ar_audio_amplitude",
@@ -368,7 +398,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 1,
+      "initial_clock_high": false
     },
     {
       "id": "clocked_slope_phase",
@@ -391,7 +423,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 1,
+      "initial_clock_high": false
     },
     {
       "id": "clocked_ar_audio_slope_phase",
@@ -414,7 +448,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 1,
+      "initial_clock_high": false
     },
     {
       "id": "clocked_frequency",
@@ -437,7 +473,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 1,
+      "initial_clock_high": false
     },
     {
       "id": "clocked_ar_audio_frequency",
@@ -460,7 +498,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 1,
+      "initial_clock_high": false
     },
     {
       "id": "clock_and_trigger_priority",
@@ -483,7 +523,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 1,
+      "initial_clock_high": false
     },
     {
       "id": "control_edges",
@@ -521,7 +563,9 @@
           "smoothness": 0.5,
           "shift": 0.5
         }
-      ]
+      ],
+      "clock_start": 0,
+      "initial_clock_high": false
     },
     {
       "id": "filter_reset",
@@ -549,7 +593,9 @@
           "block": 200,
           "reset_filter": true
         }
-      ]
+      ],
+      "clock_start": 0,
+      "initial_clock_high": false
     },
     {
       "id": "extractor_reset",
@@ -577,7 +623,9 @@
           "block": 600,
           "reset_extractor": true
         }
-      ]
+      ],
+      "clock_start": 1,
+      "initial_clock_high": false
     },
     {
       "id": "clock_ratio_half",
@@ -600,7 +648,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 1,
+      "initial_clock_high": false
     },
     {
       "id": "clock_ratio_double",
@@ -623,7 +673,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 1,
+      "initial_clock_high": false
     },
     {
       "id": "firmware_cadence_full",
@@ -646,7 +698,9 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 0,
+      "initial_clock_high": false
     },
     {
       "id": "firmware_cadence_half",
@@ -669,7 +723,337 @@
       "shape": 0.5,
       "smoothness": 0.5,
       "shift": 0.5,
-      "events": []
+      "events": [],
+      "clock_start": 0,
+      "initial_clock_high": false
+    },
+    {
+      "id": "amplitude_scan_ad_0",
+      "sample_rate": 48000,
+      "block_size": 6,
+      "blocks": 140,
+      "ramp_mode": 0,
+      "output_mode": 1,
+      "range": 0,
+      "trigger_patched": true,
+      "clock_patched": false,
+      "gate_period": 480,
+      "gate_high": 120,
+      "clock_period": 240,
+      "clock_high": 48,
+      "ratio": 1.0,
+      "ratio_denominator": 1,
+      "frequency_hz": 200.0,
+      "slope": 0.5,
+      "shape": 0.5,
+      "smoothness": 0.5,
+      "shift": 0.6,
+      "events": [
+        {
+          "block": 20,
+          "shift": 0
+        },
+        {
+          "block": 40,
+          "shift": 0.25
+        },
+        {
+          "block": 60,
+          "shift": 0.5
+        },
+        {
+          "block": 80,
+          "shift": 0.75
+        },
+        {
+          "block": 100,
+          "shift": 1
+        },
+        {
+          "block": 120,
+          "shift": 0.6
+        }
+      ],
+      "clock_start": 0,
+      "initial_clock_high": false
+    },
+    {
+      "id": "amplitude_scan_ad_1",
+      "sample_rate": 48000,
+      "block_size": 6,
+      "blocks": 140,
+      "ramp_mode": 0,
+      "output_mode": 1,
+      "range": 1,
+      "trigger_patched": true,
+      "clock_patched": false,
+      "gate_period": 480,
+      "gate_high": 120,
+      "clock_period": 240,
+      "clock_high": 48,
+      "ratio": 1.0,
+      "ratio_denominator": 1,
+      "frequency_hz": 200.0,
+      "slope": 0.5,
+      "shape": 0.5,
+      "smoothness": 0.5,
+      "shift": 0.6,
+      "events": [
+        {
+          "block": 20,
+          "shift": 0
+        },
+        {
+          "block": 40,
+          "shift": 0.25
+        },
+        {
+          "block": 60,
+          "shift": 0.5
+        },
+        {
+          "block": 80,
+          "shift": 0.75
+        },
+        {
+          "block": 100,
+          "shift": 1
+        },
+        {
+          "block": 120,
+          "shift": 0.6
+        }
+      ],
+      "clock_start": 0,
+      "initial_clock_high": false
+    },
+    {
+      "id": "amplitude_scan_loop_0",
+      "sample_rate": 48000,
+      "block_size": 6,
+      "blocks": 140,
+      "ramp_mode": 1,
+      "output_mode": 1,
+      "range": 0,
+      "trigger_patched": false,
+      "clock_patched": false,
+      "gate_period": 480,
+      "gate_high": 120,
+      "clock_period": 240,
+      "clock_high": 48,
+      "ratio": 1.0,
+      "ratio_denominator": 1,
+      "frequency_hz": 200.0,
+      "slope": 0.5,
+      "shape": 0.5,
+      "smoothness": 0.5,
+      "shift": 0.6,
+      "events": [
+        {
+          "block": 20,
+          "shift": 0
+        },
+        {
+          "block": 40,
+          "shift": 0.25
+        },
+        {
+          "block": 60,
+          "shift": 0.5
+        },
+        {
+          "block": 80,
+          "shift": 0.75
+        },
+        {
+          "block": 100,
+          "shift": 1
+        },
+        {
+          "block": 120,
+          "shift": 0.6
+        }
+      ],
+      "clock_start": 0,
+      "initial_clock_high": false
+    },
+    {
+      "id": "amplitude_scan_loop_1",
+      "sample_rate": 48000,
+      "block_size": 6,
+      "blocks": 140,
+      "ramp_mode": 1,
+      "output_mode": 1,
+      "range": 1,
+      "trigger_patched": false,
+      "clock_patched": false,
+      "gate_period": 480,
+      "gate_high": 120,
+      "clock_period": 240,
+      "clock_high": 48,
+      "ratio": 1.0,
+      "ratio_denominator": 1,
+      "frequency_hz": 200.0,
+      "slope": 0.5,
+      "shape": 0.5,
+      "smoothness": 0.5,
+      "shift": 0.6,
+      "events": [
+        {
+          "block": 20,
+          "shift": 0
+        },
+        {
+          "block": 40,
+          "shift": 0.25
+        },
+        {
+          "block": 60,
+          "shift": 0.5
+        },
+        {
+          "block": 80,
+          "shift": 0.75
+        },
+        {
+          "block": 100,
+          "shift": 1
+        },
+        {
+          "block": 120,
+          "shift": 0.6
+        }
+      ],
+      "clock_start": 0,
+      "initial_clock_high": false
+    },
+    {
+      "id": "amplitude_scan_ar_0",
+      "sample_rate": 48000,
+      "block_size": 6,
+      "blocks": 140,
+      "ramp_mode": 2,
+      "output_mode": 1,
+      "range": 0,
+      "trigger_patched": true,
+      "clock_patched": false,
+      "gate_period": 480,
+      "gate_high": 120,
+      "clock_period": 240,
+      "clock_high": 48,
+      "ratio": 1.0,
+      "ratio_denominator": 1,
+      "frequency_hz": 200.0,
+      "slope": 0.5,
+      "shape": 0.5,
+      "smoothness": 0.5,
+      "shift": 0.6,
+      "events": [
+        {
+          "block": 20,
+          "shift": 0
+        },
+        {
+          "block": 40,
+          "shift": 0.25
+        },
+        {
+          "block": 60,
+          "shift": 0.5
+        },
+        {
+          "block": 80,
+          "shift": 0.75
+        },
+        {
+          "block": 100,
+          "shift": 1
+        },
+        {
+          "block": 120,
+          "shift": 0.6
+        }
+      ],
+      "clock_start": 0,
+      "initial_clock_high": false
+    },
+    {
+      "id": "amplitude_scan_ar_1",
+      "sample_rate": 48000,
+      "block_size": 6,
+      "blocks": 140,
+      "ramp_mode": 2,
+      "output_mode": 1,
+      "range": 1,
+      "trigger_patched": true,
+      "clock_patched": false,
+      "gate_period": 480,
+      "gate_high": 120,
+      "clock_period": 240,
+      "clock_high": 48,
+      "ratio": 1.0,
+      "ratio_denominator": 1,
+      "frequency_hz": 200.0,
+      "slope": 0.5,
+      "shape": 0.5,
+      "smoothness": 0.5,
+      "shift": 0.6,
+      "events": [
+        {
+          "block": 20,
+          "shift": 0
+        },
+        {
+          "block": 40,
+          "shift": 0.25
+        },
+        {
+          "block": 60,
+          "shift": 0.5
+        },
+        {
+          "block": 80,
+          "shift": 0.75
+        },
+        {
+          "block": 100,
+          "shift": 1
+        },
+        {
+          "block": 120,
+          "shift": 0.6
+        }
+      ],
+      "clock_start": 0,
+      "initial_clock_high": false
+    }
+  ],
+  "negative_cases": [
+    {
+      "id": "clocked_gates_frame_zero_rejected",
+      "sample_rate": 48000,
+      "block_size": 6,
+      "blocks": 1200,
+      "ramp_mode": 1,
+      "output_mode": 0,
+      "range": 0,
+      "trigger_patched": false,
+      "clock_patched": true,
+      "gate_period": 480,
+      "gate_high": 120,
+      "clock_period": 240,
+      "clock_high": 48,
+      "ratio": 1.0,
+      "ratio_denominator": 1,
+      "frequency_hz": 200.0,
+      "slope": 0.5,
+      "shape": 0.5,
+      "smoothness": 0.5,
+      "shift": 0.5,
+      "events": [],
+      "clock_start": 0,
+      "initial_clock_high": false,
+      "expected_error": "nonfinite frequency"
     }
   ]
 }

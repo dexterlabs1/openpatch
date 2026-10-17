@@ -1950,3 +1950,66 @@ fn passive_compiled_registry_reports_stacked_and_legacy_routes_without_consuming
     assert_eq!(registry[2].destination_port, 1);
     assert_eq!(engine.host_module_snapshot(handle).unwrap(), before);
 }
+
+#[test]
+fn tidal_functions_first_blocks_high_clock_initialize_taps_and_adoption_use_no_heap() {
+    let mut p = patch(
+        vec![
+            node(
+                "clock",
+                "poly_constant",
+                &[("channels", 16.0), ("v1", 10.0)],
+            ),
+            node(
+                "tidal",
+                "tidal_functions",
+                &[("range", 1.0), ("ramp_mode", 2.0)],
+            ),
+        ],
+        vec![cable("clock", "out", "tidal", "clock")],
+        "tidal",
+    );
+    p.output_port = "out1".into();
+    let mut old = p.compile().unwrap();
+    let mut replacement = p.compile().unwrap();
+    p.nodes[1].bypassed = true;
+    let mut bypass = p.compile().unwrap();
+    let handle = replacement.resolve_module_lights("tidal").unwrap();
+    let taps = std::array::from_fn::<_, 4, _>(|i| {
+        Some(
+            old.resolve_tap("tidal", ["out1", "out2", "out3", "out4"][i], 0)
+                .unwrap(),
+        )
+    });
+    let mut audio = [[0.0; 2]; 129];
+    let mut tapped = [[openpatch_core::TapSample::default(); 4]; 129];
+    let mut frames = [PortFrame::default(); 129];
+    let mut initialized = false;
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|tracking| tracking.set(true));
+    for length in [0, 1, 3, 6, 7, 64, 128, 129] {
+        old.process_audio_block_with_taps(&mut audio[..length], &taps, &mut tapped[..length]);
+        replacement.adopt_state_from(&old);
+        initialized = replacement.initialize_module_state(handle);
+        replacement.process_poly_block(&mut frames[..length]);
+        bypass.adopt_state_from(&old);
+        bypass.process_poly_block(&mut frames[..length]);
+    }
+    TRACK_MEMORY.with(|tracking| tracking.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(initialized);
+    assert!(frames
+        .iter()
+        .all(|frame| frame.channels == 1 && frame.values[0] == 0.0));
+    assert!(tapped
+        .iter()
+        .flatten()
+        .all(|sample| sample.active && sample.value.is_finite()));
+    let lights = replacement.module_lights(handle).unwrap();
+    assert_eq!(lights.count, 4);
+    assert!(lights
+        .brightness
+        .iter()
+        .flatten()
+        .all(|value| value.is_finite()));
+}

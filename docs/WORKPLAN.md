@@ -27,12 +27,16 @@ one undoable graph-aware layout with Auto or 1–8 rows, including retained sour
 panels. These changes are not installed; keep 0.2.7 build 9 stable.
 
 The user's next creative-library milestone is [twenty genuinely new instruments](CREATIVE_MODULES_20.md),
-with independent contracts rather than renamed existing kinds. **Zero of those
-twenty are complete.** Begin with Tides-derived Tidal Functions, then Frame Scene
-and Segment Garden. The [pinned Tides source reference](../scripts/tides2_reference/README.md)
-compiled on ARM and exposed a frame-zero clock-start nonfinite boundary; retain
-that failed evidence and define a safe, explicit native startup contract before
-porting. Source fidelity, shared UI/MCP/history, Custom plus functional tags for
+with independent contracts rather than renamed existing kinds. **Tidal Functions
+is the first implemented development candidate; nineteen remain.** Its native
+Rust generator/extractor matches 129,840 frames in 34 pinned C++ reference cases
+bit for bit, including nonzero amplitude scans, while preserving the original
+frame-zero clock failure as a negative and explicitly adapting native startup.
+Shared Signal Atlas controls, actual output lamps, matching browser thumbnails,
+MCP/history/presets/reopen and callback no-heap checks have focused Mac evidence.
+[Contract and bounds](TIDAL_FUNCTIONS.md), [actual panel capture](../design/reviews/tidal-functions-v1/README.md).
+Next implement Frame Scene, then Segment Garden; run family-level Mac CI once
+the candidate settles. Source fidelity, shared UI/MCP/history, Custom plus functional tags for
 original instruments and Mac validation remain done requirements. Binary-host
 MCP save integration, active panels and actual device qualification remain open
 parallel goal requirements; no hosting-completion or new installation is claimed.

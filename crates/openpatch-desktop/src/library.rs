@@ -91,7 +91,7 @@ impl Category {
             "adsr" | "adsr_eg" => Self::Envelopes,
             "seq3" | "stock_seq3" | "score_sequencer" | "rackmcp_sequencer" => Self::Sequencers,
             "lfo" | "multi_lfo" | "stock_lfo" | "wavetable_lfo" | "gate" | "random"
-            | "random_values" | "sh_asr" => Self::Modulation,
+            | "random_values" | "sh_asr" | "tidal_functions" => Self::Modulation,
             "gain"
             | "mixer"
             | "analog_vca"
@@ -2532,5 +2532,37 @@ mod rackmcp_category_tests {
         assert_eq!(Category::of_kind("rackmcp_sequencer"), Category::Sequencers);
         assert_eq!(category_labels(module), "Sequencers");
         assert!(!has_catalog_tag(module, Category::Custom.label()));
+    }
+}
+
+#[cfg(test)]
+mod tidal_category_tests {
+    use super::*;
+
+    #[test]
+    fn tidal_functions_is_reachable_by_its_functional_roles_and_custom_membership() {
+        let catalog = openpatch_core::catalog();
+        let module = catalog["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|module| module["kind"] == "tidal_functions")
+            .unwrap();
+        assert_eq!(Category::of_kind("tidal_functions"), Category::Modulation);
+        for category in [
+            Category::Modulation,
+            Category::Envelopes,
+            Category::Oscillators,
+            Category::Custom,
+        ] {
+            assert!(
+                category.matches_module(module),
+                "Tidal Functions missing from {}",
+                category.label()
+            );
+        }
+        for query in ["tidal", "clock", "slope", "smoothness"] {
+            assert!(ModuleLibrary::default().matches(module, query));
+        }
     }
 }

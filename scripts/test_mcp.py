@@ -3918,6 +3918,39 @@ class OpenPatchMCPTests(unittest.TestCase):
             "frequency": 0, "pulse_width": .5, "fm_amount": 0, "pwm_amount": 0, "linear_fm": 0, "soft_sync": 0})
         self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
 
+    def test_tidal_functions_source_outputs_history_presets_and_saved_reopen(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["tidal_functions"]
+        self.assertEqual(descriptor["outputs"], ["out1", "out2", "out3", "out4"])
+        self.assertEqual(descriptor["polyphony"]["maximum_channels"], 1)
+        self.assertIn("Custom", descriptor["tags"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "tidal", "kind": "tidal_functions", "params": {"frequency": 200, "output_mode": 2}}],
+            "output": "tidal", "output_port": "out1"}})
+        original = self.patch_snapshot()
+        for port in descriptor["outputs"]:
+            trace = self.payload(self.require_tool_success("capture_signal", {
+                "id": "tidal", "port": port, "seconds": .02, "points": 64,
+                "expected_revision": original["revision"]}))
+            self.assertEqual(trace["summary"]["active_frames"], 960)
+            self.assertTrue(all(math.isfinite(point["mean"]) for point in trace["bins"]))
+            self.assertGreater(max(abs(point["mean"]) for point in trace["bins"]), .01)
+        self.assertEqual(self.patch_snapshot(), original, "capture must remain observational")
+        self.require_tool_success("set_parameter", {"id": "tidal", "parameter": "output_mode", "value": 3})
+        changed = self.patch_snapshot()
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], changed["patch"])
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "tidal"}))["preset"]
+        self.assertEqual(preset["params"]["output_mode"], 3)
+        self.require_tool_success("save_patch", {"filename": "tidal-functions.json"})
+        before = self.patch_snapshot()
+        for name, value in [("frequency", 0), ("ramp_mode", .5), ("clock_ratio", 9)]:
+            self.require_tool_error("set_parameter", {"id": "tidal", "parameter": name, "value": value})
+            self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": []}})
+        self.require_tool_success("load_patch", {"filename": "tidal-functions.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
+
     def test_stock_lfo_source_polarity_phase_origins_and_named_outputs_through_mcp(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         descriptor = modules["stock_lfo"]

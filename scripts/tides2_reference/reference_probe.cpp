@@ -29,19 +29,22 @@ int main() {
     float rate;
     size_t size, blocks;
     int mode, output_mode, range, trigger_patched, clock_patched;
-    size_t gate_period, gate_high, clock_period, clock_high;
+    size_t gate_period, gate_high, clock_period, clock_high, clock_start;
+    int initial_clock_high;
     float ratio;
     int denominator;
     require(bool(std::cin >> rate >> size >> blocks >> mode >> output_mode >> range
       >> trigger_patched >> clock_patched >> gate_period >> gate_high
-      >> clock_period >> clock_high >> ratio >> denominator), "invalid header");
+      >> clock_period >> clock_high >> ratio >> denominator
+      >> clock_start >> initial_clock_high), "invalid header");
     require(rate > 0 && size > 0 && size <= 64 && blocks <= 20000, "invalid dimensions");
     require(mode >= 0 && mode < tides::RAMP_MODE_LAST && output_mode >= 0 && output_mode < tides::OUTPUT_MODE_LAST
       && range >= 0 && range < tides::RANGE_LAST, "invalid enum");
+    require(initial_clock_high == 0 || initial_clock_high == 1, "invalid initial clock level");
     generator.Init();
     extractor.Init(rate, 40.0f / rate);
     stmlib::GateFlags previous_gate = stmlib::GATE_FLAG_LOW;
-    stmlib::GateFlags previous_clock = stmlib::GATE_FLAG_LOW;
+    stmlib::GateFlags previous_clock = initial_clock_high ? stmlib::GATE_FLAG_HIGH : stmlib::GATE_FLAG_LOW;
     std::vector<stmlib::GateFlags> gates(size), clocks(size);
     std::vector<float> ramp(size);
     std::vector<tides::PolySlopeGenerator::OutputSample> output(size);
@@ -54,7 +57,8 @@ int main() {
       for (size_t i = 0; i < size; ++i) {
         const size_t frame = block * size + i;
         previous_gate = stmlib::ExtractGateFlags(previous_gate, trigger_patched && gate_period && frame % gate_period < gate_high);
-        previous_clock = stmlib::ExtractGateFlags(previous_clock, clock_patched && clock_period && frame % clock_period < clock_high);
+        previous_clock = stmlib::ExtractGateFlags(previous_clock, clock_patched && clock_period
+          && frame >= clock_start && (frame - clock_start) % clock_period < clock_high);
         gates[i] = previous_gate;
         clocks[i] = previous_clock;
       }
@@ -63,6 +67,9 @@ int main() {
           range == tides::RANGE_AUDIO && mode == tides::RAMP_MODE_AR,
           tides::Ratio{ratio, denominator}, clocks.data(), ramp.data(), size);
       }
+      // Reject the original zero-duration control-clock boundary before
+      // forwarding infinity to Render. The source extractor is unmodified.
+      require(std::isfinite(frequency), "nonfinite frequency");
       const bool use_ramp = clock_patched && !trigger_patched;
       generator.Render(tides::RampMode(mode), tides::OutputMode(output_mode), tides::Range(range),
         frequency, slope, shape, smoothness, shift, gates.data(), use_ramp ? ramp.data() : nullptr,

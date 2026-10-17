@@ -63,6 +63,7 @@ include!("atlas_mixer_panels.rs");
 include!("atlas_effect_panels.rs");
 include!("atlas_compressor_guide.rs");
 include!("atlas_creative_panels.rs");
+include!("tidal_functions_panel.rs");
 include!("atlas_svf_panel.rs");
 include!("atlas_multi_panels.rs");
 include!("atlas_wavetable_panel.rs");
@@ -105,7 +106,7 @@ fn port_material_scale(kind: &str) -> f32 {
         "seq3" => 1.20,
         "stock_seq3" => 1.07,
         "stock_delay" => 1.20, // y380 sockets must remain inside the 396-point panel.
-        "modal_resonator" => REDESIGNED_PORT_SCALE,
+        "modal_resonator" | "tidal_functions" => REDESIGNED_PORT_SCALE,
         "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "rackmcp_sequencer"
         | "rackmcp_listen" | "crossfade" | "quantizer" | "stock_quantizer" | "poly_sum"
         | "mid_side" | "stock_mid_side" | "mix6" | "stock_mix" => REDESIGNED_PORT_SCALE,
@@ -192,6 +193,8 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("stock_vcf" | "rack264_vcf", _, false) => Above(21.0),
         ("lfo" | "lowpass" | "gain" | "analog_vca", _, false) => Above(25.0),
         ("adsr" | "svf_filter", _, false) => Above(21.0),
+        ("tidal_functions", _, false) => Above(21.0),
+        ("tidal_functions", _, true) => Left(26.0),
         ("macro_voice", _, false) => Above(21.0),
         ("macro_voice", _, true) => Right(32.0),
         ("stock_delay", "signal" | "clock", false) => Right(30.0),
@@ -334,6 +337,7 @@ fn generic_parameter_hardware(
         || atlas_voice(kind)
         || atlas_studio_effect(kind)
         || atlas_creative_kind(kind)
+        || kind == "tidal_functions"
         || matches!(
             kind,
             "stock_vco" | "rack264_vco" | "stock_lfo" | "mix6" | "stock_mix"
@@ -3797,6 +3801,9 @@ impl Rack {
                     &self.lighting,
                 );
             }
+            if node.kind == "tidal_functions" {
+                paint_tidal_configuration(ui, rect, node, self.zoom);
+            }
             if atlas_creative_kind(&node.kind) {
                 paint_atlas_creative_configuration(ui, rect, node, self.zoom, &self.lighting);
             }
@@ -4258,6 +4265,27 @@ impl Rack {
                     });
                     continue;
                 }
+                if node.kind == "tidal_functions" {
+                    if let Some((local, label, choices)) = tidal_selector(name) {
+                        let selector = Rect::from_min_size(
+                            point(local.min.x, local.min.y),
+                            local.size() * self.zoom,
+                        );
+                        painter.text(
+                            point(local.center().x, 54.0),
+                            Align2::CENTER_CENTER,
+                            label,
+                            crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
+                            INK,
+                        );
+                        if let Some(edit) =
+                            self.choice_parameter(ui, node, name, spec, selector, choices)
+                        {
+                            action = Some(edit);
+                        }
+                        continue;
+                    }
+                }
                 if node.kind == "macro_voice" && *name == "engine" {
                     painter.text(
                         point(25.0, 73.0),
@@ -4332,7 +4360,9 @@ impl Rack {
                     "macro_voice" => 8.0,
                     _ => 13.0,
                 };
-                let (knob_position, radius) = if node.kind == "audio_stereo" {
+                let (knob_position, radius) = if node.kind == "tidal_functions" {
+                    tidal_control(name)
+                } else if node.kind == "audio_stereo" {
                     atlas_audio_control(name)
                 } else if node.kind == "vca_mix" {
                     atlas_vca_mix_control(name)
@@ -4431,7 +4461,9 @@ impl Rack {
                 };
                 let geometric = (matches!(node.kind.as_str(), "multi_lfo" | "multi_vco")
                     && *name == "frequency")
-                    || (atlas_voice(&node.kind) && logarithmic && min > 0.0);
+                    || ((atlas_voice(&node.kind) || node.kind == "tidal_functions")
+                        && logarithmic
+                        && min > 0.0);
                 let wave_rate = node.kind == "wavetable_lfo" && *name == "rate";
                 let stock_rate = node.kind == "stock_lfo" && *name == "rate";
                 let stock_pitch = matches!(node.kind.as_str(), "stock_vco" | "rack264_vco")
@@ -4453,6 +4485,7 @@ impl Rack {
                 let fade_percent = (node.kind == "stock_seq3"
                     && matches!(*name, "tempo_amount" | "steps_amount"))
                     || node.kind == "fade"
+                    || (node.kind == "tidal_functions" && *name != "frequency")
                     || (node.kind == "random" && !matches!(*name, "rate" | "unipolar" | "seed"));
                 let vco_percent =
                     (matches!(
@@ -4642,7 +4675,10 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if node.kind == "audio_stereo" {
+                let value_center = if node.kind == "tidal_functions" {
+                    let local = tidal_value_center(name);
+                    point(local.x, local.y)
+                } else if node.kind == "audio_stereo" {
                     let local = atlas_audio_value_center(name);
                     point(local.x, local.y)
                 } else if node.kind == "vca_mix" {
@@ -4716,7 +4752,9 @@ impl Rack {
                 } else {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
-                let readout_width = if node.kind == "audio_stereo" {
+                let readout_width = if node.kind == "tidal_functions" {
+                    88.0
+                } else if node.kind == "audio_stereo" {
                     132.0
                 } else if node.kind == "vca_mix" {
                     if *name == "mix_level" {
@@ -5077,6 +5115,7 @@ impl Rack {
                         || atlas_voice(&node.kind)
                         || atlas_studio_effect(&node.kind)
                         || atlas_creative_kind(&node.kind)
+                        || node.kind == "tidal_functions"
                         || matches!(
                             node.kind.as_str(),
                             "stock_vco" | "rack264_vco" | "stock_lfo" | "mix6" | "stock_mix"
@@ -5169,6 +5208,8 @@ impl Rack {
                     );
                 } else if node.kind == "svf_filter" {
                     paint_atlas_svf_print(&painter, rect, name, self.zoom);
+                } else if node.kind == "tidal_functions" {
+                    paint_tidal_control_print(&painter, rect, name, self.zoom);
                 } else if atlas_creative_kind(&node.kind) {
                     paint_atlas_creative_control_print(&painter, rect, &node.kind, name, self.zoom);
                 } else if atlas_studio_effect(&node.kind) {
@@ -5248,6 +5289,7 @@ impl Rack {
                     || atlas_voice(&node.kind)
                     || atlas_studio_effect(&node.kind)
                     || atlas_creative_kind(&node.kind)
+                    || node.kind == "tidal_functions"
                     || matches!(
                         node.kind.as_str(),
                         "stock_vco" | "rack264_vco" | "stock_lfo" | "mix6" | "stock_mix"
@@ -5903,7 +5945,7 @@ impl Rack {
         output_point: Pos2,
     ) {
         let light_index = match node.kind.as_str() {
-            "logic" => Some(port_index),
+            "logic" | "tidal_functions" => Some(port_index),
             "compare" if port_index >= 4 => Some(port_index - 4),
             "gates" => Some(port_index),
             _ => None,
@@ -5917,7 +5959,11 @@ impl Rack {
             paint_signal_light(
                 painter,
                 output_point
-                    + vec2(0.0, if node.kind == "compare" { 22.0 } else { 17.0 }) * self.zoom,
+                    + (if node.kind == "tidal_functions" {
+                        vec2(26.0, 0.0)
+                    } else {
+                        vec2(0.0, if node.kind == "compare" { 22.0 } else { 17.0 })
+                    }) * self.zoom,
                 brightness,
                 self.zoom,
                 &self.lighting,
@@ -8855,6 +8901,7 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
                 if input { 341.0 } else { 382.0 },
             );
         }
+        "tidal_functions" => return tidal_port(input, index),
         "macro_voice" => {
             return pos2(
                 width * (index + 1) as f32 / (count + 1) as f32,
@@ -9856,6 +9903,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "studio_mixer" => 804.0,
         "modal_resonator" => HP * 32.0,
         "macro_voice" => HP * 20.0,
+        "tidal_functions" => HP * 28.0,
         "scope" | "stock_scope" => HP * 42.0,
         "score_sequencer" => HP * 40.0,
         "rackmcp_sequencer" => HP * 48.0,
@@ -9907,6 +9955,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "blank" => "BLANK",
         "modal_resonator" => "MODAL RESONATOR",
         "macro_voice" => "MACRO VOICE",
+        "tidal_functions" => "TIDAL FUNCTIONS",
         "scope" => "SCOPE",
         "stock_scope" => "STOCK SCOPE",
         "score_sequencer" => "SCORE",
@@ -10115,6 +10164,17 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         return Vec::new();
     };
     let order: &[&str] = match node.kind.as_str() {
+        "tidal_functions" => &[
+            "ramp_mode",
+            "output_mode",
+            "range",
+            "clock_ratio",
+            "frequency",
+            "slope",
+            "shape",
+            "smoothness",
+            "shift",
+        ],
         "macro_voice" => &[
             "engine",
             "frequency",
@@ -10738,6 +10798,7 @@ fn paint_panel(
                 | "drum_voice"
                 | "svf_filter"
                 | "modal_resonator"
+                | "tidal_functions"
                 | "multi_vco"
                 | "multi_lfo"
                 | "wavetable_vco"
@@ -10826,6 +10887,7 @@ fn paint_panel(
                 | "drum_voice"
                 | "svf_filter"
                 | "modal_resonator"
+                | "tidal_functions"
                 | "multi_vco"
                 | "multi_lfo"
                 | "wavetable_vco"
@@ -10995,7 +11057,9 @@ fn paint_jack(
     compact: bool,
     port_scale: f32,
 ) {
-    let label = if kind == "svf_filter" && port == "cutoff_cv" && !output {
+    let label = if kind == "tidal_functions" {
+        tidal_port_label(port)
+    } else if kind == "svf_filter" && port == "cutoff_cv" && !output {
         "FREQ CV"
     } else {
         label
@@ -11076,6 +11140,7 @@ fn paint_jack(
                 | "drum_voice"
                 | "svf_filter"
                 | "modal_resonator"
+                | "tidal_functions"
                 | "multi_vco"
                 | "multi_lfo"
                 | "wavetable_vco"
@@ -12132,7 +12197,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            86,
+            87,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -19011,6 +19076,9 @@ mod tests {
     }
     mod atlas_listen_ui_tests {
         include!("atlas_listen_ui_tests.rs");
+    }
+    mod tidal_functions_ui_tests {
+        include!("tidal_functions_ui_tests.rs");
     }
     mod atlas_rackmcp_ui_tests {
         include!("atlas_rackmcp_ui_tests.rs");
