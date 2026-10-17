@@ -1,6 +1,105 @@
 use super::*;
 use crate::cable_presentation::CablePresentation;
 
+#[test]
+fn cable_materials_share_route_geometry_and_zero_opacity_hides_every_layer() {
+    use crate::cable_presentation::CableFinish;
+    let from = pos2(20., 40.);
+    let to = pos2(650., 120.);
+    for finish in CableFinish::ALL {
+        let ctx = egui::Context::default();
+        let paint = |opacity| {
+            ctx.run(egui::RawInput::default(), |ctx| {
+                paint_cable_curves(
+                    &ctx.debug_painter(),
+                    from,
+                    to,
+                    Color32::from_rgb(70, 177, 161),
+                    1.,
+                    false,
+                    0.,
+                    CablePresentation {
+                        finish,
+                        opacity,
+                        ..Default::default()
+                    },
+                );
+            })
+        };
+        let output = paint(1.);
+        assert!(!curves(&output).is_empty());
+        assert!(curves(&output).iter().all(|curve| {
+            // Shadows/gloss may offset the whole curve, never bend a different route.
+            let shift = curve.points[0] - from;
+            curve
+                .points
+                .iter()
+                .zip(cable_curve_points(from, to, 1., 0., 0.5))
+                .all(|(a, b)| a.distance(b + shift) < 0.001)
+        }));
+        let primitives = ctx.tessellate(output.shapes, output.pixels_per_point);
+        assert!(primitives.iter().all(|p| match &p.primitive {
+            egui::epaint::Primitive::Mesh(mesh) =>
+                mesh.is_valid() && mesh.vertices.iter().all(|v| v.pos.is_finite()),
+            _ => false,
+        }));
+        assert!(paint(0.).shapes.is_empty());
+    }
+}
+
+#[test]
+#[ignore = "writes actual cable material contact sheet"]
+fn cable_material_review() {
+    use crate::cable_presentation::CableFinish;
+    let ctx = egui::Context::default();
+    let size = vec2(720., 560.);
+    let output = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+            ..Default::default()
+        },
+        |ctx| {
+            let painter = ctx.debug_painter();
+            painter.rect_filled(
+                Rect::from_min_size(Pos2::ZERO, size),
+                0.,
+                Color32::from_rgb(25, 29, 28),
+            );
+            for (index, finish) in CableFinish::ALL.iter().enumerate() {
+                let y = 22. + index as f32 * 135.;
+                painter.text(
+                    pos2(25., y),
+                    Align2::LEFT_TOP,
+                    finish.label(),
+                    FontId::proportional(16.),
+                    Color32::from_rgb(232, 222, 197),
+                );
+                paint_cable(
+                    &painter,
+                    pos2(35., y + 36.),
+                    pos2(685., y + 47.),
+                    Color32::from_rgb(53, 172, 154),
+                    1.4,
+                    true,
+                    false,
+                    0.,
+                    CablePresentation {
+                        finish: *finish,
+                        tension: 0.8,
+                        ..Default::default()
+                    },
+                );
+            }
+        },
+    );
+    let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../native-test-output/cable-materials");
+    std::fs::create_dir_all(&destination).unwrap();
+    let mut capture = crate::headless_review::CpuCapture::default();
+    capture.observe(&output);
+    capture.save(&ctx, output, size, destination.join("materials.png"));
+}
+
 fn fixture() -> (Patch, Arc<crate::audio::PortLightFrame>) {
     let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
         {"id":"p","kind":"constant","params":{"value":5}},
@@ -205,6 +304,7 @@ fn cable_presentation_actual_draft_uses_selected_tension_and_full_opacity() {
         opacity: 0.0,
         tension: 1.0,
         plug_brightness: 1.0,
+        ..Default::default()
     });
     frame_output(&ctx, &mut rack, &patch, 0.0, vec![]);
     rack.pending = Some(PendingCable::at_revision(
@@ -278,6 +378,7 @@ fn cable_presentation_animated_tip_and_shadow_use_the_current_nondefault_geometr
                         opacity,
                         tension,
                         plug_brightness: 1.0,
+                        ..Default::default()
                     },
                 );
             });
@@ -340,16 +441,12 @@ fn cable_presentation_high_tension_sag_is_monotonic_bounded_and_screen_scale_con
                         }
                     }
                 }
-                // Default is the exact original control construction.
-                let sag = (from.distance(to) * 0.29 + 38.0 * zoom).clamp(45.0 * zoom, 195.0 * zoom);
+                // Default droops in gravity; stacking changes slack, never lateral bow.
+                let sag = (from.distance(to) * 0.29 + 38.0 * zoom).clamp(45.0 * zoom, 195.0 * zoom)
+                    + fan * zoom * 0.15;
                 assert_eq!(
                     cable_curve_points(from, to, zoom, fan, 0.5),
-                    [
-                        from,
-                        from + vec2(fan * zoom, sag),
-                        to + vec2(fan * zoom, sag),
-                        to
-                    ]
+                    [from, from + vec2(0., sag), to + vec2(0., sag), to]
                 );
             }
         }

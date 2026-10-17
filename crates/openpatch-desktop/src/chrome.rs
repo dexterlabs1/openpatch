@@ -10,6 +10,7 @@ pub(crate) enum Icon {
     Pause,
     Library,
     Scope,
+    SignalPath,
     Visuals,
     Settings,
     Minus,
@@ -205,6 +206,11 @@ fn paint_icon(painter: &egui::Painter, rect: Rect, icon: Icon, ink: Color32) {
             }
             painter.add(egui::Shape::line(teeth, stroke));
             painter.circle_stroke(rect.center(), 2.8, stroke);
+        }
+        Icon::SignalPath => {
+            path(&[(3., 15.), (7., 15.), (7., 5.), (16., 5.)]);
+            path(&[(12., 2.), (16., 5.), (12., 8.)]);
+            painter.circle_filled(point(3., 15.), 1.8, ink);
         }
         Icon::Minus | Icon::Plus => {
             path(&[(4.0, 10.0), (16.0, 10.0)]);

@@ -639,6 +639,7 @@ enum RenderMode {
         allow_manual_press: bool,
     },
     Preview,
+    Inspect,
 }
 impl RenderMode {
     fn is_interactive(self) -> bool {
@@ -747,8 +748,12 @@ impl ModulePreview {
 }
 
 include!("rack_import_panels.rs");
+include!("signal_path.rs");
+include!("cable_surface.rs");
+include!("rack_organize.rs");
 
 pub struct Rack {
+    signal_path: SignalPath,
     bridge_ui: BridgeUi,
     rackmcp_ui: RackMcpUi,
     listen_ui: ListenUi,
@@ -824,6 +829,7 @@ pub struct Rack {
 impl Default for Rack {
     fn default() -> Self {
         Self {
+            signal_path: SignalPath::default(),
             bridge_ui: BridgeUi::default(),
             rackmcp_ui: RackMcpUi::default(),
             listen_ui: ListenUi::default(),
@@ -1934,6 +1940,7 @@ impl Rack {
                     }))
         });
         let drag_interactive = interactive
+            && !self.signal_path.enabled
             && self.annotation_edit.is_none()
             && self.shortcuts_enabled
             && !gesture_interrupted
@@ -2114,6 +2121,7 @@ impl Rack {
             }
         }
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.set_signal_path_mode(false);
             self.cancel_module_drag();
             self.pending = None;
             self.cable_press = None;
@@ -2121,6 +2129,18 @@ impl Rack {
             self.editing = None;
         }
         if interactive
+            && self.shortcuts_enabled
+            && self.navigation_idle()
+            && !ui.ctx().wants_keyboard_input()
+            && !egui::Popup::is_any_open(ui.ctx())
+            && ui.input(|i| {
+                i.focused && i.modifiers == egui::Modifiers::NONE && i.key_pressed(egui::Key::P)
+            })
+        {
+            self.set_signal_path_mode(!self.signal_path_mode());
+        }
+        if interactive
+            && !self.signal_path.enabled
             && self.shortcuts_enabled
             && ui.input(|i| i.focused)
             && !ui.ctx().wants_keyboard_input()
@@ -2238,6 +2258,20 @@ impl Rack {
         paint_background(&painter, canvas, self.pan, self.zoom);
         self.lighting.finish(&painter, background_start);
 
+        self.signal_path.refresh(patch, &self.source_routes);
+        let inspecting = self.signal_path.enabled;
+        let mut inspect_ui = inspecting.then(|| {
+            let mut style = (**ui.style()).clone();
+            style.visuals.disabled_alpha = 1.;
+            style.visuals.widgets.noninteractive = style.visuals.widgets.inactive;
+            ui.new_child(
+                egui::UiBuilder::new()
+                    .id_salt("signal-path-inspect")
+                    .max_rect(canvas)
+                    .style(style)
+                    .disabled(),
+            )
+        });
         let RenderedModules {
             outputs,
             inputs,
@@ -2248,17 +2282,23 @@ impl Rack {
             cable_ordinals,
             action: module_action,
         } = self.render_modules(
-            ui,
+            inspect_ui.as_mut().unwrap_or(ui),
             patch,
             catalog,
             canvas,
             device_rate,
             revision,
-            RenderMode::Interactive {
-                drag_interactive,
-                allow_manual_press: released_manual.is_none(),
+            if inspecting {
+                RenderMode::Inspect
+            } else {
+                RenderMode::Interactive {
+                    drag_interactive,
+                    allow_manual_press: released_manual.is_none(),
+                }
             },
         );
+        let path_geometry = self.signal_path_geometry(&outputs, &inputs, animation_now);
+        self.pick_signal_path(ui, canvas, &path_geometry);
         if let Some(RackAction::Command("set_parameter", args)) = &module_action {
             if let (Some(id), Some(parameter)) = (args["id"].as_str(), args["parameter"].as_str()) {
                 self.construction_animation
@@ -2360,19 +2400,26 @@ impl Rack {
                     CableEnd::Output { node, port } => *node == cable.from && *port == cable.output,
                     CableEnd::Input { node, port } => *node == cable.to && *port == cable.input,
                 });
-                let color = cable_instance_color(cable).gamma_multiply(if picked_up {
-                    0.24
-                } else if self.dragging_cable
-                    && self.pending.as_ref().is_some_and(|pending| {
-                        !cable_gesture_related(cable, pending, nearest.map(|(end, _)| end))
-                    })
-                {
-                    0.32
-                } else if nearest.is_some() && !traced && self.pending.is_none() {
-                    0.48
-                } else {
-                    1.0
-                });
+                let color = cable_instance_color(cable).gamma_multiply(
+                    self.signal_path.dim(cable)
+                        * if picked_up {
+                            0.24
+                        } else if self.dragging_cable
+                            && self.pending.as_ref().is_some_and(|pending| {
+                                !cable_gesture_related(cable, pending, nearest.map(|(end, _)| end))
+                            })
+                        {
+                            0.32
+                        } else if !self.signal_path.enabled
+                            && nearest.is_some()
+                            && !traced
+                            && self.pending.is_none()
+                        {
+                            0.48
+                        } else {
+                            1.0
+                        },
+                );
                 let fan = {
                     let count = input_groups[&(cable.to.as_str(), cable.input.as_str())].len();
                     let ordinal = cable_ordinals[cable_index];
@@ -2454,8 +2501,10 @@ impl Rack {
                     .cables
                     .phase(cable, animation_now);
                 let presentation = crate::cable_presentation::CablePresentation {
-                    opacity: if traced {
+                    opacity: if self.signal_path.contains(cable) || traced {
                         1.0
+                    } else if self.signal_path.enabled {
+                        self.cable_presentation.opacity.max(0.55)
                     } else {
                         self.cable_presentation.opacity
                     },
@@ -2548,19 +2597,30 @@ impl Rack {
                         }
                         CableEnd::Input { node, port } => *node == cable.to && *port == cable.input,
                     });
-                    let color = cable_instance_color(cable).gamma_multiply(if picked_up {
-                        0.24
-                    } else if self.dragging_cable
-                        && self.pending.as_ref().is_some_and(|pending| {
-                            !cable_gesture_related(cable, pending, nearest.map(|(end, _)| end))
-                        })
-                    {
-                        0.32
-                    } else if nearest.is_some() && !route_traced && self.pending.is_none() {
-                        0.48
-                    } else {
-                        1.0
-                    });
+                    let color = cable_instance_color(cable).gamma_multiply(
+                        self.signal_path.dim(cable)
+                            * if picked_up {
+                                0.24
+                            } else if self.dragging_cable
+                                && self.pending.as_ref().is_some_and(|pending| {
+                                    !cable_gesture_related(
+                                        cable,
+                                        pending,
+                                        nearest.map(|(end, _)| end),
+                                    )
+                                })
+                            {
+                                0.32
+                            } else if !self.signal_path.enabled
+                                && nearest.is_some()
+                                && !route_traced
+                                && self.pending.is_none()
+                            {
+                                0.48
+                            } else {
+                                1.0
+                            },
+                    );
                     paint_cable_plug(&painter, point, color, self.zoom);
                     if ordinal + 1 == order.len() && !picked_up {
                         let direction = if output {
@@ -2590,6 +2650,7 @@ impl Rack {
             }
         }
         self.lighting.finish(&painter, cable_start);
+        self.paint_signal_path(ui, &painter, canvas, &path_geometry, patch);
         for (center, count) in stack_badges {
             painter.circle_filled(center, 8.0 * self.zoom, INK);
             painter.circle_stroke(center, 8.0 * self.zoom, Stroke::new(self.zoom, PAPER));
@@ -2782,7 +2843,7 @@ impl Rack {
             }
         }
 
-        if !pointer_on_module {
+        if !pointer_on_module && !self.signal_path.enabled {
             if response.secondary_clicked() || response.double_clicked() {
                 if self.pending.take().is_none() {
                     action = Some(RackAction::OpenBrowser);
@@ -2871,7 +2932,7 @@ impl Rack {
                 drag_interactive,
                 allow_manual_press,
             } => (drag_interactive, allow_manual_press),
-            RenderMode::Preview => (false, false),
+            RenderMode::Preview | RenderMode::Inspect => (false, false),
         };
         let popup_open_at_frame_start =
             !mode.is_interactive() || egui::Popup::is_any_open(ui.ctx());
@@ -5949,7 +6010,7 @@ impl Rack {
                 }
             }
         }
-        if mode.is_interactive() {
+        if !matches!(mode, RenderMode::Preview) {
             pointer_on_module |=
                 self.paint_unresolved_panels(ui, &painter, canvas, &mut inputs, &mut outputs);
         }
@@ -10906,24 +10967,7 @@ fn paint_panel(
         for x in [rect.left() + 7.5 * zoom, rect.right() - 7.5 * zoom] {
             for y in [rect.top() + 5.0 * zoom, rect.bottom() - 5.0 * zoom] {
                 let center = pos2(x, y);
-                painter.circle_filled(
-                    center + vec2(0.0, 0.6) * zoom,
-                    3.7 * zoom,
-                    Color32::from_black_alpha(104),
-                );
-                painter.circle_filled(center, 3.2 * zoom, Color32::from_rgb(100, 103, 100));
-                painter.circle_stroke(
-                    center,
-                    3.2 * zoom,
-                    Stroke::new(0.65 * zoom, Color32::from_rgb(143, 146, 140)),
-                );
-                painter.line_segment(
-                    [
-                        center + vec2(-1.7, 1.0) * zoom,
-                        center + vec2(1.7, -1.0) * zoom,
-                    ],
-                    Stroke::new(1.0 * zoom, Color32::from_rgb(39, 42, 40)),
-                );
+                crate::panel_skin::mounting_screw(painter, center, zoom);
             }
         }
     }
@@ -11339,25 +11383,21 @@ fn paint_cable_curves(
         zoom,
         bus,
         112,
-        presentation.opacity,
+        presentation,
     );
 }
 
 fn cable_curve_points(from: Pos2, to: Pos2, zoom: f32, fan: f32, tension: f32) -> [Pos2; 4] {
     let sag = (from.distance(to) * 0.29 + 38.0 * zoom).clamp(45.0 * zoom, 195.0 * zoom);
-    let original = [
-        from,
-        from + vec2(fan * zoom, sag),
-        to + vec2(fan * zoom, sag),
-        to,
-    ];
+    let sag = (sag + fan * zoom * 0.15).max(0.);
+    let original = [from, from + vec2(0., sag), to + vec2(0., sag), to];
     let tension = if tension.is_finite() {
         tension.clamp(0.0, 1.0)
     } else {
         0.5
     };
-    // Keep the established default and lower-half looseness unchanged. Taut
-    // cables retain a restrained gravity bow instead of becoming rigid rulers.
+    // Gravity changes vertical slack only; horizontal control points stay
+    // inside the plug span, including stacked, vertical and reversed cables.
     if tension == 0.5 {
         return original;
     }
@@ -11366,18 +11406,15 @@ fn cable_curve_points(from: Pos2, to: Pos2, zoom: f32, fan: f32, tension: f32) -
         let looseness = 2.0 * (1.0 - tension);
         return [
             from,
-            straight[1] + (original[1] - straight[1]) * looseness,
-            straight[2] + (original[2] - straight[2]) * looseness,
+            from + vec2(0., sag * looseness),
+            to + vec2(0., sag * looseness),
             to,
         ];
     }
     let distance = from.distance(to);
     // Distance-relative bounds prevent tiny or vertical cables folding back.
     // These are presentation controls, not a physical cable simulation.
-    let bow = vec2(
-        (fan * zoom * 0.12).clamp(-distance * 0.03, distance * 0.03),
-        (distance * 0.055).min(16.0 * zoom),
-    );
+    let bow = vec2(0., (distance * 0.055).min(16.0 * zoom));
     let amount = (tension - 0.5) * 2.0;
     [
         from,
@@ -11686,11 +11723,11 @@ fn paint_committed_cable_curves(
         zoom,
         bus,
         32,
-        presentation.opacity,
+        presentation,
     );
     if progress > 0.0 {
         let prefix = cable_curve_prefix(points, progress);
-        paint_cable_segment(painter, prefix, color, zoom, bus, 112, presentation.opacity);
+        paint_cable_segment(painter, prefix, color, zoom, bus, 112, presentation);
         let accent_start = crate::lighting::next(painter);
         painter.circle_stroke(prefix[3], 4.2 * zoom, Stroke::new(1.2 * zoom, color));
         accent_start
@@ -11699,6 +11736,7 @@ fn paint_committed_cable_curves(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint_cable_segment(
     painter: &egui::Painter,
     points: [Pos2; 4],
@@ -11706,8 +11744,10 @@ fn paint_cable_segment(
     zoom: f32,
     bus: bool,
     shadow_alpha: u8,
-    opacity: f32,
+    presentation: crate::cable_presentation::CablePresentation,
 ) {
+    use crate::cable_presentation::CableFinish;
+    let opacity = presentation.opacity;
     if opacity <= 0.0 {
         return;
     }
@@ -11724,16 +11764,37 @@ fn paint_cable_segment(
         (if bus { 10.0 } else { 8.0 }) * zoom,
         Color32::from_black_alpha((f32::from(shadow_alpha) * opacity).round() as u8),
     ));
-    painter.add(curve(
-        points,
-        (if bus { 7.8 } else { 6.0 }) * zoom,
-        color.gamma_multiply(0.64).gamma_multiply(opacity),
-    ));
-    painter.add(curve(
-        points.map(|point| point - vec2(0.5, 0.8) * zoom),
-        (if bus { 3.6 } else { 2.6 }) * zoom,
-        color.gamma_multiply(1.13).gamma_multiply(opacity),
-    ));
+    let body = (if bus { 7.8 } else { 6.0 }) * zoom;
+    match presentation.finish {
+        CableFinish::Translucent => {
+            painter.add(curve(points, body, color.gamma_multiply(0.42 * opacity)));
+            painter.add(curve(
+                points,
+                1.3 * zoom,
+                Color32::from_rgb(31, 35, 34).gamma_multiply(opacity),
+            ));
+            painter.add(curve(
+                points.map(|p| p - vec2(0.7, 0.8) * zoom),
+                0.9 * zoom,
+                Color32::from_rgba_unmultiplied(235, 247, 239, 95).gamma_multiply(opacity),
+            ));
+        }
+        finish => {
+            painter.add(curve(
+                points,
+                body,
+                color.gamma_multiply(0.64).gamma_multiply(opacity),
+            ));
+            painter.add(curve(
+                points.map(|point| point - vec2(0.5, 0.8) * zoom),
+                (if bus { 3.6 } else { 2.6 }) * zoom,
+                color.gamma_multiply(1.13).gamma_multiply(opacity),
+            ));
+            if finish != CableFinish::Classic && zoom >= 0.6 {
+                paint_cable_surface(painter, points, color, zoom, body, finish, opacity);
+            }
+        }
+    }
 }
 
 fn paint_cable_plug(painter: &egui::Painter, point: Pos2, color: Color32, zoom: f32) {
@@ -12139,6 +12200,9 @@ mod tests {
     }
     mod port_signal_ui_tests {
         include!("port_signal_ui_tests.rs");
+    }
+    mod signal_path_tests {
+        include!("signal_path_tests.rs");
     }
     mod cable_presentation_ui_tests {
         include!("cable_presentation_ui_tests.rs");

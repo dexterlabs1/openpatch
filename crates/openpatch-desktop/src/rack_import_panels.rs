@@ -280,7 +280,8 @@ impl Rack {
             let color = cable
                 .color
                 .map(|c| Color32::from_rgba_unmultiplied(c[0], c[1], c[2], 150))
-                .unwrap_or(Color32::from_rgba_unmultiplied(152, 132, 86, 150));
+                .unwrap_or(Color32::from_rgba_unmultiplied(152, 132, 86, 150))
+                .gamma_multiply(self.signal_path.dim(cable));
             let sag = (end.x - start.x).abs().mul_add(0.1, 35. * self.zoom);
             let point = |t: f32| {
                 let u = 1. - t;
