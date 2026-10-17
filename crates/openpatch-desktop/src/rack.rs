@@ -34,6 +34,7 @@ include!("atlas_mixer_panels.rs");
 include!("atlas_effect_panels.rs");
 include!("atlas_compressor_guide.rs");
 include!("atlas_creative_panels.rs");
+include!("atlas_svf_panel.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
 #[path = "agent_follow.rs"]
@@ -240,7 +241,8 @@ fn generic_parameter_hardware(
 ) -> GenericParameterHardware {
     if has_choices {
         GenericParameterHardware::Choice
-    } else if atlas_voice(kind)
+    } else if kind == "svf_filter"
+        || atlas_voice(kind)
         || atlas_studio_effect(kind)
         || atlas_creative_kind(kind)
         || matches!(kind, "stock_vco" | "stock_lfo" | "mix6" | "stock_mix")
@@ -3566,6 +3568,16 @@ impl Rack {
                     &self.lighting,
                 );
             }
+            if node.kind == "svf_filter" {
+                paint_atlas_svf_configuration(
+                    ui,
+                    rect,
+                    node,
+                    self.zoom,
+                    patch.sample_rate.min(device_rate),
+                    &self.lighting,
+                );
+            }
             if atlas_creative_kind(&node.kind) {
                 paint_atlas_creative_configuration(ui, rect, node, self.zoom, &self.lighting);
             }
@@ -4130,6 +4142,8 @@ impl Rack {
                     (pos2(width * 0.5, 130.0 + index as f32 * 120.0), 30.0)
                 } else if node.kind == "score_sequencer" {
                     (pos2(60.0 + index as f32 * 120.0, 130.0), 24.0)
+                } else if node.kind == "svf_filter" {
+                    atlas_svf_control(name)
                 } else if atlas_creative_kind(&node.kind) {
                     atlas_creative_control(&node.kind, name)
                 } else if atlas_studio_effect(&node.kind) {
@@ -4255,8 +4269,9 @@ impl Rack {
                 let slew_min = (node.kind == "process" && *name == "slew").then_some(min);
                 let multiplier = node.params.get("multiplier").copied().unwrap_or(1.0);
                 let scaled_gain = node.kind == "rescale" && *name == "gain";
-                let display_scale = if atlas_voice(&node.kind)
-                    && matches!(*name, "sustain" | "resonance" | "pulse_width")
+                let display_scale = if (atlas_voice(&node.kind)
+                    && matches!(*name, "sustain" | "resonance" | "pulse_width"))
+                    || (node.kind == "svf_filter" && matches!(*name, "drive" | "resonance"))
                 {
                     100.0
                 } else if node.kind == "stock_quantizer" {
@@ -4274,7 +4289,9 @@ impl Rack {
                 } else {
                     1.0
                 };
-                let display_value = if atlas_voice(&node.kind) {
+                let display_value = if node.kind == "svf_filter" {
+                    atlas_svf_value(name, value, spec)
+                } else if atlas_voice(&node.kind) {
                     atlas_voice_value(&node.kind, name, value, spec)
                 } else if node.kind == "stock_quantizer" {
                     stock_quantizer_offset_value(value)
@@ -4408,7 +4425,10 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if atlas_creative_kind(&node.kind) {
+                let value_center = if node.kind == "svf_filter" {
+                    let local = atlas_svf_value_center(name);
+                    point(local.x, local.y)
+                } else if atlas_creative_kind(&node.kind) {
                     let local = atlas_creative_value_center(&node.kind, name);
                     point(local.x, local.y)
                 } else if atlas_studio_effect(&node.kind) {
@@ -4423,7 +4443,9 @@ impl Rack {
                 } else {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
-                let readout_width = if atlas_creative_kind(&node.kind) {
+                let readout_width = if node.kind == "svf_filter" {
+                    74.0
+                } else if atlas_creative_kind(&node.kind) {
                     if node.kind == "drum_voice" && *name == "mode" {
                         108.0
                     } else if node.kind == "sidechain_compressor" && *name == "makeup_db" {
@@ -4715,7 +4737,8 @@ impl Rack {
                         self.zoom,
                     );
                 } else if let GenericParameterHardware::Rotary { body_radius, .. } = hardware {
-                    let paint_rotary = if atlas_voice(&node.kind)
+                    let paint_rotary = if node.kind == "svf_filter"
+                        || atlas_voice(&node.kind)
                         || atlas_studio_effect(&node.kind)
                         || atlas_creative_kind(&node.kind)
                         || matches!(
@@ -4753,6 +4776,8 @@ impl Rack {
                         clock_ratio,
                         self.zoom,
                     );
+                } else if node.kind == "svf_filter" {
+                    paint_atlas_svf_print(&painter, rect, name, self.zoom);
                 } else if atlas_creative_kind(&node.kind) {
                     paint_atlas_creative_control_print(&painter, rect, &node.kind, name, self.zoom);
                 } else if atlas_studio_effect(&node.kind) {
@@ -4804,7 +4829,8 @@ impl Rack {
                         &painter, center, &node.kind, name, radius, self.zoom,
                     );
                 }
-                let paint_readout = if atlas_voice(&node.kind)
+                let paint_readout = if node.kind == "svf_filter"
+                    || atlas_voice(&node.kind)
                     || atlas_studio_effect(&node.kind)
                     || atlas_creative_kind(&node.kind)
                     || matches!(
@@ -4840,7 +4866,9 @@ impl Rack {
                         .parameter(&node.id, &node.kind, name)
                     {
                         let old = cue.old;
-                        let old_text = if atlas_voice(&node.kind) {
+                        let old_text = if node.kind == "svf_filter" {
+                            atlas_svf_value(name, old, spec)
+                        } else if atlas_voice(&node.kind) {
                             atlas_voice_value(&node.kind, name, old, spec)
                         } else if node.kind == "stock_quantizer" {
                             stock_quantizer_offset_value(old)
@@ -12551,6 +12579,8 @@ fn paint_panel(
                 | "sidechain_compressor"
                 | "macro_voice"
                 | "drum_voice"
+                | "svf_filter"
+                | "modal_resonator"
         )
     {
         paint_atlas_voice_face(painter, rect, node, zoom);
@@ -12631,6 +12661,8 @@ fn paint_panel(
                 | "sidechain_compressor"
                 | "macro_voice"
                 | "drum_voice"
+                | "svf_filter"
+                | "modal_resonator"
         )
     {
         if master {
@@ -12847,6 +12879,11 @@ fn paint_jack(
     compact: bool,
     port_scale: f32,
 ) {
+    let label = if kind == "svf_filter" && port == "cutoff_cv" && !output {
+        "FREQ CV"
+    } else {
+        label
+    };
     if atlas_voice(kind) {
         paint_atlas_voice_socket(painter, center, kind, port, connected, output, zoom);
         return;
@@ -12902,6 +12939,8 @@ fn paint_jack(
             | "sidechain_compressor"
             | "macro_voice"
             | "drum_voice"
+            | "svf_filter"
+            | "modal_resonator"
     ) {
         paint_atlas_socket_hardware(painter, center, 10.3 * zoom * port_scale / 32.0, connected);
     } else {
@@ -20688,6 +20727,9 @@ mod tests {
         include!("large_socket_ui_tests.rs");
     }
 
+    mod atlas_modal_filter_ui_tests {
+        include!("atlas_modal_filter_ui_tests.rs");
+    }
     mod atlas_creative_ui_tests {
         include!("atlas_creative_ui_tests.rs");
     }

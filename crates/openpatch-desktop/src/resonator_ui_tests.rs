@@ -467,13 +467,57 @@ fn resonator_plot_is_static_configuration_and_reacts_to_model_parameters() {
         stems(&later),
         "configuration must not animate as if audio were live"
     );
-    patch.nodes[0].params.insert("pickup_position".into(), 0.5);
-    let changed = frame_output(&ctx, &mut rack, &patch, 31.0, vec![]).1;
+    for (parameter, value) in [
+        ("pickup_position", 0.5),
+        ("strike_position", 0.5),
+        ("stiffness", 0.8),
+    ] {
+        let mut configured = patch.clone();
+        configured.nodes[0].params.insert(parameter.into(), value);
+        let changed = frame_output(&ctx, &mut rack, &configured, 31.0, vec![]).1;
+        assert_ne!(
+            before,
+            stems(&changed),
+            "{parameter} must alter the configured modal stems"
+        );
+    }
+    let profile = |output: &egui::FullOutput| {
+        output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Rect(rect)
+                    if rect.rect.width() == 5.0 && rect.rect.bottom() == 300.0 =>
+                {
+                    Some(format!("{:?}", rect.rect))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let decay_before = profile(&first);
+    assert!(!decay_before.is_empty());
+    patch.nodes[0].params.insert("damping".into(), 0.9);
+    let damped = frame_output(&ctx, &mut rack, &patch, 32.0, vec![]).1;
     assert_ne!(
-        before,
-        stems(&changed),
-        "pickup mode shapes must alter signed modal stems"
+        decay_before,
+        profile(&damped),
+        "loss changes the decay profile"
     );
+    let modes = openpatch_core::modal_resonator_modes(&patch.nodes[0], 48000).unwrap();
+    let expected = format!(
+        "RT60  {:.2} → {:.2} s",
+        modes[0].decay_seconds,
+        modes[modes.len() - 1].decay_seconds
+    );
+    let mut damped_text = Vec::new();
+    for shape in &damped.shapes {
+        labels(&shape.shape, &mut damped_text);
+    }
+    assert!(damped_text.contains(&expected));
+    for label in ["EXCITER / FORCE", "MODES / LOSS", "VELOCITY → OUT"] {
+        assert!(damped_text.iter().any(|text| text == label));
+    }
 }
 
 #[test]
@@ -484,13 +528,32 @@ fn resonator_printed_frequency_range_matches_effective_precision_limits() {
         let mut patch = patch();
         patch.sample_rate = rate;
         let (_, output) = frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 9);
-        assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
-            egui::Shape::Text(text) if text.galley.text() == label)), "{rate}: truthful range print");
+        assert!(
+            output.shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Text(text) if text.galley.text() == label)),
+            "{rate}: truthful range print"
+        );
         let at = pos2(24.0, 12.0) + resonator_control_rects(0).1.center().to_vec2();
-        frame_revision_state(&ctx, &mut rack, &patch, 1.0,
-            vec![egui::Event::PointerMoved(at), button(at, true)], true, true, 9);
-        frame_revision_state(&ctx, &mut rack, &patch, 1.1,
-            vec![button(at, false)], true, true, 9);
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.0,
+            vec![egui::Event::PointerMoved(at), button(at, true)],
+            true,
+            true,
+            9,
+        );
+        frame_revision_state(
+            &ctx,
+            &mut rack,
+            &patch,
+            1.1,
+            vec![button(at, false)],
+            true,
+            true,
+            9,
+        );
         let edit = rack.editing.as_ref().expect("frequency exact entry");
         assert_eq!(edit.max, limit);
         assert_eq!(edit.raw_max, limit);

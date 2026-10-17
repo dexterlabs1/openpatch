@@ -68,7 +68,7 @@ fn contract(kind: &str) -> (f32, Vec<SocketSpec>) {
         "analog_vca" => (150.0, vec![S::input("signal", "IN", 31.071428, 335.5), S::input("cv", "CV", 75.0, 335.5), S::output("out", "OUT", 118.92857, 335.5)]),
         "gain" => (150.0, vec![S::input("signal", "IN", 31.071428, 335.5), S::input("cv", "CV", 75.0, 335.5), S::output("out", "OUT", 118.92857, 335.5)]),
         "adsr" => (240.0, vec![S::input("gate", "GATE", 49.714287, 335.5), S::input("retrigger", "RETRIG", 120.0, 335.5), S::output("out", "ENV", 190.28572, 335.5)]),
-        "svf_filter" => (270.0, vec![S::input("signal", "IN", 90.0, 332.0), S::input("cutoff_cv", "V/OCT", 180.0, 332.0), S::output("low", "LOW", 67.5, 374.0), S::output("band", "BAND", 135.0, 374.0), S::output("high", "HIGH", 202.5, 374.0)]),
+        "svf_filter" => (270.0, vec![S::input("signal", "IN", 90.0, 332.0), S::input("cutoff_cv", "FREQ CV", 180.0, 332.0), S::output("low", "LOW", 67.5, 374.0), S::output("band", "BAND", 135.0, 374.0), S::output("high", "HIGH", 202.5, 374.0)]),
         "analog_vco" => (210.0, vec![
             S::input("pitch", "V/OCT", 43.5, 335.5),
             S::input("fm", "FM", 105.0, 335.5),
@@ -345,7 +345,7 @@ fn assert_large_socket_kind(kind: &str) {
                     assert!(center.x - rim >= bounds.left() && center.x + rim <= bounds.right()
                         && center.y - rim >= bounds.top() && center.y + rim <= bounds.bottom(),
                         "{context}.{}: enlarged rim leaves face", socket.name);
-                    let rim_color = if approved_voice || (matches!(kind, "stock_vcf" | "stock_vca" | "mix6" | "stock_mix" | "stock_delay" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "macro_voice" | "drum_voice") && !socket.output) { Color32::from_rgb(130, 127, 108) } else if socket.output { crate::panel_skin::INK }
+                    let rim_color = if approved_voice || (matches!(kind, "stock_vcf" | "stock_vca" | "mix6" | "stock_mix" | "stock_delay" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "macro_voice" | "drum_voice" | "svf_filter" | "modal_resonator") && !socket.output) { Color32::from_rgb(130, 127, 108) } else if socket.output { crate::panel_skin::INK }
                         else { Color32::from_rgb(190, 191, 182) };
                     assert!(rack.rings.iter().any(|(painted, radius, color)|
                         painted.distance(center) < 0.02

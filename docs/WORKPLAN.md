@@ -86,6 +86,16 @@ The toolbar uses bounded project/status and action groups, aligned controls and 
 
 [Dark-room preview](../design/reviews/signal-atlas-two-modules-v1/native-ux-dark-room.png) · [Toolbar](../design/reviews/signal-atlas-two-modules-v1/native-ux-toolbar.png) · [Value bubble](../design/reviews/signal-atlas-two-modules-v1/native-ux-value-bubble.png).
 
+### SVF and physical resonator continuation
+
+The SVF and Modal Resonator bring the detailed native design to **twenty-five panels**. Both now use the same warm faceplate, hardware, tactile knobs and readouts as the approved voice family, with identical browser thumbnails. The SVF has a larger cutoff control and a configured logarithmic low/band/high core-response guide with explicit dB limits and Q. Its signed CV depth reads in octaves per volt and the input is labeled FREQ CV to reflect adjustable sensitivity. The plot explicitly excludes the upstream nonlinear drive/antialias stage and fixed delay; no live spectrum is invented.
+
+The resonator retains its eight controls and the actual core's natural frequencies, signed force/pickup coupling and mode RT60 profile. The configured display remains readable in darkness. Its force/exciter → modes/loss → velocity output diagram explains the physical signal path, with saved strike/pickup positions below. Existing widths, socket coordinates, raw parameters, precision editing, gesture history and MCP motion remain intact.
+
+[Native panels and matching thumbnails](../design/reviews/signal-atlas-two-modules-v1/native-modal-and-filter.png). **50 focused checks passed**, including real Session successive edits/one-step undo for every rotary, percentage/signed exact entry, all twelve MCP anchors with human units, shared rack/browser geometry, minimum-zoom jack captions and actual named patching. The SVF guide agrees within 0.02 dB with the actual zero-drive engine at three frequencies and three resonance settings across all three outputs. This bounded passband comparison does not establish nonlinear/AA/high-frequency or hardware equivalence. Strict all-target desktop Clippy and formatting passed; light/dim CPU meshes were inspected.
+
+Broader CI for the preceding UX checkpoint passed 1,109 desktop tests and the visualizer job, but exposed two oscillator lamp fixtures that counted the newly brighter additive glow core as an extra lamp. The fixtures now explicitly compare the three actual opaque measured lenses, preserving their unchanged light/dark contract; both pass locally. The new source checkpoint receives complete Mac CI. No DSP/frozen-reference changes, release or installation. Next: multi-voice and wavetable oscillator families.
+
 The following catalog batches describe existing development source, not an approved final design.
 
 ### First catalog batch in progress

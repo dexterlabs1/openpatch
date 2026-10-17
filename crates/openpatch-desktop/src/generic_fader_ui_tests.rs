@@ -849,6 +849,32 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
         ("lfo", "amplitude", 0.5, pos2(40.285713, 198.0)),
         ("lfo", "offset", 0.5, pos2(139.71428, 198.0)),
         ("svf_filter", "cutoff", 1000.0, pos2(67.5, 139.0)),
+        ("svf_filter", "resonance", 0.2, pos2(45.0, 255.0)),
+        ("svf_filter", "drive", 0.0, pos2(135.0, 255.0)),
+        ("svf_filter", "cutoff_cv_amount", 0.0, pos2(225.0, 255.0)),
+        ("modal_resonator", "frequency", 220.0, pos2(44.0, 139.0)),
+        ("modal_resonator", "stiffness", 0.2, pos2(114.0, 139.0)),
+        ("modal_resonator", "decay", 2.0, pos2(184.0, 139.0)),
+        ("modal_resonator", "damping", 0.35, pos2(254.0, 139.0)),
+        (
+            "modal_resonator",
+            "strike_position",
+            0.23,
+            pos2(44.0, 254.0),
+        ),
+        (
+            "modal_resonator",
+            "pickup_position",
+            0.61,
+            pos2(114.0, 254.0),
+        ),
+        (
+            "modal_resonator",
+            "strike_strength",
+            1.0,
+            pos2(184.0, 254.0),
+        ),
+        ("modal_resonator", "level", 1.0, pos2(254.0, 254.0)),
     ] {
         let mut f = FaderFixture::new(kind, parameter, initial, 1.0);
         let center = f.rack.viewport.unwrap().min
@@ -889,6 +915,23 @@ fn signal_atlas_voice_controls_support_successive_drag_and_one_undo() {
 #[test]
 fn approved_voice_numeric_fields_commit_physical_units_and_undo() {
     for (kind, parameter, initial, local, text, expected) in [
+        (
+            "svf_filter",
+            "resonance",
+            0.2,
+            pos2(45.0, 292.0),
+            "75",
+            0.75,
+        ),
+        ("svf_filter", "drive", 0.0, pos2(135.0, 292.0), "25", 0.25),
+        (
+            "svf_filter",
+            "cutoff_cv_amount",
+            0.0,
+            pos2(225.0, 292.0),
+            "-2",
+            -2.0,
+        ),
         ("lfo", "frequency", 2.0, pos2(56.142857, 151.15), "0", 0.0),
         (
             "lfo",

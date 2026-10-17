@@ -47,6 +47,7 @@ fn paint_resonator_configuration(
     origin: Pos2,
     zoom: f32,
     rate: u32,
+    lighting: &crate::lighting::RoomLighting,
 ) {
     let point = |x, y| origin + vec2(x, y) * zoom;
     let print = |x, y, text: String, size, color| {
@@ -58,25 +59,36 @@ fn paint_resonator_configuration(
             color,
         );
     };
-    let copper = Color32::from_rgb(151, 93, 57);
-    let teal = Color32::from_rgb(68, 113, 121);
-    print(311.0, 83.0, "NATURAL MODES".into(), 11.0, INK);
+    let copper = Color32::from_rgb(229, 183, 103);
+    let teal = Color32::from_rgb(116, 185, 177);
+    let screen_ink = Color32::from_rgb(195, 200, 180);
+    let quiet = Color32::from_rgb(133, 143, 123);
+    let draw = AtlasVoicePaint {
+        painter,
+        origin,
+        layout: AtlasVoiceLayout { width: 480.0 },
+        zoom,
+    };
+    let start = crate::lighting::next(painter);
+    draw.screen(Rect::from_min_max(point(304.0, 76.0), point(465.0, 309.0)));
+    print(311.0, 83.0, "NATURAL MODES".into(), 11.0, screen_ink);
     print(
         311.0,
         99.0,
         format!("CONFIG · {} kHz · ZERO CV", rate as f32 / 1000.0),
         8.0,
-        MUTED,
+        quiet,
     );
     let Ok(modes) = openpatch_core::modal_resonator_modes(node, rate) else {
-        print(311.0, 164.0, "Configuration unavailable".into(), 9.0, MUTED);
+        print(311.0, 164.0, "Configuration unavailable".into(), 9.0, quiet);
+        lighting.preserve(painter, start);
         return;
     };
     let plot = Rect::from_min_max(point(313.0, 118.0), point(456.0, 204.0));
     painter.rect_filled(
         plot.expand(7.0 * zoom),
         2.0 * zoom,
-        Color32::from_rgb(215, 207, 188),
+        Color32::from_rgb(17, 28, 20),
     );
     let ceiling = f64::from(rate) * 0.45;
     let x = |frequency: f64| {
@@ -96,20 +108,20 @@ fn paint_resonator_configuration(
         let axis_x = x(hz);
         painter.line_segment(
             [pos2(axis_x, plot.top()), pos2(axis_x, plot.bottom())],
-            Stroke::new(0.5 * zoom, Color32::from_rgb(182, 183, 170)),
+            Stroke::new(0.5 * zoom, Color32::from_rgb(45, 59, 44)),
         );
         painter.text(
             pos2(axis_x, plot.bottom() + 11.0 * zoom),
             Align2::CENTER_CENTER,
             label,
             crate::panel_skin::print_font(painter.ctx(), 8.0 * zoom),
-            MUTED,
+            quiet,
         );
     }
     let baseline = plot.center().y;
     painter.line_segment(
         [pos2(plot.left(), baseline), pos2(plot.right(), baseline)],
-        Stroke::new(0.8 * zoom, Color32::from_rgb(128, 132, 120)),
+        Stroke::new(0.8 * zoom, Color32::from_rgb(84, 104, 78)),
     );
     for mode in &modes {
         if !mode.active {
@@ -131,9 +143,9 @@ fn paint_resonator_configuration(
             ceiling / 1000.0
         ),
         8.0,
-        MUTED,
+        quiet,
     );
-    print(311.0, 245.0, "± FORCE × PICKUP · LOG Hz".into(), 8.0, MUTED);
+    print(311.0, 245.0, "± FORCE × PICKUP · LOG Hz".into(), 8.0, quiet);
     print(
         311.0,
         261.0,
@@ -143,7 +155,7 @@ fn paint_resonator_configuration(
             modes[modes.len() - 1].decay_seconds
         ),
         9.0,
-        INK,
+        screen_ink,
     );
     // A static decay profile indexed by mode, independent of audio energy.
     for (index, mode) in modes.iter().enumerate() {
@@ -155,7 +167,7 @@ fn paint_resonator_configuration(
             if mode.active {
                 copper
             } else {
-                Color32::from_rgb(178, 178, 162)
+                Color32::from_rgb(63, 75, 58)
             },
         );
     }
@@ -164,8 +176,9 @@ fn paint_resonator_configuration(
         300.0,
         format!("MODE 1 → {} · DECAY PROFILE", modes.len()),
         8.0,
-        MUTED,
+        quiet,
     );
+    lighting.preserve(painter, start); // configured coefficients emit; no live energy
 }
 
 impl Rack {
@@ -350,7 +363,7 @@ impl Rack {
                 }
                 action = Some(RackAction::Command("set_parameter", args));
             }
-            crate::panel_skin::signal_atlas_rotary(
+            paint_atlas_voice_rotary(
                 &painter,
                 knob_rect.center(),
                 normalized,
@@ -403,7 +416,7 @@ impl Rack {
                 display,
                 resonator_parameter_help(name)
             ));
-            crate::panel_skin::readout(
+            paint_atlas_voice_readout(
                 &painter,
                 value_rect.center(),
                 &display,
@@ -451,7 +464,7 @@ impl Rack {
                         marker: step.is_none().then_some(
                             crate::construction_motion::Marker::Rotary {
                                 center: knob_rect.center(),
-                                radius: if matches!(index, 0 | 2) { 27.0 } else { 24.0 } * zoom,
+                                radius: if matches!(index, 0 | 2) { 25.0 } else { 22.0 } * zoom,
                                 old: if logarithmic {
                                     normalize_geometric(cue.old, min, max)
                                 } else {
@@ -470,7 +483,7 @@ impl Rack {
             }
             readout.on_hover_text("Click to type a value or expression");
         }
-        paint_resonator_configuration(&painter, node, rect.min, zoom, rate);
+        paint_resonator_configuration(&painter, node, rect.min, zoom, rate, &self.lighting);
         painter.text(
             point(312.0, 315.0),
             Align2::LEFT_CENTER,
@@ -494,10 +507,40 @@ impl Rack {
             3.0 * zoom,
             Color32::from_rgb(68, 113, 121),
         );
-        painter.line_segment(
-            [point(20.0, 325.0), point(460.0, 325.0)],
-            Stroke::new(0.6 * zoom, Color32::from_rgb(166, 164, 157)),
-        );
+        // The saved physical signal path, separate from the modal display.
+        for (left, right, label) in [
+            (18.0, 86.0, "EXCITER / FORCE"),
+            (102.0, 174.0, "MODES / LOSS"),
+            (190.0, 282.0, "VELOCITY → OUT"),
+        ] {
+            painter.rect_stroke(
+                Rect::from_min_max(point(left, 315.0), point(right, 332.0)),
+                1.5 * zoom,
+                Stroke::new(0.6 * zoom, MUTED),
+                egui::StrokeKind::Inside,
+            );
+            painter.text(
+                point((left + right) * 0.5, 323.5),
+                Align2::CENTER_CENTER,
+                label,
+                crate::panel_skin::print_font(ui.ctx(), 7.0 * zoom),
+                INK,
+            );
+        }
+        for (left, right) in [(86.0, 102.0), (174.0, 190.0)] {
+            painter.line_segment(
+                [point(left, 323.5), point(right, 323.5)],
+                Stroke::new(0.8 * zoom, INK),
+            );
+            painter.line_segment(
+                [point(right - 3.0, 321.0), point(right, 323.5)],
+                Stroke::new(0.8 * zoom, INK),
+            );
+            painter.line_segment(
+                [point(right - 3.0, 326.0), point(right, 323.5)],
+                Stroke::new(0.8 * zoom, INK),
+            );
+        }
         painter.text(
             point(155.0, 387.0),
             Align2::CENTER_CENTER,

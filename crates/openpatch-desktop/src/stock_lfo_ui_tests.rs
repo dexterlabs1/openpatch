@@ -733,14 +733,18 @@ fn stock_lfo_runtime_phase_and_mode_lamps_emit_in_darkness_without_invented_prev
         let mut emitting = vec![];
         for shape in &f.output.shapes {
             if let egui::Shape::Circle(circle) = &shape.shape {
-                if circle.fill.b() > 200 || circle.fill.g() > 150 || circle.fill.r() > 200 {
+                // Compare measured lens faces, not the additive hot core whose
+                // brightness intentionally increases as the room darkens.
+                if circle.fill.a() > 0
+                    && (circle.fill.b() > 200 || circle.fill.g() > 150 || circle.fill.r() > 200)
+                {
                     emitting.push((circle.center, circle.radius, circle.fill));
                 }
             }
         }
         // Only compare known measured lamp centers, excluding reflective sockets.
         emitting.retain(|(center, _, _)| lamp_centers.iter().any(|p| center.distance(*p) < 0.1));
-        assert!(!emitting.is_empty());
+        assert_eq!(emitting.len(), 3, "phase and both measured mode lenses");
         signatures.push(emitting);
         assert!(drawn(&f.output)
             .iter()
