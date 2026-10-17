@@ -3,6 +3,7 @@
 use super::audio_diagnostics::{Diagnostics, Recorder};
 use crate::scope_transport::{self, ScopeFrame, ScopeProducer, ScopeReader};
 use openpatch::control::LiveModuleEvents;
+use openpatch::project_document::ExecutionDisposition;
 use openpatch_core::{
     Cable, CableHandle, Engine, ModuleAction, ModuleControlState, ModuleHandle, ModuleLightState,
     ModuleTelemetry, Patch, SavedModuleState, MAX_CABLES, MAX_MODULE_LIGHTS, MAX_NODES,
@@ -296,6 +297,7 @@ struct Control {
     midi_learns: BTreeMap<String, MidiLearnControl>,
     next_learn_serial: u64,
     stock_click_releases: BTreeMap<String, StockClickRelease>,
+    execution: ExecutionRequest,
 }
 #[derive(Clone, Copy)]
 struct ModuleSnapshot {
@@ -740,7 +742,19 @@ fn module_lights_value(lights: ModuleLightState) -> Option<Value> {
         .truncate(count);
     Some(value)
 }
+#[derive(Clone, Copy, Default)]
+struct ExecutionRequest {
+    revision: u64,
+    generation: u64,
+    disposition: ExecutionDisposition,
+}
 struct Shared {
+    execution_serial: AtomicU64,
+    execution_revision: AtomicU64,
+    execution_generation: AtomicU64,
+    execution_runnable: AtomicBool,
+    execution_ack: AtomicU64,
+    execution_cancel: AtomicU64,
     desired: [AtomicU64; MAX_NODES],
     action_epochs: [AtomicU64; MAX_NODES],
     emergency_release_epochs: [AtomicU64; MAX_NODES],
@@ -770,6 +784,29 @@ struct Shared {
     midi_completion_sequence: AtomicU64,
 }
 impl Shared {
+    // The control mutex serializes writers. Audio never waits on an in-flight request.
+    fn execution_request(&self) -> Option<(u64, u64, bool)> {
+        let serial = self.execution_serial.load(Ordering::SeqCst);
+        if serial & 1 != 0 {
+            return None;
+        }
+        let request = (
+            self.execution_revision.load(Ordering::SeqCst),
+            self.execution_generation.load(Ordering::SeqCst),
+            self.execution_runnable.load(Ordering::SeqCst),
+        );
+        (serial == self.execution_serial.load(Ordering::SeqCst)).then_some(request)
+    }
+    fn execution_available(&self) -> bool {
+        self.execution_request()
+            .is_some_and(|(_, generation, runnable)| {
+                runnable
+                    && self.execution_ack.load(Ordering::SeqCst) == generation
+                    && self
+                        .execution_request()
+                        .is_some_and(|(_, current, runnable)| current == generation && runnable)
+            })
+    }
     fn publish_frame(&self, frame: u64, publish: impl FnOnce()) {
         self.publish_serial.fetch_add(1, Ordering::SeqCst);
         self.frame.store(frame, Ordering::SeqCst);
@@ -813,6 +850,7 @@ struct ScopeBinding {
     next_frame: u64,
 }
 pub(super) struct ModulePlan {
+    execution: ExecutionRequest,
     midi_learns: Vec<MidiLearnBinding>,
     scopes: Vec<ScopeBinding>,
     scope_cursor: usize,
@@ -828,6 +866,7 @@ pub(super) struct ModulePlan {
 impl Default for ModulePlan {
     fn default() -> Self {
         Self {
+            execution: ExecutionRequest::default(),
             scopes: Vec::new(),
             midi_learns: Vec::new(),
             scope_cursor: 0,
@@ -1042,10 +1081,77 @@ pub(super) struct EventReader {
 }
 
 impl Performance {
+    pub(super) fn execution_available(&self) -> bool {
+        !self.shared.closed.load(Ordering::Acquire) && self.shared.execution_available()
+    }
+    fn set_execution(
+        &self,
+        control: &mut Control,
+        revision: u64,
+        disposition: ExecutionDisposition,
+    ) {
+        if revision < control.revision || revision < control.execution.revision {
+            return;
+        }
+        // Native-only attachment has always used an already running graph. Keep
+        // that path until a document explicitly requests partial or suspension.
+        if control.execution.generation == 0 && disposition == ExecutionDisposition::RunnableExact {
+            return;
+        }
+        if control.execution.generation != 0
+            && control.execution.revision == revision
+            && control.execution.disposition == disposition
+        {
+            return;
+        }
+        self.shared.execution_serial.fetch_add(1, Ordering::SeqCst);
+        let cancel_events =
+            !control.execution.disposition.is_runnable() || !disposition.is_runnable();
+        if cancel_events {
+            self.shared.execution_cancel.fetch_add(1, Ordering::SeqCst);
+        }
+        control.execution = ExecutionRequest {
+            revision,
+            generation: control.execution.generation.wrapping_add(1).max(1),
+            disposition,
+        };
+        // Invalidate events queued before this document decision, including events
+        // posted during suspension immediately before an explicit resume.
+        if cancel_events {
+            let cutoff = control.next_learn_serial.saturating_sub(1);
+            for entry in control.entries.values_mut() {
+                if entry.kind.has_safety_release() {
+                    self.request_release(entry, cutoff);
+                } else {
+                    entry.action_epoch = entry.action_epoch.wrapping_add(1).max(1);
+                    self.shared.action_epochs[entry.slot]
+                        .store(entry.action_epoch, Ordering::Release);
+                }
+            }
+            control.stock_click_releases.clear();
+        }
+        self.shared
+            .execution_revision
+            .store(revision, Ordering::SeqCst);
+        self.shared
+            .execution_generation
+            .store(control.execution.generation, Ordering::SeqCst);
+        self.shared
+            .execution_runnable
+            .store(disposition.is_runnable(), Ordering::SeqCst);
+        self.shared.execution_ack.store(0, Ordering::SeqCst);
+        self.shared.execution_serial.fetch_add(1, Ordering::SeqCst);
+    }
     pub(super) fn new(rate: u32) -> (Arc<Self>, EventReader, Recorder) {
         let (diagnostics, timing) = Diagnostics::new(rate);
         let (queue, input) = RingBuffer::new(EVENT_CAPACITY);
         let shared = Arc::new(Shared {
+            execution_serial: AtomicU64::new(0),
+            execution_revision: AtomicU64::new(0),
+            execution_generation: AtomicU64::new(0),
+            execution_runnable: AtomicBool::new(true),
+            execution_ack: AtomicU64::new(0),
+            execution_cancel: AtomicU64::new(0),
             desired: std::array::from_fn(|_| AtomicU64::new(0)),
             action_epochs: std::array::from_fn(|_| AtomicU64::new(0)),
             emergency_release_epochs: std::array::from_fn(|_| AtomicU64::new(0)),
@@ -1109,6 +1215,7 @@ impl Performance {
                     midi_learns: BTreeMap::new(),
                     next_learn_serial: 1,
                     stock_click_releases: BTreeMap::new(),
+                    execution: ExecutionRequest::default(),
                 }),
                 shared,
                 diagnostics,
@@ -1128,7 +1235,13 @@ impl Performance {
             .control
             .lock()
             .map_err(|_| "Module event registry poisoned")?;
-        let mut plan = ModulePlan::default();
+        let mut plan = ModulePlan {
+            execution: ExecutionRequest {
+                revision,
+                ..control.execution
+            },
+            ..ModulePlan::default()
+        };
         for (index, node) in patch.nodes.iter().enumerate() {
             let handle = engine.resolve_module_state(&node.id)?;
             if let Some(entry) = control
@@ -1233,7 +1346,7 @@ impl Performance {
     }
     pub(super) fn scope_frame(&self, id: &str) -> Option<ScopeFrame> {
         let control = self.control.lock().ok()?;
-        if self.shared.closed.load(Ordering::Acquire) {
+        if self.shared.closed.load(Ordering::Acquire) || !self.execution_available() {
             return None;
         }
         let entry = control
@@ -1264,7 +1377,7 @@ impl Performance {
     }
     pub(super) fn sequence_state(&self, id: &str) -> Option<ModuleTelemetry> {
         let control = self.control.lock().ok()?;
-        if self.shared.closed.load(Ordering::Acquire) {
+        if self.shared.closed.load(Ordering::Acquire) || !self.execution_available() {
             return None;
         }
         let entry = *control.entries.get(id)?;
@@ -1274,7 +1387,7 @@ impl Performance {
     }
     pub(super) fn module_control_state(&self, id: &str) -> Option<ModuleControlState> {
         let control = self.control.lock().ok()?;
-        if self.shared.closed.load(Ordering::Acquire) {
+        if self.shared.closed.load(Ordering::Acquire) || !self.execution_available() {
             return None;
         }
         let entry = *control.entries.get(id)?;
@@ -1284,7 +1397,7 @@ impl Performance {
     }
     pub(super) fn module_lights(&self, id: &str) -> Option<ModuleLightState> {
         let control = self.control.lock().ok()?;
-        if self.shared.closed.load(Ordering::Acquire) {
+        if self.shared.closed.load(Ordering::Acquire) || !self.execution_available() {
             return None;
         }
         let entry = *control.entries.get(id)?;
@@ -1383,6 +1496,19 @@ impl Performance {
     }
 }
 impl LiveModuleEvents for Performance {
+    fn supports_document_execution(&self) -> bool {
+        true
+    }
+    fn request_document_execution(&self, revision: u64, disposition: ExecutionDisposition) {
+        let mut control = self
+            .control
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if !self.shared.closed.load(Ordering::Acquire) {
+            self.set_execution(&mut control, revision, disposition);
+        }
+    }
+
     fn learn_midi(
         &self,
         kind: openpatch_core::MidiLearnKind,
@@ -1462,7 +1588,13 @@ impl LiveModuleEvents for Performance {
             return Err("Scope channel is outside 1..16".into());
         }
         let Some(frame) = self.scope_frame(id) else {
-            return Ok(json!({"available":false,"source":"live_rack_scope","id":id}));
+            let control = self
+                .control
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            return Ok(json!({"available":false,"source":"live_rack_scope","id":id,
+                "revision":control.revision,"execution_revision":control.execution.revision,
+                "unavailable_reason":"scope_unpublished_or_document_execution_suspended_or_pending"}));
         };
         let s = &frame.snapshot;
         let measurements = |value: openpatch_core::ScopeMeasurements| {
@@ -1629,6 +1761,10 @@ impl LiveModuleEvents for Performance {
         let mut control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         if revision < control.revision || self.shared.closed.load(Ordering::Acquire) {
             return;
+        }
+        if control.execution.generation != 0 && revision > control.execution.revision {
+            let disposition = control.execution.disposition;
+            self.set_execution(&mut control, revision, disposition);
         }
         control.cable_entries.retain(|id, entry| {
             patch.cables.iter().any(|cable| {
@@ -1801,7 +1937,7 @@ impl LiveModuleEvents for Performance {
         let queued = shared.queued.load(Ordering::Acquire);
         let applied = shared.applied.load(Ordering::Acquire);
         let dropped = shared.dropped.load(Ordering::Acquire);
-        let available = !shared.closed.load(Ordering::Acquire);
+        let available = self.execution_available();
         let mut snapshots = vec![None; control.entries.len()];
         let mut coherent_frame = None;
         if available {
@@ -1850,7 +1986,10 @@ impl LiveModuleEvents for Performance {
                 }),
                 "controls":actual.and_then(|snapshot|snapshot.controls),"lights":actual.and_then(|snapshot|snapshot.lights).and_then(module_lights_value)}))
         }).collect();
-        json!({"audio_timing":self.diagnostics.snapshot(),"available":available,"coherent":coherent_frame.is_some(),"frame":coherent_frame,"modules":modules,"revision":control.revision,"emergency_release_requests":shared.emergency_release_requests.load(Ordering::Relaxed),"emergency_release_applied":shared.emergency_release_applied.load(Ordering::Relaxed),"queued":queued,"applied":applied,"dropped":dropped,
+        json!({"audio_timing":self.diagnostics.snapshot(),"available":available,"unavailable_reason":(!available).then_some(if shared.closed.load(Ordering::Acquire) { "audio_device_closed" } else { "document_execution_suspended_or_pending" }),"execution":{
+            "requested_revision":if control.execution.generation == 0 { control.revision } else { control.execution.revision },
+            "generation":control.execution.generation,"disposition":control.execution.disposition,
+            "acknowledged":available},"coherent":coherent_frame.is_some(),"frame":coherent_frame,"modules":modules,"revision":control.revision,"emergency_release_requests":shared.emergency_release_requests.load(Ordering::Relaxed),"emergency_release_applied":shared.emergency_release_applied.load(Ordering::Relaxed),"queued":queued,"applied":applied,"dropped":dropped,
             "pending":queued.saturating_sub(applied).saturating_sub(dropped),"backpressure":shared.backpressure.load(Ordering::Relaxed),
             "rejected":shared.rejected.load(Ordering::Relaxed),"expired":shared.expired.load(Ordering::Relaxed),"obsolete":shared.obsolete.load(Ordering::Relaxed),
             "closed_dropped":shared.closed_dropped.load(Ordering::Relaxed),"crossfade_rejected":shared.crossfade_rejected.load(Ordering::Relaxed),
@@ -1858,6 +1997,49 @@ impl LiveModuleEvents for Performance {
     }
 }
 impl EventReader {
+    pub(super) fn execution_cancellation(&self) -> u64 {
+        self.shared.execution_cancel.load(Ordering::SeqCst)
+    }
+    pub(super) fn document_suspended(&self) -> bool {
+        self.shared
+            .execution_request()
+            .is_some_and(|(_, _, runnable)| !runnable)
+    }
+    pub(super) fn execution_permitted(&self, plan: &ModulePlan) -> bool {
+        self.shared
+            .execution_request()
+            .is_some_and(|(revision, generation, runnable)| {
+                runnable
+                    && (generation == 0
+                        || (plan.execution.generation == generation
+                            && plan.execution.revision == revision
+                            && plan.execution.disposition.is_runnable()))
+            })
+    }
+    pub(super) fn acknowledge_execution(&self, plan: &ModulePlan) {
+        if self.execution_permitted(plan) {
+            self.shared
+                .execution_ack
+                .store(plan.execution.generation, Ordering::SeqCst);
+        }
+    }
+    /// Cancellation mutates held controls only; no audio clock or DSP processing.
+    pub(super) fn suspend(&mut self, engine: &mut Engine, plan: &mut ModulePlan) {
+        self.release_pending(engine, plan, true);
+        for _ in 0..EVENT_CAPACITY + 1 {
+            let event = self.head.take().or_else(|| self.queue.pop().ok());
+            let Some(event) = event else { break };
+            if is_release(event.action) {
+                if let Some(binding) =
+                    plan.bindings[event.slot].filter(|binding| binding.token == event.token)
+                {
+                    engine.release_module_controls(binding.handle);
+                }
+            }
+            self.shared.dropped.fetch_add(1, Ordering::Relaxed);
+            self.shared.rejected.fetch_add(1, Ordering::Relaxed);
+        }
+    }
     /// Return true when the next ordered event needs a new sample because the
     /// current target already has 64 core actions. Total budget spans callback.
     pub(super) fn apply(

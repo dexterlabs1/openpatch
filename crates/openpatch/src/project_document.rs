@@ -208,11 +208,36 @@ pub enum PlaybackMode {
     /// An explicit caller choice, never the default for missing dependencies.
     Partial,
 }
+
+/// Permission accompanies a prepared graph; speaker mute is independent.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[repr(u8)]
+pub enum ExecutionDisposition {
+    #[default]
+    RunnableExact = 0,
+    RunnablePartial = 1,
+    SuspendedUnresolved = 2,
+}
+impl ExecutionDisposition {
+    pub fn is_runnable(self) -> bool {
+        self != Self::SuspendedUnresolved
+    }
+}
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct OmittedRoute {
     pub cable_id: String,
     pub from: String,
     pub to: String,
+}
+/// Validated editable native state. This carries no permission to execute a
+/// document whose omitted source modules may change musical behavior.
+#[derive(Clone, Debug)]
+pub struct NativeStateCarrier {
+    pub patch: Patch,
+    pub unresolved_modules: Vec<String>,
+    pub omitted_routes: Vec<OmittedRoute>,
+    pub omitted_output: Option<String>,
 }
 #[derive(Clone, Debug)]
 pub struct RuntimeProjection {
@@ -530,9 +555,147 @@ impl ProjectDocument {
         Ok(())
     }
 
-    /// Partial playback omits unresolved nodes and their incident cables. This
-    /// can change connected-port normaling; omissions must be shown to the user.
-    pub fn project(&self, mode: PlaybackMode) -> Result<RuntimeProjection, String> {
+    /// Replace the editable native subgraph while retaining immutable source
+    /// packages and all unresolved content. Copy keys are fresh native IDs and
+    /// their values identify original native nodes whose provenance is cloned.
+    pub fn with_native_patch(
+        &self,
+        candidate: Patch,
+        copies: &BTreeMap<String, String>,
+    ) -> Result<Self, String> {
+        let prior = self.state_carrier()?;
+        if candidate.version != self.graph.version
+            && !(self.graph.version == 1 && candidate.version == 2 && !candidate.assets.is_empty())
+        {
+            return Err("native edit cannot change graph scheduling version".into());
+        }
+        candidate.validate()?;
+        let original_nodes: BTreeMap<_, _> = self
+            .graph
+            .nodes
+            .iter()
+            .map(|node| (node.id(), node))
+            .collect();
+        let candidate_ids: BTreeSet<_> = candidate
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect();
+        for node in &candidate.nodes {
+            if matches!(
+                original_nodes.get(node.id.as_str()),
+                Some(DocumentNode::Unresolved { .. })
+            ) {
+                return Err("native module ID collides with an unresolved module".into());
+            }
+        }
+        for (new_id, old_id) in copies {
+            if original_nodes.contains_key(new_id.as_str())
+                || !candidate_ids.contains(new_id.as_str())
+                || !matches!(
+                    original_nodes.get(old_id.as_str()),
+                    Some(DocumentNode::Native { .. })
+                )
+            {
+                return Err(
+                    "copy provenance requires a fresh native ID and an existing native source"
+                        .into(),
+                );
+            }
+        }
+        let original_cables: BTreeMap<_, _> = self
+            .graph
+            .cables
+            .iter()
+            .map(|cable| (cable.route.id.as_deref().expect("validated"), cable))
+            .collect();
+        let unresolved: BTreeSet<_> = prior
+            .unresolved_modules
+            .iter()
+            .map(String::as_str)
+            .collect();
+        let mut native_cables = Vec::with_capacity(candidate.cables.len());
+        for route in &candidate.cables {
+            let id = route
+                .id
+                .as_deref()
+                .ok_or("native edit cables need stable IDs")?;
+            let original = original_cables.get(id);
+            if original.is_some_and(|cable| {
+                unresolved.contains(cable.route.from.as_str())
+                    || unresolved.contains(cable.route.to.as_str())
+            }) {
+                return Err("native cable ID collides with an unresolved route".into());
+            }
+            native_cables.push(DocumentCable {
+                route: route.clone(),
+                source: original.and_then(|cable| cable.source.clone()),
+            });
+        }
+        let mut document = self.clone();
+        document.graph.nodes = candidate
+            .nodes
+            .iter()
+            .map(|node| {
+                let source_id = copies
+                    .get(&node.id)
+                    .map_or(node.id.as_str(), String::as_str);
+                let source = original_nodes
+                    .get(source_id)
+                    .and_then(|node| node.source())
+                    .cloned();
+                DocumentNode::Native {
+                    node: node.clone(),
+                    source,
+                }
+            })
+            .chain(
+                self.graph
+                    .nodes
+                    .iter()
+                    .filter(|node| matches!(node, DocumentNode::Unresolved { .. }))
+                    .cloned(),
+            )
+            .collect();
+        // Incident opaque routes disappear only when a native endpoint was
+        // intentionally deleted. Candidate routes cannot address placeholders.
+        document.graph.cables = self
+            .graph
+            .cables
+            .iter()
+            .filter(|cable| {
+                let route = &cable.route;
+                (unresolved.contains(route.from.as_str()) || unresolved.contains(route.to.as_str()))
+                    && [route.from.as_str(), route.to.as_str()]
+                        .iter()
+                        .all(|id| unresolved.contains(id) || candidate_ids.contains(id))
+            })
+            .cloned()
+            .collect();
+        document.graph.cables.extend(native_cables);
+        let preserve_output = prior.omitted_output.is_some()
+            && candidate.output == prior.patch.output
+            && candidate.output_port == prior.patch.output_port;
+        if !preserve_output {
+            document.graph.output = candidate.output;
+            document.graph.output_port = candidate.output_port;
+        }
+        document.graph.version = candidate.version;
+        document.graph.sample_rate = candidate.sample_rate;
+        document.graph.assets = candidate.assets;
+        document.layout.positions.retain(|id, _| {
+            !matches!(
+                original_nodes.get(id.as_str()),
+                Some(DocumentNode::Native { .. })
+            ) || candidate_ids.contains(id.as_str())
+        });
+        document.state_carrier()?;
+        Ok(document)
+    }
+
+    /// Derive editable native state and report every omitted source dependency.
+    /// Validation here does not authorize execution of an incomplete document.
+    pub fn state_carrier(&self) -> Result<NativeStateCarrier, String> {
         self.validate_structure()?;
         let unresolved: BTreeSet<_> = self
             .graph
@@ -543,12 +706,6 @@ impl ProjectDocument {
                 _ => None,
             })
             .collect();
-        if mode == PlaybackMode::Exact && !unresolved.is_empty() {
-            return Err(format!(
-                "{} unresolved modules prevent exact playback",
-                unresolved.len()
-            ));
-        }
         let mut omitted_routes = Vec::new();
         let cables = self
             .graph
@@ -596,11 +753,29 @@ impl ProjectDocument {
             output_port: self.graph.output_port.clone(),
         };
         patch.validate()?;
-        Ok(RuntimeProjection {
+        Ok(NativeStateCarrier {
             patch,
             unresolved_modules: unresolved.into_iter().collect(),
             omitted_routes,
             omitted_output,
+        })
+    }
+
+    /// Partial playback omits unresolved nodes and their incident cables. This
+    /// can change connected-port normaling; omissions must be shown to the user.
+    pub fn project(&self, mode: PlaybackMode) -> Result<RuntimeProjection, String> {
+        let carrier = self.state_carrier()?;
+        if mode == PlaybackMode::Exact && !carrier.unresolved_modules.is_empty() {
+            return Err(format!(
+                "{} unresolved modules prevent exact playback",
+                carrier.unresolved_modules.len()
+            ));
+        }
+        Ok(RuntimeProjection {
+            patch: carrier.patch,
+            unresolved_modules: carrier.unresolved_modules,
+            omitted_routes: carrier.omitted_routes,
+            omitted_output: carrier.omitted_output,
         })
     }
 }

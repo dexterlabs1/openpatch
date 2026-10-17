@@ -49,6 +49,7 @@ struct Shared {
     solver_failures: AtomicUsize,
     waveform: [AtomicU32; WAVEFORM_SIZE],
     waveform_cursor: AtomicUsize,
+    scope_observation_floor: AtomicU64,
 }
 
 impl Shared {
@@ -65,6 +66,7 @@ impl Shared {
             solver_failures: AtomicUsize::new(0),
             waveform: std::array::from_fn(|_| AtomicU32::new(0)),
             waveform_cursor: AtomicUsize::new(0),
+            scope_observation_floor: AtomicU64::new(0),
         }
     }
     fn set_port_lights_enabled(&self, enabled: bool) {
@@ -788,11 +790,16 @@ impl Audio {
     /// pending revision, or 250ms after the reader last observed a new packet.
     pub(crate) fn port_lights(&self, revision: u64) -> Option<Arc<PortLightFrame>> {
         let control = self.shared.port_light_control.load(Ordering::SeqCst);
-        if revision != self.submitted_revision || control & 1 == 0 {
+        if !self.performance.execution_available()
+            || revision != self.submitted_revision
+            || control & 1 == 0
+        {
             return None;
         }
         let frame = self.port_light_reader.read_epoch(revision, control)?;
-        (self.shared.port_light_control.load(Ordering::SeqCst) == control).then_some(frame)
+        (self.performance.execution_available()
+            && self.shared.port_light_control.load(Ordering::SeqCst) == control)
+            .then_some(frame)
     }
 
     /// View-only observation intent; no graph submission, revision or history edit.
@@ -856,7 +863,11 @@ impl Audio {
     }
     /// Bounded even if the audio producer continues while the UI drains.
     pub fn scope_packets(&mut self) -> impl Iterator<Item = ScopePacket> + '_ {
-        (0..SCOPE_QUEUE_SIZE).map_while(|_| self.scope_packets.pop().ok())
+        let available = self.performance.execution_available();
+        let floor = self.shared.scope_observation_floor.load(Ordering::Acquire);
+        (0..SCOPE_QUEUE_SIZE)
+            .map_while(|_| self.scope_packets.pop().ok())
+            .filter(move |packet| available && packet.start_frame >= floor)
     }
 
     pub fn service(&mut self) {
@@ -917,11 +928,17 @@ impl Audio {
     }
 
     pub fn peak(&self) -> f32 {
+        if !self.performance.execution_available() {
+            return 0.0;
+        }
         f32::from_bits(self.shared.peak.load(Ordering::Relaxed))
     }
 
     /// A best-effort scope snapshot, oldest sample first; no shared mutable floats.
     pub fn waveform(&self) -> [f32; WAVEFORM_SIZE] {
+        if !self.performance.execution_available() {
+            return [0.0; WAVEFORM_SIZE];
+        }
         let cursor = self.shared.waveform_cursor.load(Ordering::Acquire);
         std::array::from_fn(|offset| {
             let index = (cursor + offset) % WAVEFORM_SIZE;
@@ -1089,6 +1106,8 @@ struct Callback {
     next_port_publish_frame: u64,
     port_publish_interval: u64,
     port_light_control: u64,
+    execution_cancel: u64,
+    execution_frozen: bool,
 }
 
 impl Callback {
@@ -1131,6 +1150,8 @@ impl Callback {
             next_port_publish_frame: 0,
             port_publish_interval: u64::from(rate).div_ceil(30),
             port_light_control,
+            execution_cancel: 0,
+            execution_frozen: false,
         }
     }
 
@@ -1149,6 +1170,31 @@ impl Callback {
             adopted,
             crossfade,
         );
+    }
+
+    fn freeze_execution<T: OutputSample>(&mut self, output: &mut [T], channels: usize) {
+        self.execution_frozen = true;
+        self.scope.reset(self.graphs.active.scope.generation);
+        // Waiting for a runnable replacement is a state/publication freeze,
+        // not an input cancellation. New actions already target that revision.
+        if self.module_events.document_suspended() {
+            let active = &mut self.graphs.active;
+            self.module_events
+                .suspend(&mut active.engine, &mut active.modules);
+        }
+        // A suspended carrier still adopts state and retires its donor. In
+        // particular, never render the donor to finish its normal crossfade.
+        if self.graphs.previous.is_some() {
+            self.graphs.finish_transition();
+        }
+        self.frozen_previous = None;
+        self.last_active_raw = [0.0; 2];
+        self.shared.peak.store(0.0_f32.to_bits(), Ordering::Relaxed);
+        output.fill(T::from_mono(0.0));
+        self.frame_clock += output.len().checked_div(channels).unwrap_or(0) as u64;
+        self.shared
+            .frame_clock
+            .store(self.frame_clock, Ordering::Release);
     }
 
     fn render_inner<T: OutputSample>(&mut self, output: &mut [T], channels: usize) -> (bool, bool) {
@@ -1220,6 +1266,36 @@ impl Callback {
             active.engine.set_port_lights_enabled(enabled);
         }
         self.port_light_control = control;
+        let cancellation = self.module_events.execution_cancellation();
+        if cancellation != self.execution_cancel {
+            self.execution_cancel = cancellation;
+            self.shared
+                .scope_observation_floor
+                .store(self.frame_clock, Ordering::Release);
+            for value in &self.shared.waveform {
+                value.store(0.0_f32.to_bits(), Ordering::Relaxed);
+            }
+            self.shared.midi_epoch.fetch_add(1, Ordering::SeqCst);
+            self.sync_midi_reset();
+        }
+        if !self
+            .module_events
+            .execution_permitted(&self.graphs.active.modules)
+        {
+            self.freeze_execution(output, channels);
+            return (adopted, false);
+        }
+        if self.execution_frozen {
+            // Explicit suspension/resume cancels input through execution_cancel.
+            // A runnable plan arriving after a pending freeze retains held notes
+            // and actions accepted for the new revision.
+
+            if self.graphs.previous.is_some() {
+                self.graphs.finish_transition();
+            }
+            self.frozen_previous = None;
+            self.execution_frozen = false;
+        }
         let target = if self.shared.playing.load(Ordering::Relaxed) {
             f32::from_bits(self.shared.volume.load(Ordering::Relaxed))
         } else {
@@ -1242,6 +1318,13 @@ impl Callback {
             let frames = chunk.len() / channels;
             let mut offset = 0;
             while offset < frames {
+                if !self
+                    .module_events
+                    .execution_permitted(&self.graphs.active.modules)
+                {
+                    self.freeze_execution(&mut chunk[offset * channels..], channels);
+                    break;
+                }
                 let one_frame = {
                     let Exchange {
                         active, previous, ..
@@ -1396,6 +1479,16 @@ impl Callback {
             // CPAL normally supplies complete frames; incomplete tails are silence.
             chunk[frames * channels..].fill(T::from_mono(0.0));
         }
+        if !self
+            .module_events
+            .execution_permitted(&self.graphs.active.modules)
+        {
+            // A newer decision can arrive during a device buffer. Never publish
+            // or deliver observations from a buffer whose permission expired.
+            self.freeze_execution::<T>(&mut [], channels);
+            output.fill(T::from_mono(0.0));
+            return (adopted, false);
+        }
         self.graphs
             .active
             .modules
@@ -1418,6 +1511,8 @@ impl Callback {
                     self.frame_clock.saturating_add(self.port_publish_interval);
             }
         }
+        self.module_events
+            .acknowledge_execution(&self.graphs.active.modules);
         self.shared
             .waveform_cursor
             .store(self.scope_cursor, Ordering::Release);
@@ -4902,6 +4997,7 @@ mod tests {
     include!("viz_audio_tests.rs");
     include!("rack_scope_audio_tests.rs");
     include!("stock_scope_audio_tests.rs");
+    include!("import_execution_tests.rs");
 
     #[test]
     fn mixer_meters_follow_audio_revisions_bypass_and_document_identity_without_heap_work() {

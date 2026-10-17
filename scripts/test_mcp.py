@@ -282,6 +282,66 @@ class OpenPatchMCPTests(unittest.TestCase):
              "expected_revision": revision},
         )
 
+    def test_portable_source_document_history_save_and_explicit_partial_playback(self) -> None:
+        blob = b"\x00\xfforiginal sample"
+        blob_id = hashlib.sha256(blob).hexdigest()
+        package = {
+            "patch": json.loads(json.dumps({
+                "version": "2.6.4", "future-global": {"keep": True},
+                "modules": [{"id": 42, "plugin": "Unavailable", "model": "Resonator",
+                             "data": {"asset": "modules/42/raw.bin", "opaque": [None, True]}}],
+                "cables": [{"id": 12, "future-cable": "preserved"}],
+            }, sort_keys=True)),
+            "assets": {"modules/42/raw.bin": blob_id}, "missing_assets": [],
+        }
+        package_id = hashlib.sha256(json.dumps(package, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+        document = {
+            "format": "openpatch-project", "version": 2,
+            "graph": {"version": 2, "sample_rate": 48000, "assets": {},
+                      "nodes": [
+                          {"type": "native", "node": {"id": "dc", "kind": "constant", "params": {"value": 2}}, "source": None},
+                          {"type": "unresolved", "id": "unknown", "source": {"package": package_id, "index": 0, "mapping": None},
+                           "ports": [{"direction": "input", "index": 0}]},
+                      ],
+                      "cables": [{"route": {"id": "route", "from": "dc", "to": "unknown", "input": "vcv_in_0"},
+                                  "source": {"package": package_id, "index": 0}}],
+                      "output": "dc", "output_port": "out"},
+            "layout": {"version": 1, "zoom": 1.0, "pan": [0.0, 0.0], "positions": {"unknown": [30.0, 380.0]}},
+            "sources": {package_id: package}, "source_blobs": {blob_id: base64.b64encode(blob).decode()},
+        }
+        initial = self.payload(self.require_tool_success("replace_document", {"document": document}))
+        self.assertTrue(initial["patch_is_native_state_carrier"])
+        self.assertEqual(initial["execution"]["requested_disposition"], "suspended_unresolved")
+        compact = self.payload(self.require_tool_success("inspect_document"))
+        self.assertEqual(compact["document"]["format"], "openpatch-project-reference")
+        self.require_tool_error("replace_document", {"document": compact["document"]})
+        self.require_tool_error("save_patch", {"filename": "lossy.json"})
+        self.require_tool_error("benchmark", {"seconds": 0.01})
+        self.assertFalse((self.workspace / "lossy.json").exists())
+        full = self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))["document"]
+        self.assertEqual(full["sources"][package_id], package)
+        self.assertEqual(base64.b64decode(full["source_blobs"][blob_id]), blob)
+        self.require_tool_success("set_parameter", {"id": "dc", "parameter": "value", "value": 0.5})
+        edited = self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))["document"]
+        self.require_tool_success("undo")
+        self.assertEqual(self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))["document"], full)
+        self.require_tool_success("redo")
+        saved = self.payload(self.require_tool_success("save_document", {"filename": "retained.json"}))
+        self.assertEqual(saved["state_source"], "suspended_persisted")
+        self.assertEqual(json.loads((self.workspace / "retained.json").read_text()), edited)
+        partial = self.payload(self.require_tool_success("set_document_playback", {"mode": "partial"}))
+        self.assertEqual(partial["execution"]["requested_disposition"], "runnable_partial")
+        self.assertEqual(len(partial["execution"]["omitted_routes"]), 1)
+        self.require_tool_success("benchmark", {"seconds": 0.01})
+        reopened = self.payload(self.require_tool_success("load_document", {"filename": "retained.json"}))
+        self.assertEqual(reopened["execution"]["requested_disposition"], "suspended_unresolved")
+        self.assertEqual(self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))["document"], edited)
+        corrupt = json.loads(json.dumps(edited))
+        corrupt["sources"][package_id]["patch"]["future-global"]["keep"] = False
+        self.require_tool_error("replace_document", {"document": corrupt})
+        self.assertEqual(self.patch_snapshot(), reopened)
+        self.require_tool_error("save_document", {"filename": "retained.json"})
+
     def test_atomic_preview_commit_and_shared_history(self) -> None:
         before = self.patch_snapshot()
         arguments = {"expected_revision": before["revision"], "edits": [

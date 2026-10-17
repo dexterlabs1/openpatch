@@ -452,3 +452,312 @@ fn native_wavetable_asset_migration_preserves_samples_and_validates_identity() {
     assert!(invalid.validate_structure().is_err());
     assert!(invalid.encode().is_err());
 }
+
+#[test]
+fn carrier_allows_native_editing_without_granting_exact_playback() {
+    let document = source_document();
+    let before = document.encode().unwrap();
+    let carrier = document.state_carrier().unwrap();
+    assert_eq!(carrier.unresolved_modules, ["opaque-42"]);
+    assert_eq!(carrier.omitted_routes.len(), 2);
+    assert_eq!(carrier.omitted_output.as_deref(), Some("opaque-42"));
+    assert!(document.project(PlaybackMode::Exact).is_err());
+
+    let mut candidate = carrier.patch;
+    let node = candidate.nodes.iter_mut().find(|n| n.id == "dc").unwrap();
+    node.params.insert("value".into(), 4.25);
+    node.bypassed = true;
+    candidate.cables[0].color = Some([10, 20, 30]);
+    let edited = document
+        .with_native_patch(candidate, &BTreeMap::new())
+        .unwrap();
+    let carrier = edited.state_carrier().unwrap();
+    assert_eq!(
+        carrier
+            .patch
+            .nodes
+            .iter()
+            .find(|n| n.id == "dc")
+            .unwrap()
+            .params["value"],
+        4.25
+    );
+    assert!(
+        carrier
+            .patch
+            .nodes
+            .iter()
+            .find(|n| n.id == "dc")
+            .unwrap()
+            .bypassed
+    );
+    assert_eq!(carrier.omitted_routes.len(), 2);
+    assert_eq!(carrier.omitted_output.as_deref(), Some("opaque-42"));
+    assert!(edited.project(PlaybackMode::Exact).is_err());
+    assert_eq!(
+        edited
+            .graph
+            .cables
+            .iter()
+            .find(|c| c.route.id.as_deref() == Some("native-route"))
+            .unwrap()
+            .source
+            .as_ref()
+            .unwrap()
+            .index,
+        0
+    );
+    for id in ["into-opaque", "from-opaque"] {
+        assert_eq!(
+            serde_json::to_value(
+                edited
+                    .graph
+                    .cables
+                    .iter()
+                    .find(|c| c.route.id.as_deref() == Some(id))
+                    .unwrap()
+            )
+            .unwrap(),
+            serde_json::to_value(
+                document
+                    .graph
+                    .cables
+                    .iter()
+                    .find(|c| c.route.id.as_deref() == Some(id))
+                    .unwrap()
+            )
+            .unwrap()
+        );
+    }
+    let original_source = document
+        .graph
+        .nodes
+        .iter()
+        .find(|n| n.id() == "dc")
+        .unwrap()
+        .source()
+        .unwrap();
+    let edited_source = edited
+        .graph
+        .nodes
+        .iter()
+        .find(|n| n.id() == "dc")
+        .unwrap()
+        .source()
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(original_source).unwrap(),
+        serde_json::to_value(edited_source).unwrap()
+    );
+    let reopened = ProjectDocument::decode(&edited.encode().unwrap()).unwrap();
+    assert_eq!(reopened.encode().unwrap(), edited.encode().unwrap());
+    // A history entry can keep the prior document without mutation or copying
+    // immutable package/blob payloads.
+    assert_eq!(document.encode().unwrap(), before);
+    let package_id = original_source.package.as_str();
+    assert!(Arc::ptr_eq(
+        &document.sources[package_id],
+        &edited.sources[package_id]
+    ));
+    assert!(Arc::ptr_eq(
+        &document.source_blobs.values().next().unwrap().0,
+        &edited.source_blobs.values().next().unwrap().0
+    ));
+}
+
+#[test]
+fn deleting_native_node_removes_only_its_incident_routes_and_layout() {
+    let mut document = source_document();
+    document
+        .layout
+        .positions
+        .insert("opaque-42".into(), [800.0, 0.0]);
+    let before = document.encode().unwrap();
+    let mut candidate = document.state_carrier().unwrap().patch;
+    candidate.nodes.retain(|n| n.id != "dc");
+    candidate.cables.retain(|c| c.from != "dc" && c.to != "dc");
+    let edited = document
+        .with_native_patch(candidate, &BTreeMap::new())
+        .unwrap();
+    assert!(edited.graph.nodes.iter().all(|n| n.id() != "dc"));
+    assert!(!edited.layout.positions.contains_key("dc"));
+    assert_eq!(
+        edited.layout.positions["amp"],
+        document.layout.positions["amp"]
+    );
+    assert_eq!(edited.layout.positions["opaque-42"], [800.0, 0.0]);
+    assert!(edited
+        .layout
+        .positions
+        .contains_key("removed / legacy module"));
+    let carrier = edited.state_carrier().unwrap();
+    assert!(carrier.patch.cables.is_empty());
+    assert_eq!(carrier.omitted_routes.len(), 1);
+    assert_eq!(carrier.omitted_routes[0].cable_id, "from-opaque");
+    assert_eq!(carrier.omitted_output.as_deref(), Some("opaque-42"));
+    assert_eq!(edited.source_blobs.len(), document.source_blobs.len());
+    assert_eq!(edited.sources.len(), document.sources.len());
+    assert_eq!(document.encode().unwrap(), before);
+}
+
+#[test]
+fn duplicate_retains_source_assets_and_original_ids_with_fresh_native_identity() {
+    let document = source_document();
+    let mut candidate = document.state_carrier().unwrap().patch;
+    let mut duplicate = candidate
+        .nodes
+        .iter()
+        .find(|n| n.id == "dc")
+        .unwrap()
+        .clone();
+    duplicate.id = "dc-copy".into();
+    duplicate.params.insert("value".into(), 9.0);
+    candidate.nodes.push(duplicate);
+    let mut fresh = candidate
+        .nodes
+        .iter()
+        .find(|n| n.id == "dc")
+        .unwrap()
+        .clone();
+    fresh.id = "fresh".into();
+    candidate.nodes.push(fresh);
+    let mut copied_cable = candidate.cables[0].clone();
+    copied_cable.id = Some("copied-route".into());
+    copied_cable.from = "dc-copy".into();
+    candidate.cables.push(copied_cable);
+    // Editing a retained route changes its current endpoints while its source
+    // package still describes the original Rack cable.
+    candidate.cables[0].from = "dc-copy".into();
+    let asset = openpatch_core::default_wavetable_asset();
+    candidate
+        .assets
+        .insert(asset.id().to_owned(), asset.clone());
+    let copies = BTreeMap::from([("dc-copy".into(), "dc".into())]);
+    let edited = document
+        .with_native_patch(candidate.clone(), &copies)
+        .unwrap();
+    let copied = edited
+        .graph
+        .nodes
+        .iter()
+        .find(|n| n.id() == "dc-copy")
+        .unwrap();
+    assert_eq!(
+        edited.source_module(copied.source().unwrap()).unwrap()["id"],
+        7
+    );
+    assert!(copied.source().unwrap().mapping.is_some());
+    assert!(edited
+        .graph
+        .nodes
+        .iter()
+        .find(|n| n.id() == "fresh")
+        .unwrap()
+        .source()
+        .is_none());
+    assert!(edited
+        .graph
+        .cables
+        .iter()
+        .find(|c| c.route.id.as_deref() == Some("copied-route"))
+        .unwrap()
+        .source
+        .is_none());
+    let original_route = edited
+        .graph
+        .cables
+        .iter()
+        .find(|c| c.route.id.as_deref() == Some("native-route"))
+        .unwrap();
+    assert_eq!(original_route.source.as_ref().unwrap().index, 0);
+    assert_eq!(original_route.route.from, "dc-copy");
+    let original_source = original_route.source.as_ref().unwrap();
+    assert_eq!(
+        edited.sources[&original_source.package].patch["cables"][original_source.index]
+            ["outputModuleId"],
+        7
+    );
+    assert_eq!(
+        edited.graph.assets[asset.id()].decoded_samples(),
+        asset.decoded_samples()
+    );
+    assert_eq!(
+        edited.state_carrier().unwrap().patch.reference_view(),
+        candidate.reference_view()
+    );
+    let reopened = ProjectDocument::decode(&edited.encode().unwrap()).unwrap();
+    assert_eq!(reopened.encode().unwrap(), edited.encode().unwrap());
+    let package = reopened.sources.values().next().unwrap();
+    assert_eq!(package.patch["modules"][0]["id"], 7);
+    assert_eq!(
+        reopened.source_blobs[&package.assets["modules/42/raw.bin"]].bytes(),
+        b"\0\xffopaque sample\n"
+    );
+}
+
+#[test]
+fn changed_native_output_wins_over_preserved_unresolved_selection() {
+    let document = source_document();
+    let mut candidate = document.state_carrier().unwrap().patch;
+    candidate.output = Some("amp".into());
+    let edited = document
+        .with_native_patch(candidate, &BTreeMap::new())
+        .unwrap();
+    assert_eq!(edited.graph.output.as_deref(), Some("amp"));
+    assert!(edited.state_carrier().unwrap().omitted_output.is_none());
+    let mut clear = edited.state_carrier().unwrap().patch;
+    clear.output = None;
+    let cleared = edited.with_native_patch(clear, &BTreeMap::new()).unwrap();
+    assert!(cleared.graph.output.is_none());
+}
+
+#[test]
+fn native_overlay_rejects_ambiguous_ids_stale_copies_and_scheduling_changes_atomically() {
+    let document = source_document();
+    let before = document.encode().unwrap();
+    let patch = document.state_carrier().unwrap().patch;
+    for copies in [
+        BTreeMap::from([("dc".into(), "amp".into())]),
+        BTreeMap::from([("missing".into(), "dc".into())]),
+        BTreeMap::from([("new".into(), "missing".into())]),
+        BTreeMap::from([("new".into(), "opaque-42".into())]),
+    ] {
+        let mut candidate = patch.clone();
+        let mut node = candidate.nodes[0].clone();
+        node.id = "new".into();
+        candidate.nodes.push(node);
+        assert!(document.with_native_patch(candidate, &copies).is_err());
+    }
+    let mut collision = patch.clone();
+    collision.nodes[0].id = "opaque-42".into();
+    collision.cables.clear();
+    assert!(document
+        .with_native_patch(collision, &BTreeMap::new())
+        .is_err());
+    let mut collision = patch.clone();
+    collision.cables[0].id = Some("into-opaque".into());
+    assert!(document
+        .with_native_patch(collision, &BTreeMap::new())
+        .is_err());
+    let mut missing_id = patch.clone();
+    missing_id.cables[0].id = None;
+    assert!(document
+        .with_native_patch(missing_id, &BTreeMap::new())
+        .is_err());
+    let mut duplicate_id = patch.clone();
+    duplicate_id.nodes.push(duplicate_id.nodes[0].clone());
+    assert!(document
+        .with_native_patch(duplicate_id, &BTreeMap::new())
+        .is_err());
+    let mut dangling = patch.clone();
+    dangling.cables[0].from = "gone".into();
+    assert!(document
+        .with_native_patch(dangling, &BTreeMap::new())
+        .is_err());
+    let mut scheduling = patch;
+    scheduling.version = 1;
+    assert!(document
+        .with_native_patch(scheduling, &BTreeMap::new())
+        .is_err());
+    assert_eq!(document.encode().unwrap(), before);
+}

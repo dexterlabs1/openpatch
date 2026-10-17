@@ -3,6 +3,10 @@ use super::*;
 
 #[derive(Default)]
 pub(super) struct EditEffects {
+    pub replacement_document: Option<ProjectDocument>,
+    pub playback_mode: Option<PlaybackMode>,
+    pub source_copies: BTreeMap<String, String>,
+    pub cleared_source_routes: bool,
     pub learn_reconciliation: bool,
     pub lifecycle_captured: bool,
     pub forward_lifecycle: HostLifecycleDelta,
@@ -256,7 +260,7 @@ impl Session {
         };
         let value = if let Some(value) = effects.working_saved.get(id) {
             *value
-        } else if effects.replaced.contains(id) {
+        } else if effects.replaced.contains(id) || !self.execution_disposition().is_runnable() {
             initial
         } else if let Some(backend) = &self.live_module_events {
             let snapshot = effects
@@ -341,6 +345,7 @@ impl Session {
                 return Err("Supply preset, or filename with expected_file_sha256".into());
             }
         }
+        self.check_source_duplicate_routes(candidate, name, args)?;
         // Observe successful topology operations, not arbitrary before/after
         // differences. A removed/recreated ID never regains continuity within
         // this transaction, even when a later explicit move succeeds.
@@ -676,6 +681,19 @@ impl Session {
                 .ok_or("modules must be an array")?;
             for mapping in mappings {
                 let id = string(mapping, "id")?;
+                let original = effects.source_copies.get(id).cloned().or_else(|| {
+                    self.patch
+                        .nodes
+                        .iter()
+                        .any(|node| node.id == id)
+                        .then(|| id.to_owned())
+                        .filter(|id| !effects.retired.contains(id))
+                });
+                if let Some(original) = original {
+                    effects
+                        .source_copies
+                        .insert(string(mapping, "new_id")?.to_owned(), original);
+                }
                 if let Some(value) = self.state_for_edit(candidate, id, effects, false)? {
                     copies.push((string(mapping, "new_id")?.to_owned(), value));
                 }
@@ -694,6 +712,10 @@ impl Session {
                 &mut effects.initialized,
             )?;
         }
+        if name == "clear_cables" {
+            effects.cleared_source_routes = true;
+        }
+        self.assign_source_safe_cable_ids(candidate, name, args)?;
         if name == "remove_module" {
             let id = string(args, "id")?;
             effects.retired.push(id.to_owned());
