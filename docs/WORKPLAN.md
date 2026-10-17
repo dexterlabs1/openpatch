@@ -120,7 +120,21 @@ heap activity. All 280 control tests and the 26 performance tests pass. Late sta
 parameter plans are refused; already-prepared plans keep their original meaning.
 Next add the dedicated typed RackMCP state/adapter and source-provenance target
 bindings, then source-style lane dispatch/ownership and the musical excerpt.
-The installed app and catalog remain unchanged.
+The installed app and catalog remained unchanged at that checkpoint.
+
+**Native adapter checkpoint (in progress):** the separate `rackmcp_sequencer`
+now has typed persisted state, all 18 source outputs and prepared eight-lane
+native target dispatch. VCA/filter values feed the actual callback publication,
+MCP save, manual edit/undo/redo and saved reopen. Unrelated graph edits, node
+reorder and rate changes preserve transport/cache; target recreation rearms its
+lanes. The shared Signal Atlas rack/browser panel shows authored patterns,
+voices, drum hits and accents without inventing live telemetry. Native catalog
+now has 84 kinds on this milestone branch; source import remains unchanged.
+See the [adapter boundary and remaining work](RACKMCP_SEQUENCE_CONTRACT.md#native-adapter-checkpoint)
+and [actual panel captures](../design/reviews/rackmcp-sequencer-v1/README.md).
+Next carry explicit equal-data load intent through graph activation, guard
+source-provenance target binding, then close Bridge/Listen and the real musical
+excerpt. No release, installation or whole-module equivalence is claimed.
 
 Close one imported musical workflow using the actual RackMCP 2.0.0 sequencers
 and supported voice chain. The reference checkout is pinned at

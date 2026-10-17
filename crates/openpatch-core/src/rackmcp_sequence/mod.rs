@@ -1,15 +1,39 @@
-//! RackMCP 2.0.0 sequencing primitives, not yet a registered native model.
+//! RackMCP 2.0.0 sequencing primitives and native module adapter.
 //!
 //! Adapted from Zachary Scheffler's RackMCP, GPL-3.0-or-later, revision
 //! 285e84c5ff2d3ecef25890da07f578af6a0c5ca6. See LICENSE-THIRD-PARTY.
 //! Compilation/JSON belong on the control thread. Playback borrows compiled
 //! fixed-capacity state and neither allocates nor resolves parameter targets.
-//! Host target writes, capture, UI and import mappings remain separate work.
+//! Capture and source import/provenance are separate host responsibilities.
 
+mod adapter;
 mod engine;
+
+pub use adapter::{NativeTarget, SequenceState};
+pub(crate) use adapter::{RackMcpSequencer, ResolvedTarget, INPUTS, OUTPUTS};
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
+
+pub(crate) fn catalog() -> serde_json::Value {
+    serde_json::json!({
+        "kind": "rackmcp_sequencer", "title": "RACKMCP SEQUENCER", "model": "source-version",
+        "description": "RackMCP 2.0.0 four-track sequencer with patterns, ratchets, slides, accents and parameter automation. Native delayed port scheduling; process-time automation follows native node order. Unsupported Rack plugins remain unresolved.",
+        "inputs": INPUTS, "outputs": OUTPUTS,
+        "params": {
+            "bpm": {"default":120,"min":20,"max":300,"unit":"BPM"},
+            "swing": {"default":50,"min":50,"max":75,"unit":"%"},
+            "running": {"default":0,"min":0,"max":1,"step":1,"values":[0,1],"labels":["Off","On"]},
+            "reset": {"default":0,"min":0,"max":1,"step":1,"values":[0,1],"labels":["Idle","Reset"]}
+        },
+        "rackmcp_sequence_schema": {
+            "data": "strict RackMCP version-1 camelCase sequence data; 1–16 patterns, 4 tracks, 1–64 steps, 1–4 voices, 8 lanes of 32 points",
+            "targets": "up to 8 explicit source_module_id/source_param_id to native module/parameter bindings; unresolved destinations do not receive writes"
+        },
+        "automation_policy": "Evaluate every 32 samples while running. Clamp normalized/raw values to destination bounds, apply destination snap, write on source 1e-7 delta. Cache changes only after a successful assignment; unchanged lanes permit manual overrides.",
+        "source": {"plugin":"RackMCP","version":"2.0.0","revision":"285e84c5ff2d3ecef25890da07f578af6a0c5ca6","license":"GPL-3.0-or-later"}
+    })
+}
 
 const LANES: usize = 8;
 const POINTS: usize = 32;
@@ -418,6 +442,11 @@ pub struct Frame {
 }
 
 impl Player {
+    /// Preserve transport without transferring control-owned compiled data.
+    pub(crate) fn adopt_runtime(&mut self, previous: &Self) {
+        self.engine = previous.engine.clone();
+        self.loaded = previous.loaded;
+    }
     pub fn adopt_data(&mut self, data: &CompiledSequence) {
         if data.selected != self.engine.active_pattern() {
             self.engine.request_pattern(data.selected, !self.loaded);

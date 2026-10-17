@@ -3,6 +3,7 @@ use super::*;
 fn node(drive: f32, cutoff: f32, resonance: f32, cv_amount: f32) -> Node {
     Node {
         content: None,
+        rackmcp_sequence: None,
         score: None,
         id: "svf-qualification".into(),
         kind: "svf_filter".into(),

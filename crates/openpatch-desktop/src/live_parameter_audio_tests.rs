@@ -408,3 +408,81 @@ fn live_parameter_execution_suspension_and_resume_keep_effective_values() {
     assert!(callback.performance.execution_available());
     assert_live_parameter(&callback, "filter", "frequency", 0.3);
 }
+
+#[test]
+fn rackmcp_automation_actual_callback_publication_history_and_saved_reopen() {
+    let mut patch = live_parameter_audio_patch();
+    patch.nodes[0].params.insert("v1".into(), 0.5);
+    patch.nodes.insert(0, serde_json::from_value(serde_json::json!({
+        "id":"automation","kind":"rackmcp_sequencer","params":{"running":1},
+        "rackmcp_sequence":{"data":{"patterns":[{"name":"A","length":4}],
+            "lanes":[{"moduleId":"42","paramId":0,"points":[{"bar":0,"value":0.25}]}]},
+            "targets":[{"source_module_id":"42","source_param_id":0,"module":"vca","parameter":"level"}]}
+    })).unwrap());
+    let (mut callback, mut updates, mut retired) = sequence_callback(&patch);
+    let workspace = tempfile::tempdir().unwrap();
+    let mut session = openpatch::control::Session::new(workspace.path()).unwrap();
+    session.replace_patch(patch, Some(0)).unwrap();
+    session
+        .set_live_module_events(Some(callback.performance.clone()))
+        .unwrap();
+    let authored = session.snapshot();
+    without_heap_activity(|| callback.render(&mut [0.0_f32; 256], 1));
+    assert_live_parameter(&callback, "vca", "level", 0.25);
+    assert_eq!(session.snapshot(), authored);
+    // Real automation writes feed the same fenced save observation as manual
+    // edits. Capturing neither mutates the authored document nor adds history.
+    session
+        .execute(
+            "save_document",
+            serde_json::json!({"filename":"rackmcp-effective.json"}),
+        )
+        .unwrap();
+    assert_eq!(session.snapshot(), authored);
+    let mut reopened = openpatch::control::Session::new(workspace.path()).unwrap();
+    reopened
+        .execute(
+            "load_document",
+            serde_json::json!({"filename":"rackmcp-effective.json"}),
+        )
+        .unwrap();
+    assert_eq!(
+        reopened.patch().nodes[0].rackmcp_sequence,
+        session.patch().nodes[0].rackmcp_sequence
+    );
+    let mut engine = reopened.patch().compile().unwrap();
+    let gain = engine.resolve_parameter("vca", "level").unwrap();
+    assert_eq!(engine.parameter_value(gain), Some(0.25));
+    let mut frames = [openpatch_core::PortFrame::default(); 64];
+    engine.process_poly_block(&mut frames);
+    assert_eq!(frames[63].values[0], 0.125);
+    // A constant source lane must allow manual overrides until its value
+    // changes, including across actual prepared-plan history replacements.
+    for (tool, args, expected) in [
+        (
+            "set_parameter",
+            serde_json::json!({"id":"vca","parameter":"level","value":0.75}),
+            0.75,
+        ),
+        ("undo", serde_json::json!({}), 0.25),
+        ("redo", serde_json::json!({}), 0.75),
+        (
+            "set_parameter",
+            serde_json::json!({"id":"automation","parameter":"bpm","value":128}),
+            0.75,
+        ),
+        ("undo", serde_json::json!({}), 0.75),
+    ] {
+        session.execute(tool, args).unwrap();
+        assert!(updates
+            .push(sequence_graph(
+                &callback,
+                session.patch(),
+                session.revision()
+            ))
+            .is_ok());
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 2048], 1));
+        assert_live_parameter(&callback, "vca", "level", expected);
+        while retired.pop().is_ok() {}
+    }
+}

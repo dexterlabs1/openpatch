@@ -136,6 +136,44 @@ Acceptance fixtures (execute separately against pinned source and actual host):
 Implementation checkpoint: separate fixed-capacity Rust primitives now pass
 the [actual C++ engine comparison](../scripts/rackmcp_sequence_reference/README.md):
 18 cases / 620,730 frames, all compared bits equal. Native strict compilation
-also preserves all 13 lanes in the two actual saved sequencers. Host target
-writes, timing/divider adapters, import mapping, live capture and UI remain
-open; these primitives are not a registered model or whole-patch support.
+also preserves all 13 lanes in the two actual saved sequencers. That frozen
+proof covers the engine/parser/curve primitives, not the module wrapper or
+whole-patch playback.
+
+## Native adapter checkpoint
+
+`rackmcp_sequencer` is a separate version-2 native model. Its optional
+`Node.rackmcp_sequence` contains strict source `data` and native `targets`.
+Absent state creates a stopped, silent 16-step pattern A. Native bindings name
+`source_module_id` / `source_param_id` plus a native `module` / `parameter`;
+matching uses the source pair rather than array order. Compilation resolves
+bounded handles once. Missing destinations retain their metadata and skip
+writes; a present destination without the declared live capability rejects
+compilation. Import has not yet enabled this model: source-package provenance
+checks are still required before translating source targets.
+
+The adapter implements source Schmitt startup, connected-clock detection,
+polyphonic pitch/gate/velocity/accent groups and mono clock/reset outputs. Its
+32-sample lane divider runs while stopped; assignments occur only while running,
+with the source normalize/clamp/snap arithmetic and acknowledged-write cache.
+Native node order determines whether a destination sees an assignment this
+sample or next sample; cable signals retain native delayed scheduling. This is
+a declared host boundary rather than Rack scheduling equivalence.
+
+Compatible graph adoption preserves transport/detectors/divider/cache, including
+across sample rates and node reorder. Receiving controls/data remain owned by
+the receiver. Changed source data reloads selection and invalidates lane cache;
+equal unrelated rebuilds do not. Fresh target incarnations invalidate only their
+lanes. Initialize does not invent an onReset event: the pinned module has no
+onReset/onSampleRateChange override. An explicit equal-data reload exists at the
+adapter boundary; transaction/undo/preset intent still needs to carry that event
+through prepared graph activation.
+
+Focused native tests cover all 18 outputs, destination values and process-order
+visibility, bypass freeze/resume, edits, adoption, publication, save and history.
+Actual callback processing/adoption is allocation/deallocation-free in the tested
+workflows. The dedicated Signal Atlas rack/browser panel displays authored
+selection/notes/drum hits/accents, never an invented live playhead. Direct
+transport/seek/status publication, explicit load intent, provenance-safe import,
+Bridge and Listen capture remain open; this is not whole-module or whole-patch
+qualification.

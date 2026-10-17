@@ -249,6 +249,9 @@ pub struct Node {
     /// Structured patterns and automation for score_sequencer only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub score: Option<ScoreData>,
+    /// Source-version RackMCP sequence and explicit native target bindings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rackmcp_sequence: Option<Box<rackmcp_sequence::SequenceState>>,
     pub id: String,
     pub kind: String,
     #[serde(default, skip_serializing_if = "is_false")]
@@ -512,6 +515,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(score::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(rackmcp_sequence::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
@@ -894,6 +901,14 @@ impl Patch {
             if node.score.is_some() && (node.kind != "score_sequencer" || self.version != 2) {
                 return Err(format!(
                     "node {}: score data requires version-2 score_sequencer",
+                    node.id
+                ));
+            }
+            if node.rackmcp_sequence.is_some()
+                && (node.kind != "rackmcp_sequencer" || self.version != 2)
+            {
+                return Err(format!(
+                    "node {}: RackMCP sequence data requires version-2 rackmcp_sequencer",
                     node.id
                 ));
             }
@@ -2491,6 +2506,7 @@ impl Engine {
 pub fn demo_patch() -> Patch {
     let node = |id: &str, kind: &str, params: &[(&str, f32)]| Node {
         content: None,
+        rackmcp_sequence: None,
         score: None,
         bypassed: false,
         id: id.into(),
@@ -2541,6 +2557,7 @@ pub fn demo_patch() -> Patch {
 pub fn analog_demo_patch() -> Patch {
     let node = |id: &str, kind: &str, params: &[(&str, f32)]| Node {
         content: None,
+        rackmcp_sequence: None,
         score: None,
         bypassed: false,
         id: id.into(),

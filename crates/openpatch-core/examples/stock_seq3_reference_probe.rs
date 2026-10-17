@@ -28,6 +28,7 @@ fn node(params: &[f32; 28]) -> Node {
         kind: "stock_seq3".into(),
         params: values,
         content: None,
+        rackmcp_sequence: None,
         score: None,
         bypassed: false,
     }

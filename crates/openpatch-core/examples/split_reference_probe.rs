@@ -93,6 +93,7 @@ fn run() -> Result<(), String> {
                     params,
                     bypassed: false,
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                 },
                 Node {
@@ -101,6 +102,7 @@ fn run() -> Result<(), String> {
                     params: BTreeMap::new(),
                     bypassed: false,
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                 },
             ],

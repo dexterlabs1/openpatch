@@ -847,6 +847,7 @@ mod atlas_voice_response_tests {
             .into(),
             bypassed: false,
             content: None,
+            rackmcp_sequence: None,
             score: None,
         };
         let points = atlas_ladder_points(&node, 48000);
@@ -882,6 +883,7 @@ mod atlas_voice_response_tests {
             .into(),
             bypassed: false,
             content: None,
+            rackmcp_sequence: None,
             score: None,
         };
         let points = atlas_envelope_points(&node);

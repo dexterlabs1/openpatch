@@ -722,3 +722,63 @@ fn stock_vca_first_processing_taps_lights_adoption_and_reset_allocate_nothing() 
     assert_eq!(samples[0][0].value, 0.125);
     assert_eq!(samples[0][1].value, 2.0);
 }
+
+#[test]
+fn rackmcp_native_automation_render_and_graph_handoff_use_no_heap() {
+    use openpatch_core::{Patch, PortFrame};
+    use serde_json::json;
+    let mut patch: Patch = serde_json::from_value(json!({
+        "version":2,"sample_rate":48000,
+        "nodes":[
+            {"id":"seq","kind":"rackmcp_sequencer","params":{"running":1},
+             "rackmcp_sequence":{"data":{"patterns":[{"name":"A","length":2,
+                "tracks":[{"voices":4,"steps":[{"step":0,"notes":[0,4,7,12],"ratchet":8,"accent":true}]}]}],
+                "lanes":[{"moduleId":"42","paramId":0,"points":[{"bar":0,"value":0.25},{"bar":1,"value":1}]}]},
+                "targets":[{"source_module_id":"42","source_param_id":0,"module":"vca","parameter":"level"}]}},
+            {"id":"source","kind":"poly_constant","params":{"v1":0.5}},
+            {"id":"vca","kind":"stock_vca","params":{}}],
+        "cables":[{"from":"source","to":"vca","input":"signal"}],
+        "output":"vca"
+    })).unwrap();
+    let mut first = patch.compile().unwrap();
+    let mut second = patch.compile().unwrap();
+    patch.sample_rate = 96000;
+    patch.nodes.swap(0, 2);
+    let mut third = patch.compile().unwrap();
+    let fresh = third.resolve_parameter("vca", "level").unwrap().module();
+    patch.nodes[2]
+        .rackmcp_sequence
+        .as_mut()
+        .unwrap()
+        .data
+        .selected_pattern = Some("A".into());
+    let mut loaded = patch.compile().unwrap();
+    let mut output = [PortFrame::default(); 37];
+    ALLOCATIONS.with(|count| count.set(0));
+    DEALLOCATIONS.with(|count| count.set(0));
+    TRACKING.with(|enabled| enabled.set(true));
+    for _ in 0..32 {
+        first.process_poly_block(&mut output);
+    }
+    second.handoff_state_from_excluding_routes(&mut first, &[], &[]);
+    second.inherit_parameter_values(&first, &[], &[]);
+    for _ in 0..32 {
+        second.process_poly_block(&mut output);
+    }
+    third.handoff_state_from_excluding_routes(&mut second, &[fresh], &[]);
+    third.inherit_parameter_values(&second, &[fresh], &[]);
+    for _ in 0..32 {
+        third.process_poly_block(&mut output);
+    }
+    loaded.adopt_state_from(&third);
+    loaded.inherit_parameter_values(&third, &[], &[]);
+    for _ in 0..32 {
+        loaded.process_poly_block(&mut output);
+    }
+    TRACKING.with(|enabled| enabled.set(false));
+    assert_eq!(ALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+    assert!(output
+        .iter()
+        .all(|frame| frame.values[0].is_finite() && frame.values[0] > 0.0));
+}

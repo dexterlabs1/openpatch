@@ -1,7 +1,7 @@
 RackMCP 2.0.0 sequencing source adaptation
 =========================================
 The linked openpatch-core crate includes a modified Rust port of Zachary
-Scheffler's RackMCP sequencing engine, GPL-3.0-or-later, source revision
+Scheffler's RackMCP sequencing engine and module adapter, GPL-3.0-or-later, source revision
 285e84c5ff2d3ecef25890da07f578af6a0c5ca6.
 https://github.com/dexterlabs1/vcv-rack-mcp/tree/285e84c5ff2d3ecef25890da07f578af6a0c5ca6/plugins/RackMCP
 See the core third-party notice and LICENSE-GPL-3.0.txt for full terms.

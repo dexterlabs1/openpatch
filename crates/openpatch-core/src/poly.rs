@@ -20,6 +20,7 @@ use crate::pulses::{self, Pulses};
 use crate::push::{self, Push};
 use crate::rack264_vcf::{self, Rack264Vcf};
 use crate::rack264_vco::{self, Rack264Vco};
+use crate::rackmcp_sequence::{self, RackMcpSequencer, ResolvedTarget};
 use crate::random_modulation::{self, Random};
 use crate::random_values::{self, RandomValues};
 use crate::routing::{self, Routing};
@@ -96,6 +97,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
     crate::content::is_annotation(kind)
         || kind == "colored_noise"
         || kind == "score_sequencer"
+        || kind == "rackmcp_sequencer"
         || kind == "modal_resonator"
         || kind == "macro_voice"
         || kind == "studio_mixer"
@@ -167,6 +169,9 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
     }
     if kind == "modal_resonator" {
         return modal_resonator::INPUTS.iter().position(|p| *p == name);
+    }
+    if kind == "rackmcp_sequencer" {
+        return rackmcp_sequence::INPUTS.iter().position(|p| *p == name);
     }
     if kind == "score_sequencer" {
         return score::INPUTS.iter().position(|p| *p == name);
@@ -250,6 +255,9 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
     }
     if kind == "modal_resonator" {
         return modal_resonator::OUTPUTS.iter().position(|p| *p == name);
+    }
+    if kind == "rackmcp_sequencer" {
+        return rackmcp_sequence::OUTPUTS.iter().position(|p| *p == name);
     }
     if kind == "score_sequencer" {
         return score::OUTPUTS.iter().position(|p| *p == name);
@@ -415,6 +423,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .collect::<Vec<_>>()
     } else if kind == "stock_noise" {
         stock_noise::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "rackmcp_sequencer" {
+        rackmcp_sequence::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
@@ -699,6 +712,17 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             output["maximum_channels"] = json!(1);
         }
     }
+    if kind == "rackmcp_sequencer" {
+        module["polyphony"]["version_2"] = json!("four tracks with 1–4 voices; pitch, gate, velocity and accent retain track width; clock/reset mono");
+        for (index, output) in module["output_metadata"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .enumerate()
+        {
+            output["maximum_channels"] = json!(if index < 16 { 4 } else { 1 });
+        }
+    }
     if kind == "score_sequencer" {
         module["polyphony"]["version_2"] = json!(
             "four polyphonic note tracks; automation lanes packed into one polyphonic output"
@@ -824,6 +848,7 @@ enum Model {
     Annotation,
     ColoredNoise(Box<ColoredNoise>),
     Score(Box<ScoreSequencer>),
+    RackMcpSequencer(Box<RackMcpSequencer>),
     StudioFx(Box<StudioFx>),
     ModalResonator(Box<ModalResonator>),
     MacroVoice(Box<MacroVoice>),
@@ -907,6 +932,10 @@ impl Model {
         }
         if node.kind == "studio_mixer" {
             return StudioMixer::build(node, rate).map(|s| Self::StudioMixer(Box::new(s)));
+        }
+        if node.kind == "rackmcp_sequencer" {
+            return RackMcpSequencer::build(node, rate)
+                .map(|s| Self::RackMcpSequencer(Box::new(s)));
         }
         if node.kind == "score_sequencer" {
             return ScoreSequencer::build(node, rate).map(|s| Self::Score(Box::new(s)));
@@ -2218,6 +2247,10 @@ impl PolyEngine {
                 s.reset_state();
                 node.output_count
             }
+            Model::RackMcpSequencer(s) => {
+                s.initialize_state();
+                node.output_count
+            }
             Model::Score(s) => {
                 s.reset_state();
                 node.output_count
@@ -2510,6 +2543,8 @@ impl PolyEngine {
                 colored_noise::OUTPUTS.len()
             } else if node.kind == "stock_noise" {
                 stock_noise::OUTPUTS.len()
+            } else if node.kind == "rackmcp_sequencer" {
+                rackmcp_sequence::OUTPUTS.len()
             } else if node.kind == "score_sequencer" {
                 score::OUTPUTS.len()
             } else if let Some(ports) = studio_fx::output_names(&node.kind)
@@ -2579,6 +2614,39 @@ impl PolyEngine {
         let mut route_counts = BTreeMap::<EdgeKey, usize>::new();
         let mut unique_legacy_routes = BTreeMap::<EdgeKey, Option<usize>>::new();
         let mut cable_lookup = BTreeMap::new();
+        for node in &mut nodes {
+            if let Model::RackMcpSequencer(sequence) = &mut node.model {
+                let mut targets = [None; 8];
+                for (lane, source) in sequence.source_targets().into_iter().enumerate() {
+                    let Some(source) = source else { continue };
+                    let Some(&destination) = node_lookup.get(&source.module) else {
+                        continue;
+                    };
+                    let kind = &patch.nodes[destination].kind;
+                    let Some(descriptor) =
+                        crate::runtime_parameter_descriptor(kind, &source.parameter)
+                    else {
+                        return Err(format!(
+                            "sequence target '{}.{}' has no live native parameter capability",
+                            source.module, source.parameter
+                        ));
+                    };
+                    let parameter = crate::live_parameters::ParameterId::for_kind(kind)
+                        .iter()
+                        .copied()
+                        .find(|id| id.descriptor().name == source.parameter)
+                        .expect("descriptor and parameter capability agree");
+                    targets[lane] = Some(ResolvedTarget {
+                        node: destination,
+                        parameter,
+                        min: descriptor.min,
+                        max: descriptor.max,
+                        snap: descriptor.snap,
+                    });
+                }
+                sequence.bind_targets(targets);
+            }
+        }
         let mut group_lookup = BTreeMap::<(usize, usize), usize>::new();
         let mut group_edges = Vec::<Vec<usize>>::new();
         let mut group_destinations = Vec::new();
@@ -2820,7 +2888,11 @@ impl PolyEngine {
             }
             self.input_frames[index] = sum;
         }
-        for (node_index, node) in self.nodes.iter_mut().enumerate() {
+        for node_index in 0..self.nodes.len() {
+            let node = &mut self.nodes[node_index];
+            // Only a sequencer produces the bounded write batch; ordinary
+            // nodes do not initialize or walk eight unused target slots.
+            let mut parameter_writes = None;
             if node.model.native_host() {
                 if let Model::StockNoise(model) = &mut node.model {
                     model.begin_frame();
@@ -2920,6 +2992,13 @@ impl PolyEngine {
                 | Model::StockVcaMix(_)
                 | Model::StockNoise(_) => {
                     unreachable!("native model processed above")
+                }
+                Model::RackMcpSequencer(sequence) => {
+                    let (outputs, writes) =
+                        sequence.process(&[a, b], node.physical_input_mask & 1 != 0);
+                    self.outputs[node.output_start..node.output_start + 18]
+                        .copy_from_slice(&outputs);
+                    parameter_writes = Some(writes);
                 }
                 Model::Score(_)
                 | Model::StudioFx(_)
@@ -3397,6 +3476,23 @@ impl PolyEngine {
                     self.outputs[node.output_start] = s.process(a);
                 }
             }
+            // Process-time writes follow native node order. Later nodes see
+            // the new parameter this sample, earlier nodes the next sample.
+            // Port routing retains the native synchronous delayed contract.
+            if let Some(parameter_writes) = parameter_writes {
+                for write in parameter_writes.into_iter().flatten() {
+                    if self.set_parameter_value(
+                        write.target.node,
+                        write.target.parameter,
+                        write.value,
+                    ) {
+                        if let Model::RackMcpSequencer(sequence) = &mut self.nodes[node_index].model
+                        {
+                            sequence.acknowledge_write(write.lane, write.value);
+                        }
+                    }
+                }
+            }
         }
         if let Some(host) = &mut self.host {
             for span in &self.logical_output_spans {
@@ -3664,6 +3760,26 @@ impl PolyEngine {
         copy_delay: bool,
     ) {
         self.host_context_dirty = true;
+        // The source has no rate-change reset. Preserve bounded transport and
+        // detectors while the receiver retains compiled data and parameters.
+        for (id, &index) in &self.node_lookup {
+            if excluded[index] {
+                continue;
+            }
+            let Some(&previous) = old.node_lookup.get(id) else {
+                continue;
+            };
+            if let (Model::RackMcpSequencer(sequence), Model::RackMcpSequencer(previous)) =
+                (&mut self.nodes[index].model, &old.nodes[previous].model)
+            {
+                sequence.adopt(previous);
+                for (lane, target) in sequence.resolved_targets().into_iter().enumerate() {
+                    if target.is_some_and(|target| excluded[target.node]) {
+                        sequence.invalidate_target(lane);
+                    }
+                }
+            }
+        }
         if self.rate != old.rate {
             self.port_lights.reset_epoch();
             return;
@@ -4083,6 +4199,7 @@ mod tests {
             nodes: vec![
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: "a".into(),
                     kind: "constant".into(),
@@ -4091,6 +4208,7 @@ mod tests {
                 },
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: "b".into(),
                     kind: "constant".into(),
@@ -4099,6 +4217,7 @@ mod tests {
                 },
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: "target".into(),
                     kind: "gain".into(),
@@ -4145,6 +4264,7 @@ mod tests {
             nodes: vec![
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: "source".into(),
                     kind: "constant".into(),
@@ -4153,6 +4273,7 @@ mod tests {
                 },
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: "target".into(),
                     kind: "gain".into(),
@@ -4223,6 +4344,7 @@ mod tests {
             nodes: vec![
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     bypassed: false,
                     id: "source".into(),
@@ -4237,6 +4359,7 @@ mod tests {
                 },
                 Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     bypassed: false,
                     id: "voice".into(),

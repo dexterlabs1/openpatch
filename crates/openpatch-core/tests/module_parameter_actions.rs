@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 fn node(kind: &str, params: &[(&str, f32)]) -> Node {
     Node {
         content: None,
+        rackmcp_sequence: None,
         score: None,
         id: "target".into(),
         kind: kind.into(),
@@ -289,6 +290,7 @@ fn initialize_runtime_handle_accepts_valid_bypassed_and_rejects_foreign() {
         node("multi_vco", &[]),
         Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             id: "bypassed".into(),
             kind: "constant".into(),

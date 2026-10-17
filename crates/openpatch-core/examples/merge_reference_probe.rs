@@ -55,6 +55,7 @@ fn run() -> Result<(), String> {
                 params,
                 bypassed: false,
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
             });
             patch.cables.push(Cable {
@@ -74,6 +75,7 @@ fn run() -> Result<(), String> {
             params: BTreeMap::from([("channels".into(), selection)]),
             bypassed: false,
             content: None,
+            rackmcp_sequence: None,
             score: None,
         });
         let mut engine = patch.compile()?;

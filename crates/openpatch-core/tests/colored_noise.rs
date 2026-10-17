@@ -157,6 +157,7 @@ fn output_selection_unused_ports_and_wiring_do_not_change_noise_stepping() {
     let mut wired = selected.clone();
     wired.nodes.push(Node {
         content: None,
+        rackmcp_sequence: None,
         score: None,
         bypassed: false,
         id: "unused".into(),

@@ -374,6 +374,7 @@ mod tests {
             kind: "wavetable_lfo".into(),
             params: Default::default(),
             bypassed: false,
+            rackmcp_sequence: None,
             score: None,
             content: None,
         });

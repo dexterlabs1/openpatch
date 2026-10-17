@@ -58,6 +58,8 @@ mod preset_tests;
 #[cfg(test)]
 mod push_tests;
 #[cfg(test)]
+mod rackmcp_sequence_tests;
+#[cfg(test)]
 mod score_tests;
 #[cfg(test)]
 mod sequence_tests;
@@ -2074,6 +2076,10 @@ fn apply_edit(
                     .get("content")
                     .map(|value| serde_json::from_value(value.clone()).map_err(|e| e.to_string()))
                     .transpose()?,
+                rackmcp_sequence: args
+                    .get("rackmcp_sequence")
+                    .map(|value| serde_json::from_value(value.clone()).map_err(|e| e.to_string()))
+                    .transpose()?,
                 score: args
                     .get("score")
                     .map(|value| serde_json::from_value(value.clone()).map_err(|e| e.to_string()))
@@ -2593,7 +2599,7 @@ pub fn tools() -> Value {
         tool("capture_project_patch","Capture a project-save patch with actual SEQ3 Run, Push HOLD, MIDI CC assignments and controller values, and all Random Values and Shift Register held voltages plus next PRNG state overlaid on a cloned graph. All live stateful modules must be available at the current revision and the same callback frame; otherwise retry. Without a backend uses initial/default state. No stateful modules means parameter-only capture without reading the backend. Returns patch, revision, state_id, running, holding, random_values and shift_registers maps, state_source, and frame. Does not change session, history, queue, or runtime.",json!({"expected_revision":rev,"include_asset_data":{"type":"boolean","default":false}}),&[],true),
         tool("export_visualizer","Export the bundled audio-reactive WebGL2 visualizer preview to a new .html file. Includes editable GLSL. Open locally in a browser.",json!({"filename":s}),&["filename"],false),
         tool("replace_patch","Modules start with fresh runtime state. Atomically replace the complete patch. Invalid patches leave state unchanged.",json!({"patch":{"type":"object"},"expected_revision":rev}),&["patch"],false),
-        tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params. Notes and Blank accept typed content. Optional row (0..63) asks the desktop to append the panel to the end of that rack row; without it new panels go to the end of row 0. Group related modules by row (e.g. control, voices, effects, mix) for an organized rack.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"score":{"type":"object"},"content":preset_tools::content_schema(),"row":{"type":"integer","minimum":0,"maximum":layout_history::MAX_LAYOUT_ROW},"expected_revision":rev}),&["id","kind"],false),
+        tool("add_module","Add a built-in module by stable ID. Consult catalog for kind and params. Notes and Blank accept typed content. Optional row (0..63) asks the desktop to append the panel to the end of that rack row; without it new panels go to the end of row 0. Group related modules by row (e.g. control, voices, effects, mix) for an organized rack.",json!({"id":s,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"score":{"type":"object"},"rackmcp_sequence":{"type":"object"},"content":preset_tools::content_schema(),"row":{"type":"integer","minimum":0,"maximum":layout_history::MAX_LAYOUT_ROW},"expected_revision":rev}),&["id","kind"],false),
         tool("duplicate_modules","Atomically duplicate 1..256 modules to explicit fresh IDs, preserving kind, parameters, content, and bypass. cable_mode defaults to none (no cables); internal copies only cables between selected sources, inputs also copies external incoming cables, and all copies each cable touching selected modules once, including external outgoing fanout. Selected cable ends are remapped; external ends are retained. Original cable order/IDs stay intact; appended copies have fresh IDs. Selected output is preserved. Version 1 rejects outgoing stacks unless the final transaction removes the conflict. Current SEQ-3 Run, Stock SEQ3 Run/gates/passthrough, Push HOLD and all Random Values and Shift Register voltages plus PRNG are copied; other runtime state starts fresh for the new IDs. Supports preview/batches and one undo step; the final graph must validate.",json!({"modules":duplicate_mappings,"cable_mode":{"type":"string","enum":["none","internal","inputs","all"],"default":"none"},"expected_revision":rev}),&["modules"],false),
         tool("remove_module","Remove a module and its attached cables.",json!({"id":s,"expected_revision":rev}),&["id"],false),
         tool("connect","Connect named ports; output defaults to out. Default mode reject refuses occupied inputs; explicit mode stack adds another version-2 cable, including identical routes. Optional cable_id requests a fresh unique ID; otherwise IDs are assigned immediately. Optional color persists three RGB integer bytes (0..255); omission uses the rack palette. Version 1 rejects stacking/cycles; version 2 delays every cable one sample.",json!({"from":s,"output":s,"to":s,"input":s,"mode":{"type":"string","enum":["reject","stack"],"default":"reject"},"cable_id":module_id,"color":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"integer","minimum":0,"maximum":255}},"expected_revision":rev}),&["from","to","input"],false),

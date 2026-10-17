@@ -636,6 +636,7 @@ fn convert(
         kind: mapping.kind.into(),
         params,
         content: None,
+        rackmcp_sequence: None,
         score: None,
         bypassed: module["bypass"].as_bool().unwrap_or(false),
     };

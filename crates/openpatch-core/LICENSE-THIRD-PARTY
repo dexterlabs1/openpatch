@@ -1,8 +1,9 @@
 RackMCP 2.0.0 sequencing source adaptation
 =========================================
 
-Covered OpenPatch files: src/rackmcp_sequence/{mod.rs,engine.rs}
-Adapted from src/core/sequencer.{hpp,cpp}, by Zachary Scheffler.
+Covered OpenPatch files: src/rackmcp_sequence/{mod.rs,engine.rs,adapter.rs}
+Adapted from src/core/sequencer.{hpp,cpp}, src/core/plan.cpp and
+src/rackside/SequencerModule.{hpp,cpp}, by Zachary Scheffler.
 Source revision: 285e84c5ff2d3ecef25890da07f578af6a0c5ca6
 https://github.com/dexterlabs1/vcv-rack-mcp/tree/285e84c5ff2d3ecef25890da07f578af6a0c5ca6/plugins/RackMCP
 

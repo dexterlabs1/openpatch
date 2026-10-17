@@ -4,6 +4,7 @@ fn noise(rate: u32, seed: u32, level: f32) -> ColoredNoise {
     ColoredNoise::build(
         &Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             bypassed: false,
             id: "noise".into(),

@@ -46,6 +46,7 @@ fn run() -> Result<(), String> {
                 ]),
                 bypassed: false,
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
             };
             let mut next = StockLfoProbe::new(&node, rate)?;

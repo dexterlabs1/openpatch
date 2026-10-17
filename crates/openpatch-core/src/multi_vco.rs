@@ -507,6 +507,7 @@ mod tests {
         MultiVco::build(
             &Node {
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 id: "vco".into(),
                 kind: "multi_vco".into(),
@@ -782,6 +783,7 @@ mod tests {
         let mut params = BTreeMap::<String, f32>::new();
         let make_node = |params: BTreeMap<String, f32>| Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             id: "vco".into(),
             kind: "multi_vco".into(),

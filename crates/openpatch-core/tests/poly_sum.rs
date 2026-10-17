@@ -6,6 +6,7 @@ fn patch(level: Option<f32>, rate: u32) -> Patch {
         params: [("channels".into(), 1.0), ("v1".into(), 10.0)].into(),
         bypassed: false,
         content: None,
+        rackmcp_sequence: None,
         score: None,
     };
     let sum = Node {
@@ -16,6 +17,7 @@ fn patch(level: Option<f32>, rate: u32) -> Patch {
             .unwrap_or_default(),
         bypassed: false,
         content: None,
+        rackmcp_sequence: None,
         score: None,
     };
     Patch {

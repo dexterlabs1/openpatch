@@ -324,6 +324,7 @@ mod tests {
     fn node(kind: &str, params: &[(&str, f32)]) -> Node {
         Node {
             content: None,
+            rackmcp_sequence: None,
             score: None,
             id: "test".into(),
             kind: kind.into(),

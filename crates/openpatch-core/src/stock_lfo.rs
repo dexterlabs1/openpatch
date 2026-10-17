@@ -327,6 +327,7 @@ mod tests {
                 kind: "stock_lfo".into(),
                 params: params.iter().map(|(k, v)| ((*k).into(), *v)).collect(),
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 bypassed: false,
             },
@@ -601,6 +602,7 @@ mod safety_tests {
                 ]
                 .into(),
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 bypassed: false,
             },

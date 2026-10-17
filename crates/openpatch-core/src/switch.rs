@@ -215,6 +215,7 @@ mod tests {
         SequentialSwitch::build(
             &Node {
                 content: None,
+                rackmcp_sequence: None,
                 score: None,
                 bypassed: false,
                 id: "s".into(),

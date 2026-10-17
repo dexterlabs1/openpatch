@@ -89,7 +89,7 @@ impl Category {
             | "stock_noise" | "macro_voice" | "wavetable_vco" => Self::Oscillators,
             "lowpass" | "ladder_vcf" | "svf_filter" | "stock_vcf" | "rack264_vcf" => Self::Filters,
             "adsr" | "adsr_eg" => Self::Envelopes,
-            "seq3" | "stock_seq3" | "score_sequencer" => Self::Sequencers,
+            "seq3" | "stock_seq3" | "score_sequencer" | "rackmcp_sequencer" => Self::Sequencers,
             "lfo" | "multi_lfo" | "stock_lfo" | "wavetable_lfo" | "gate" | "random"
             | "random_values" | "sh_asr" => Self::Modulation,
             "gain"
@@ -2514,4 +2514,23 @@ mod tests {
 mod library_zoom_tests {
     use super::*;
     include!("library_zoom_tests.rs");
+}
+
+#[cfg(test)]
+mod rackmcp_category_tests {
+    use super::*;
+
+    #[test]
+    fn source_derived_rackmcp_is_a_sequencer_without_custom_membership() {
+        let catalog = openpatch_core::catalog();
+        let module = catalog["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|module| module["kind"] == "rackmcp_sequencer")
+            .unwrap();
+        assert_eq!(Category::of_kind("rackmcp_sequencer"), Category::Sequencers);
+        assert_eq!(category_labels(module), "Sequencers");
+        assert!(!has_catalog_tag(module, Category::Custom.label()));
+    }
 }

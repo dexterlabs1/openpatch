@@ -10118,6 +10118,7 @@ mod project_workflow_tests {
             nodes: (0..openpatch_core::MAX_NODES)
                 .map(|i| openpatch_core::Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: format!("node{i}"),
                     kind: "constant".into(),
@@ -11757,6 +11758,7 @@ mod project_workflow_tests {
             nodes: (0..openpatch_core::MAX_NODES)
                 .map(|i| openpatch_core::Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: format!("node{i}"),
                     kind: "constant".into(),
@@ -11801,6 +11803,7 @@ mod project_workflow_tests {
                 .iter()
                 .map(|id| openpatch_core::Node {
                     content: None,
+                    rackmcp_sequence: None,
                     score: None,
                     id: id.clone(),
                     kind: "constant".into(),

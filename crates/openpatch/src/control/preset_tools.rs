@@ -116,6 +116,7 @@ pub(super) fn schema() -> Value {
         "params":{"type":"object","additionalProperties":{"type":"number"}},
         "bypassed":{"type":"boolean"},
         "score":{"type":"object"},
+        "rackmcp_sequence":{"type":"object"},
         "content":content_schema(),
         "assets":{"type":"object","maxProperties":1,"additionalProperties":{
             "type":"object","properties":{

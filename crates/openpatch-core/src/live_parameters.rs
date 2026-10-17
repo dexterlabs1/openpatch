@@ -25,7 +25,7 @@ impl ParameterId {
             Self::StockVcaLevel | Self::Rack264VcfFrequency => 1,
         }
     }
-    fn descriptor(self) -> ParameterDescriptor {
+    pub(crate) fn descriptor(self) -> ParameterDescriptor {
         match self {
             Self::StockVcaLevel => ParameterDescriptor {
                 name: "level",
