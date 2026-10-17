@@ -71,12 +71,12 @@ fn both_resize_edges_commit_width_and_position_in_one_history_step_with_project_
         let after = app.capture_document();
         assert_eq!(width(&app), 20);
         assert_eq!(
-            after.layout["positions"]["blank"],
+            after.layout().clone()["positions"]["blank"],
             json!([if left { 150.0 } else { 300.0 }, 0.0])
         );
         assert_eq!(
-            after.layout["positions"]["notes"],
-            before.layout["positions"]["notes"]
+            after.layout().clone()["positions"]["notes"],
+            before.layout().clone()["positions"]["notes"]
         );
         assert_eq!(
             app.shared.lock().unwrap().snapshot()["history"]["undo_steps"],
@@ -111,27 +111,27 @@ fn unseen_mcp_width_revisions_restore_saved_widths_and_known_geometry_through_hi
     assert_eq!(width(&app), 10);
     app.sync();
     assert_eq!(width(&app), 24);
-    assert_eq!(app.rack.layout(), before.layout);
+    assert_eq!(app.rack.layout(), before.layout().clone());
     app.history(false);
     assert_eq!(width(&app), 14);
-    assert_eq!(app.rack.layout(), before.layout);
+    assert_eq!(app.rack.layout(), before.layout().clone());
     app.history(false);
     assert!(app.capture_document().equivalent(&before));
     for hp in [14, 24] {
         app.history(true);
         assert_eq!(width(&app), hp);
-        assert_eq!(app.rack.layout(), before.layout);
+        assert_eq!(app.rack.layout(), before.layout().clone());
     }
     let resize = proposal(&app, 32, true);
     assert!(app.resize_blank(resize));
     let resized = app.capture_document();
-    assert_eq!(resized.layout["positions"]["blank"], json!([180.0, 0.0]));
+    assert_eq!(resized.layout().clone()["positions"]["blank"], json!([180.0, 0.0]));
     app.history(false);
     assert_eq!(width(&app), 24);
-    assert_eq!(app.rack.layout(), before.layout);
+    assert_eq!(app.rack.layout(), before.layout().clone());
     app.history(false);
     assert_eq!(width(&app), 14);
-    assert_eq!(app.rack.layout(), before.layout);
+    assert_eq!(app.rack.layout(), before.layout().clone());
     app.history(true);
     app.history(true);
     assert!(app.capture_document().equivalent(&resized));
@@ -158,14 +158,14 @@ fn exact_resize_receipt_keeps_its_geometry_when_a_newer_mcp_width_commit_holds_t
         &receipt,
         &resize.movement,
         base_state,
-        before.layout.clone(),
+        before.layout().clone().clone(),
     )
     .unwrap();
     let resized = app.capture_document();
     assert_eq!(width(&app), 20);
-    assert_eq!(resized.layout["positions"]["blank"], json!([150.0, 0.0]));
-    assert_eq!(app.history_layouts[&committed_state], resized.layout);
-    assert_eq!(app.history_layouts[&base_state], before.layout);
+    assert_eq!(resized.layout().clone()["positions"]["blank"], json!([150.0, 0.0]));
+    assert_eq!(app.history_layouts[&committed_state], resized.layout().clone());
+    assert_eq!(app.history_layouts[&base_state], before.layout().clone());
     assert!(!app.history_layouts.contains_key(&later_state));
     app.sync();
     assert_eq!(app.state_id, committed_state);
@@ -173,7 +173,7 @@ fn exact_resize_receipt_keeps_its_geometry_when_a_newer_mcp_width_commit_holds_t
     app.sync();
     assert_eq!(width(&app), 30);
     assert_eq!(app.state_id, later_state);
-    assert_eq!(app.rack.layout(), resized.layout);
+    assert_eq!(app.rack.layout(), resized.layout().clone());
     app.history(false);
     assert!(app.capture_document().equivalent(&resized));
     app.history(false);
@@ -182,7 +182,7 @@ fn exact_resize_receipt_keeps_its_geometry_when_a_newer_mcp_width_commit_holds_t
     assert!(app.capture_document().equivalent(&resized));
     app.history(true);
     assert_eq!(width(&app), 30);
-    assert_eq!(app.rack.layout(), resized.layout);
+    assert_eq!(app.rack.layout(), resized.layout().clone());
 }
 
 #[test]
@@ -211,13 +211,13 @@ fn no_op_collision_invalid_and_stale_resize_cannot_advance_history_or_move_other
     assert!(!app.resize_blank(stale));
     assert_eq!(app.shared.lock().unwrap().snapshot(), newer);
     assert_eq!(width(&app), 12);
-    assert_eq!(app.rack.layout(), before.layout);
+    assert_eq!(app.rack.layout(), before.layout().clone());
     // A caller holding the current revision cannot disguise the old base width.
     let mut stale_width = proposal(&app, 20, true);
     stale_width.before_hp = 10;
     assert!(!app.resize_blank(stale_width));
     assert_eq!(app.shared.lock().unwrap().snapshot(), newer);
-    assert_eq!(app.rack.layout(), before.layout);
+    assert_eq!(app.rack.layout(), before.layout().clone());
 }
 
 #[test]
@@ -251,8 +251,8 @@ fn unicode_notes_custom_blank_width_presets_duplicates_projects_and_recovery_pre
                 .content
         );
         assert_ne!(
-            duplicated.layout["positions"][id],
-            duplicated.layout["positions"][copy]
+            duplicated.layout().clone()["positions"][id],
+            duplicated.layout().clone()["positions"][copy]
         );
     }
     app.history(false);

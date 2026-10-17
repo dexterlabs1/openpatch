@@ -309,13 +309,14 @@ fn cable_preferences_survive_template_new_example_open_import_revert_recovery_hi
             let store = Store::new(dir.path()).unwrap();
             store.save_recovery(&expected).unwrap();
             store.save_new("saved.openpatch", &expected).unwrap();
-            let mut template = crate::startup::factory_document();
-            template.layout["zoom"] = json!(0.75);
+            let template = crate::startup::factory_document();
+            let mut layout = template.layout().clone(); layout["zoom"] = json!(0.75);
+            let template = template.with_layout(layout).unwrap();
             store.save_template(&template, None).unwrap();
         }
         std::fs::write(
             dir.path().join("legacy.json"),
-            serde_json::to_vec(&expected.patch).unwrap(),
+            serde_json::to_vec(&expected.patch()).unwrap(),
         )
         .unwrap();
         let mut app = host(dir.path());

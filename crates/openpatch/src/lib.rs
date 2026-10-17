@@ -11,3 +11,5 @@ pub mod presets;
 pub mod project_document;
 pub mod vcv_archive;
 pub mod visualizer;
+
+pub mod vcv_import;

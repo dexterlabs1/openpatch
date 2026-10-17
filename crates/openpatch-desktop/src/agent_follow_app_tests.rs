@@ -307,7 +307,7 @@ fn actual_agent_camera_preserves_saved_project_until_manual_navigation() {
     assert!(!app.documents.matches_saved(&manual));
     assert!(app.dirty());
     let visible = app.rack.agent_follow_view_pan();
-    let persisted_pan = &manual.layout["pan"];
+    let persisted_pan = &manual.layout().clone()["pan"];
     assert!((persisted_pan[0].as_f64().unwrap() as f32 - visible.x).abs() < 0.001);
     assert!((persisted_pan[1].as_f64().unwrap() as f32 - visible.y).abs() < 0.001);
     assert_eq!(app.shared.lock().unwrap().snapshot(), graph);

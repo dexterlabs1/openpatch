@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import json
 import math
 import os
 import queue
 import subprocess
 import struct
+import tarfile
 import tempfile
 import threading
 import time
@@ -281,6 +283,88 @@ class OpenPatchMCPTests(unittest.TestCase):
             {"id": "osc", "parameter": "frequency", "value": 440,
              "expected_revision": revision},
         )
+
+    def test_import_vcv_repair_undo_and_document_roundtrip_preserve_source_assets_layout(self) -> None:
+        source = {
+            "version": "2.6.6", "zoom": 1.25, "gridOffset": [2, 1],
+            "future-global": {"retained": True},
+            "modules": [
+                {"id": 41, "plugin": "SyntheticMissing", "model": "Source", "version": "1.0.0",
+                 "pos": [2, 0], "data": {"asset": "modules/41/original.bin", "opaque": [None, True]}},
+                {"id": 42, "plugin": "SyntheticMissing", "model": "Processor", "version": "1.0.0",
+                 "pos": [10, 1], "data": {"future-control": 17}},
+            ],
+            "cables": [{"id": 7, "outputModuleId": 41, "outputId": 0,
+                        "inputModuleId": 42, "inputId": 0, "color": "#123456",
+                        "future-cable": {"retained": True}}],
+        }
+        original_json = (json.dumps(source, ensure_ascii=False, indent=2) + "\n").encode()
+        asset = b"\x00\xffsynthetic source asset\n"
+        archive = io.BytesIO()
+        with tarfile.open(fileobj=archive, mode="w", format=tarfile.USTAR_FORMAT) as container:
+            for name, data in [("patch.json", original_json), ("modules/41/original.bin", asset)]:
+                member = tarfile.TarInfo(name)
+                member.size = len(data)
+                container.addfile(member, io.BytesIO(data))
+        raw = archive.getvalue()
+        # One standard Zstd frame with a raw final block avoids an external
+        # compressor dependency while exercising the actual .vcv archive path.
+        vcv_bytes = (b"\x28\xb5\x2f\xfd\xa0" + struct.pack("<I", len(raw))
+                     + ((len(raw) << 3) | 1).to_bytes(3, "little") + raw)
+        source_path = self.workspace / "synthetic.vcv"
+        source_path.write_bytes(vcv_bytes)
+        imported = self.payload(self.require_tool_success("import_vcv", {"filename": source_path.name}))
+        self.assertEqual(imported["report"]["unresolved_count"], 2)
+        self.assertEqual(imported["report"]["asset_count"], 1)
+        self.assertEqual(imported["execution"]["requested_disposition"], "suspended_unresolved")
+
+        def inspect() -> dict[str, Any]:
+            result = self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))
+            assert result is not None
+            return result
+
+        original = inspect()["document"]
+        package_id = imported["report"]["package_id"]
+        package = original["sources"][package_id]
+        self.assertEqual(package["patch"], source)
+        self.assertEqual(base64.b64decode(original["source_blobs"][package["assets"]["patch.json"]]), original_json)
+        self.assertEqual(base64.b64decode(original["source_blobs"][package["assets"]["modules/41/original.bin"]]), asset)
+        self.assertEqual(original["layout"]["positions"], {"vcv_m_41": [30.0, 0.0], "vcv_m_42": [150.0, 420.0]})
+        self.assertEqual(original["layout"]["pan"], [-37.5, -525.0])
+        self.assertEqual(original["layout"]["zoom"], 1.25)
+
+        self.require_tool_success("substitute_unresolved_module", {
+            "id": "vcv_m_42", "kind": "gain", "params": {"gain": 0.5},
+            "inputs": {"vcv_in_0": "signal"}, "outputs": {},
+        })
+        substituted = inspect()
+        native = next(node for node in substituted["document"]["graph"]["nodes"] if node["type"] == "native")
+        self.assertEqual(native["node"]["kind"], "gain")
+        self.assertEqual(native["source"]["mapping"]["fidelity"], "user_substitution")
+        self.assertEqual(substituted["document"]["graph"]["cables"][0]["route"]["input"], "signal")
+        self.assertEqual(substituted["execution"]["unresolved_modules"], ["vcv_m_41"])
+        self.require_tool_success("remove_unresolved_module", {"id": "vcv_m_41"})
+        removed = inspect()
+        self.assertEqual(removed["document"]["graph"]["cables"], [])
+        self.assertNotIn("vcv_m_41", removed["document"]["layout"]["positions"])
+        self.assertEqual(removed["execution"]["requested_disposition"], "runnable_exact")
+        for key in ["sources", "source_blobs"]:
+            self.assertEqual(removed["document"][key], original[key])
+        self.require_tool_success("undo")
+        self.assertEqual(inspect()["document"], substituted["document"])
+        self.require_tool_success("undo")
+        self.assertEqual(inspect()["document"], original)
+
+        saved = self.payload(self.require_tool_success("save_document", {"filename": "imported.json"}))
+        self.assertEqual(saved["state_source"], "suspended_persisted")
+        self.assertEqual(json.loads((self.workspace / "imported.json").read_text()), original)
+        partial = self.payload(self.require_tool_success("set_document_playback", {"mode": "partial"}))
+        self.assertEqual(partial["execution"]["requested_disposition"], "runnable_partial")
+        reopened = self.payload(self.require_tool_success("load_document", {"filename": "imported.json"}))
+        self.assertEqual(reopened["execution"]["mode"], "exact")
+        self.assertEqual(reopened["execution"]["requested_disposition"], "suspended_unresolved")
+        self.assertEqual(inspect()["document"], original)
+        self.assertEqual(source_path.read_bytes(), vcv_bytes)
 
     def test_portable_source_document_history_save_and_explicit_partial_playback(self) -> None:
         blob = b"\x00\xfforiginal sample"

@@ -6,12 +6,163 @@ pub struct ProjectDocumentSnapshot {
     pub document: ProjectDocument,
     pub revision: u64,
     pub state_id: u64,
+    pub layout_generation: u64,
     /// Suspended documents contain authored/frozen persistent fields, not live observations.
     pub state_source: &'static str,
     pub frame: Option<u64>,
 }
 
+/// Camera motion is durable but unhistoried; automatic placement completes the
+/// geometry of the current authored state without creating another undo step.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayoutIntent {
+    Camera,
+    Placement,
+}
+
+/// Geometry supplied by a full replacement must be installed before host
+/// reconciliation. Raw Rack coordinates additionally need native-width fitting.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayoutOrigin {
+    Authored,
+    SourceImport,
+}
+
+pub(super) fn geometry_changed(before: &ProjectDocument, after: &ProjectDocument) -> bool {
+    if before.graph.nodes.len() != after.graph.nodes.len() {
+        return true;
+    }
+    after.graph.nodes.iter().any(|new| {
+        let Some(old) = before.graph.nodes.iter().find(|old| old.id() == new.id()) else {
+            return true;
+        };
+        match (old, new) {
+            (DocumentNode::Native { node: old, .. }, DocumentNode::Native { node: new, .. }) => {
+                old.kind != new.kind
+                    || old.content != new.content
+                    || (new.kind == "studio_mixer"
+                        && old.params.get("channels") != new.params.get("channels"))
+                    || ["width", "width_hp", "panel_width"]
+                        .iter()
+                        .any(|key| old.params.get(*key) != new.params.get(*key))
+            }
+            (
+                DocumentNode::Unresolved { source: old, .. },
+                DocumentNode::Unresolved { source: new, .. },
+            ) => old.package != new.package || old.index != new.index,
+            _ => true,
+        }
+    })
+}
+
+fn complete_host_layout(document: &ProjectDocument, layout: &ProjectLayout) -> Result<(), String> {
+    layout.validate()?;
+    if document
+        .graph
+        .nodes
+        .iter()
+        .any(|node| !layout.positions.contains_key(node.id()))
+    {
+        return Err(
+            "host placement is missing document module positions; retry after rack placement"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 impl Session {
+    /// Register the geometry-producing host. Initial placement must be published
+    /// before capturing a complete project document.
+    pub fn attach_layout_host(&mut self) -> Result<(), String> {
+        self.check_open()?;
+        if !self.layout_host_attached {
+            let generation = self
+                .layout_generation
+                .checked_add(1)
+                .ok_or("layout generation exhausted")?;
+            self.layout_host_attached = true;
+            self.layout_pending = true;
+            self.layout_generation = generation;
+        }
+        Ok(())
+    }
+
+    pub fn layout_generation(&self) -> u64 {
+        self.layout_generation
+    }
+
+    pub fn layout_pending(&self) -> bool {
+        self.layout_pending
+    }
+    pub fn layout_origin(&self) -> Option<LayoutOrigin> {
+        self.layout_origin
+    }
+
+    /// Publish host geometry under graph, history-state and layout guards. This
+    /// path deliberately avoids graph compilation, source validation and audio.
+    pub fn publish_host_layout(
+        &mut self,
+        expected_revision: u64,
+        expected_state_id: u64,
+        expected_layout_generation: u64,
+        layout: ProjectLayout,
+        intent: LayoutIntent,
+    ) -> Result<Value, String> {
+        self.check_open()?;
+        self.check_revision(Some(expected_revision))?;
+        if expected_state_id != self.state_id {
+            return Err(format!(
+                "stale layout state: expected {expected_state_id}, current {}",
+                self.state_id
+            ));
+        }
+        if expected_layout_generation != self.layout_generation {
+            return Err(format!(
+                "stale layout generation: expected {expected_layout_generation}, current {}",
+                self.layout_generation
+            ));
+        }
+        if !self.layout_host_attached {
+            return Err("no layout host is attached".into());
+        }
+        layout.validate()?;
+        match intent {
+            LayoutIntent::Camera => {
+                if self.layout_pending {
+                    return Err("host layout placement is pending; retry camera publication after placement".into());
+                }
+                if layout.version != self.document.layout.version
+                    || layout.positions != self.document.layout.positions
+                {
+                    return Err("camera publication may only change pan and zoom".into());
+                }
+            }
+            LayoutIntent::Placement => complete_host_layout(&self.document, &layout)?,
+        }
+        let generation = self
+            .layout_generation
+            .checked_add(1)
+            .ok_or("layout generation exhausted")?;
+        self.document.layout = layout;
+        self.layout_generation = generation;
+        if intent == LayoutIntent::Placement {
+            self.layout_pending = false;
+            self.layout_origin = None;
+            // Grouped edits can retain a shared history-state identity. Complete
+            // its geometry everywhere that identity is retained.
+            for entry in self.undo.iter_mut().chain(self.redo.iter_mut()) {
+                if entry.state_id == self.state_id {
+                    entry.document.layout = self.document.layout.clone();
+                    entry.layout_origin = None;
+                }
+            }
+        }
+        Ok(
+            json!({"revision":self.revision,"state_id":self.state_id,"layout_generation":self.layout_generation,"layout":self.document.layout}),
+        )
+    }
+
     pub fn project_document(&self) -> &ProjectDocument {
         &self.document
     }
@@ -212,8 +363,29 @@ impl Session {
         document: ProjectDocument,
         expected_revision: Option<u64>,
     ) -> Result<u64, String> {
+        self.replace_document_layout(document, expected_revision, false)
+    }
+
+    /// Install a host-prepared document and geometry in one atomic commit.
+    pub fn replace_prepared_project_document(
+        &mut self,
+        document: ProjectDocument,
+        expected_revision: Option<u64>,
+    ) -> Result<u64, String> {
+        self.replace_document_layout(document, expected_revision, true)
+    }
+
+    fn replace_document_layout(
+        &mut self,
+        document: ProjectDocument,
+        expected_revision: Option<u64>,
+        prepared_layout: bool,
+    ) -> Result<u64, String> {
         self.check_open()?;
         self.check_revision(expected_revision)?;
+        if prepared_layout {
+            complete_host_layout(&document, &document.layout)?;
+        }
         let carrier = document.state_carrier()?;
         self.validate_document_backend(
             &document,
@@ -226,7 +398,68 @@ impl Session {
         effects.retired_cables = self.cable_ids();
         effects.replacement_document = Some(document);
         effects.playback_mode = Some(PlaybackMode::Exact);
-        self.commit(carrier.patch, expected_revision, None, &effects)
+        let revision = self.commit_with_layout(
+            carrier.patch,
+            expected_revision,
+            None,
+            &effects,
+            prepared_layout,
+        )?;
+        self.layout_origin = if prepared_layout {
+            None
+        } else {
+            Some(LayoutOrigin::Authored)
+        };
+        Ok(revision)
+    }
+
+    pub fn new_prepared_project_document(
+        &mut self,
+        document: ProjectDocument,
+        expected_revision: Option<u64>,
+    ) -> Result<u64, String> {
+        let revision = self.replace_prepared_project_document(document, expected_revision)?;
+        self.undo.clear();
+        self.redo.clear();
+        self.history_group = None;
+        Ok(revision)
+    }
+
+    pub fn new_project_document(
+        &mut self,
+        document: ProjectDocument,
+        expected_revision: Option<u64>,
+    ) -> Result<u64, String> {
+        let revision = self.replace_project_document(document, expected_revision)?;
+        self.undo.clear();
+        self.redo.clear();
+        self.history_group = None;
+        Ok(revision)
+    }
+
+    /// A geometry checkpoint shares the same revision/history boundary as graph edits.
+    pub fn record_project_layout(
+        &mut self,
+        layout: ProjectLayout,
+        expected_revision: u64,
+    ) -> Result<Value, String> {
+        self.check_revision(Some(expected_revision))?;
+        let mut document = self.document.clone();
+        document.layout = layout;
+        if self.layout_host_attached {
+            complete_host_layout(&document, &document.layout)?;
+        }
+        document.validate_structure()?;
+        let mut effects = EditEffects::default();
+        effects.replacement_document = Some(document);
+        self.commit_with_layout(
+            self.patch.clone(),
+            Some(expected_revision),
+            None,
+            &effects,
+            true,
+        )?;
+        Ok(self.snapshot())
     }
 
     /// Permission is a history transaction, not an implicit missing-plugin fallback.
@@ -246,7 +479,8 @@ impl Session {
         {
             // Capture persistent fields before fencing live observations. No
             // guessed reset state is ever presented as a frozen live snapshot.
-            self.capture_project_document(expected_revision)?.document
+            self.capture_document_state(expected_revision, false)?
+                .document
         } else {
             self.document.clone()
         };
@@ -261,13 +495,27 @@ impl Session {
         &self,
         expected_revision: Option<u64>,
     ) -> Result<ProjectDocumentSnapshot, String> {
+        self.capture_document_state(expected_revision, true)
+    }
+
+    fn capture_document_state(
+        &self,
+        expected_revision: Option<u64>,
+        require_layout_ready: bool,
+    ) -> Result<ProjectDocumentSnapshot, String> {
         self.check_open()?;
         self.check_revision(expected_revision)?;
+        if require_layout_ready && self.layout_pending {
+            return Err(
+                "host layout placement is pending; retry document capture after placement".into(),
+            );
+        }
         if !self.execution_disposition().is_runnable() {
             return Ok(ProjectDocumentSnapshot {
                 document: self.document.clone(),
                 revision: self.revision,
                 state_id: self.state_id,
+                layout_generation: self.layout_generation,
                 state_source: "suspended_persisted",
                 frame: None,
             });
@@ -283,6 +531,7 @@ impl Session {
             document,
             revision: captured.revision,
             state_id: captured.state_id,
+            layout_generation: self.layout_generation,
             state_source: captured.state_source,
             frame: captured.frame,
         })
@@ -300,7 +549,9 @@ impl Session {
         {
             return Ok(None);
         }
-        let captured = self.capture_project_document(Some(self.revision))?.document;
+        let captured = self
+            .capture_document_state(Some(self.revision), false)?
+            .document;
         let live = captured.state_carrier()?.patch;
         for node in &mut target.patch.nodes {
             if !target.retired_modules.contains(&node.id) {
@@ -349,7 +600,7 @@ impl Session {
         }
         Some((|| match name {
             "inspect_document" => Ok(
-                json!({"revision":self.revision, "state_id":self.state_id, "document": if args["include_source_data"] == true { serde_json::to_value(&self.document).map_err(|e|e.to_string())? } else { self.document.reference_view() }, "execution": self.document_execution_status()}),
+                json!({"revision":self.revision, "state_id":self.state_id, "layout_generation":self.layout_generation, "layout_pending":self.layout_pending, "document": if args["include_source_data"] == true { serde_json::to_value(&self.document).map_err(|e|e.to_string())? } else { self.document.reference_view() }, "execution": self.document_execution_status()}),
             ),
             "replace_document" | "load_document" => {
                 let data = if name == "replace_document" {
@@ -433,7 +684,28 @@ pub(super) fn execution_status(document: &ProjectDocument, mode: PlaybackMode) -
         })
         .map(|cable| json!({"cable_id":cable.route.id,"from":cable.route.from,"to":cable.route.to}))
         .collect();
-    json!({"mode":if mode == PlaybackMode::Exact {"exact"} else {"partial"},
+    let substitutions: Vec<_> = document
+        .graph
+        .nodes
+        .iter()
+        .filter_map(|node| match node {
+            DocumentNode::Native {
+                node,
+                source: Some(source),
+            } if source.mapping.as_ref().is_some_and(|mapping| {
+                matches!(
+                    mapping.fidelity,
+                    crate::project_document::MappingFidelity::MusicalRole
+                        | crate::project_document::MappingFidelity::UserSubstitution
+                )
+            }) =>
+            {
+                Some(json!({"id":node.id,"mapping":source.mapping}))
+            }
+            _ => None,
+        })
+        .collect();
+    json!({"substitutions":substitutions,"mode":if mode == PlaybackMode::Exact {"exact"} else {"partial"},
         "requested_disposition":disposition(document,mode),"unresolved_modules":unresolved,
         "omitted_routes":omitted,"omitted_output":document.graph.output.as_ref().filter(|id|unresolved.contains(id.as_str())),
         "warning":(!unresolved.is_empty()).then_some("Omitted modules and routes can change downstream normaling and musical behavior")})
@@ -454,6 +726,6 @@ pub(super) fn write_document_snapshot(
         .write_all(&bytes)
         .map_err(|e| e.to_string())?;
     Ok(
-        json!({"filename":filename,"revision":captured.revision,"state_source":captured.state_source,"frame":captured.frame}),
+        json!({"filename":filename,"revision":captured.revision,"state_id":captured.state_id,"layout_generation":captured.layout_generation,"state_source":captured.state_source,"frame":captured.frame}),
     )
 }

@@ -86,7 +86,7 @@ fn new_replace_open_import_and_recovery_hide_prior_plans_but_retain_receipts() {
             }
             std::fs::write(
                 dir.path().join("legacy.json"),
-                serde_json::to_vec(&document.patch).unwrap(),
+                serde_json::to_vec(&document.patch()).unwrap(),
             )
             .unwrap();
             let mut app = host(dir.path());

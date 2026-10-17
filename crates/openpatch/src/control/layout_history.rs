@@ -69,12 +69,28 @@ impl Session {
     /// retiring DSP identities. The host stores geometry under the returned
     /// state_id; ordinary shared undo/redo traverses the same boundary.
     pub fn record_layout_checkpoint(&mut self, expected_revision: u64) -> Result<Value, String> {
+        // Legacy host move receipts carry their final positions separately.
+        // Keep capture fenced until that exact placement reaches the host,
+        // including when another MCP graph edit commits before it is drawn.
+        let generation = if self.layout_host_attached {
+            Some(
+                self.layout_generation
+                    .checked_add(1)
+                    .ok_or("layout generation exhausted")?,
+            )
+        } else {
+            None
+        };
         self.commit(
             self.patch.clone(),
             Some(expected_revision),
             None,
             &EditEffects::default(),
         )?;
+        if let Some(generation) = generation {
+            self.layout_generation = generation;
+            self.layout_pending = true;
+        }
         Ok(self.snapshot())
     }
 }

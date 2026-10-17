@@ -5,13 +5,16 @@ mod construction;
 mod document;
 #[cfg(test)]
 mod document_tests;
+mod rack_import;
 use crate::project_document::{
     DocumentNode, ExecutionDisposition, PlaybackMode, ProjectDocument, ProjectLayout,
 };
-pub use document::ProjectDocumentSnapshot;
+pub use document::{LayoutIntent, LayoutOrigin, ProjectDocumentSnapshot};
 mod host_lifecycle;
 #[cfg(test)]
 mod host_lifecycle_tests;
+#[cfg(test)]
+mod project_layout_tests;
 #[doc(hidden)]
 pub use host_lifecycle::{HostLifecycleDelta, HostLifecycleTicket, HostModuleLifecycleDelta};
 mod layout_history;
@@ -296,6 +299,10 @@ pub struct Session {
     prepared_wave_banks: Arc<PreparedWaveBanks>,
     revision: u64,
     state_id: u64,
+    layout_host_attached: bool,
+    layout_generation: u64,
+    layout_pending: bool,
+    layout_origin: Option<LayoutOrigin>,
     workspace: PathBuf,
     undo: VecDeque<HistoryEntry>,
     redo: Vec<HistoryEntry>,
@@ -322,6 +329,10 @@ impl Clone for Session {
             prepared_wave_banks: self.prepared_wave_banks.clone(),
             revision: self.revision,
             state_id: self.state_id,
+            layout_host_attached: false,
+            layout_generation: self.layout_generation,
+            layout_pending: false,
+            layout_origin: self.layout_origin,
             workspace: self.workspace.clone(),
             undo: self.undo.clone(),
             redo: self.redo.clone(),
@@ -347,6 +358,7 @@ impl Drop for Session {
 #[derive(Clone)]
 struct HistoryEntry {
     document: ProjectDocument,
+    layout_origin: Option<LayoutOrigin>,
     playback_mode: PlaybackMode,
     patch: Patch,
     layout_rows: BTreeMap<String, u32>,
@@ -528,6 +540,10 @@ impl Session {
             prepared_wave_banks,
             revision: 0,
             state_id: 0,
+            layout_host_attached: false,
+            layout_generation: 0,
+            layout_pending: false,
+            layout_origin: None,
             undo: VecDeque::new(),
             redo: Vec::new(),
             history_group: None,
@@ -630,6 +646,8 @@ impl Session {
             result["document"] = self.document.reference_view();
             result["execution"] = self.document_execution_status();
             result["patch_is_native_state_carrier"] = json!(true);
+            result["layout_generation"] = json!(self.layout_generation);
+            result["layout_pending"] = json!(self.layout_pending);
         }
         result
     }
@@ -685,10 +703,21 @@ impl Session {
 
     fn commit(
         &mut self,
+        candidate: Patch,
+        expected_revision: Option<u64>,
+        group: Option<(String, String, String)>,
+        effects: &EditEffects,
+    ) -> Result<u64, String> {
+        self.commit_with_layout(candidate, expected_revision, group, effects, false)
+    }
+
+    fn commit_with_layout(
+        &mut self,
         mut candidate: Patch,
         expected_revision: Option<u64>,
         group: Option<(String, String, String)>,
         effects: &EditEffects,
+        prepared_layout: bool,
     ) -> Result<u64, String> {
         self.check_open()?;
         self.check_revision(expected_revision)?;
@@ -697,6 +726,21 @@ impl Session {
         let prepared = candidate.prepare_wave_banks(&self.wave_preparation_cache)?;
         candidate.compile_with_wave_banks(&prepared)?;
         let document = self.document_after_edit(&candidate, effects)?;
+        let needs_layout = self.layout_host_attached
+            && !prepared_layout
+            && (self.layout_pending
+                || (!effects.retired.is_empty() && effects.replacement_document.is_some())
+                || document::geometry_changed(&self.document, &document));
+        let layout_generation = if prepared_layout
+            || needs_layout != self.layout_pending
+            || self.document.layout != document.layout
+        {
+            self.layout_generation
+                .checked_add(1)
+                .ok_or("layout generation exhausted")?
+        } else {
+            self.layout_generation
+        };
         let playback_mode = effects.playback_mode.unwrap_or(self.playback_mode);
         self.validate_document_backend(
             &document,
@@ -757,6 +801,7 @@ impl Session {
             }
             self.undo.push_back(HistoryEntry {
                 document: std::mem::replace(&mut self.document, document),
+                layout_origin: self.layout_origin,
                 playback_mode: std::mem::replace(&mut self.playback_mode, playback_mode),
                 patch: std::mem::replace(&mut self.patch, candidate),
                 layout_rows: self.layout_rows.clone(),
@@ -775,6 +820,11 @@ impl Session {
         self.document_execution |=
             self.has_source_document() || self.playback_mode == PlaybackMode::Partial;
         self.prepared_wave_banks = prepared;
+        self.layout_generation = layout_generation;
+        self.layout_pending = needs_layout;
+        if prepared_layout {
+            self.layout_origin = None;
+        }
         self.history_group = group;
         self.redo.clear();
         self.prune_history_assets();
@@ -923,6 +973,21 @@ impl Session {
             self.undo.back().unwrap().clone()
         };
         let outgoing_capture = self.prepare_history_suspension(&mut target)?;
+        target.document.layout.zoom = self.document.layout.zoom;
+        target.document.layout.pan = self.document.layout.pan;
+        let needs_layout = self.layout_host_attached
+            && (self.layout_pending
+                || document::geometry_changed(&self.document, &target.document)
+                || target
+                    .document
+                    .graph
+                    .nodes
+                    .iter()
+                    .any(|node| !target.document.layout.positions.contains_key(node.id())));
+        let layout_generation = self
+            .layout_generation
+            .checked_add(1)
+            .ok_or("layout generation exhausted")?;
         self.validate_document_backend(
             &target.document,
             target.playback_mode,
@@ -944,6 +1009,7 @@ impl Session {
         let entry = target;
         let mut opposite = HistoryEntry {
             document: std::mem::replace(&mut self.document, entry.document),
+            layout_origin: self.layout_origin,
             playback_mode: std::mem::replace(&mut self.playback_mode, entry.playback_mode),
             prepared_wave_banks: Arc::downgrade(&std::mem::replace(
                 &mut self.prepared_wave_banks,
@@ -978,6 +1044,9 @@ impl Session {
             self.redo.push(opposite);
         }
         self.revision = revision;
+        self.layout_generation = layout_generation;
+        self.layout_pending = needs_layout;
+        self.layout_origin = Some(entry.layout_origin.unwrap_or(LayoutOrigin::Authored));
         self.host_lifecycle.tail.append(&entry.restore_lifecycle);
         self.host_lifecycle.prune(&self.patch);
         self.construction.last_move = None;
@@ -1145,6 +1214,9 @@ impl Session {
                 | "trigger_module"
         ) {
             self.require_document_execution()?;
+        }
+        if let Some(result) = self.rack_import_tool(name, &args) {
+            return result;
         }
         if let Some(result) = self.document_tool(name, &args) {
             return result;
@@ -2468,6 +2540,9 @@ pub fn tools() -> Value {
         tool("export_wavetable","Write a new workspace .f32 (exact source samples) or .wav (PCM16, clipped to [-1,1]) from a wavetable module. Includes unused trailing source points. Never overwrites files or changes the patch.",json!({"id":s,"filename":s,"expected_revision":rev}),&["id","filename"],false),
         tool("inspect_wavetable","Read actual table geometry and asset metadata. Optional limit1..256 and offset return a small source-sample window. No preparation, full payload echo, or graph change.",json!({"id":s,"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":256},"expected_revision":rev}),&["id"],true),
         tool("catalog","List built-in modules, named ports, polyphony policies, patch-version requirements, parameter defaults and ranges.",json!({}),&[],true),
+        tool("import_vcv", "Import a .vcv file inside the workspace with pinned mappings, full original source/assets and recoverable unresolved dependencies. Never overwrites the original; loads in exact mode, suspended when unresolved modules remain.", json!({"filename":s,"expected_revision":rev}), &["filename"], false),
+        tool("substitute_unresolved_module", "Explicit musical-role substitution for an unresolved Rack module, not source or physical equivalence. Map every incident source port key to a valid native port, supplying native params. Original source remains recoverable and this edit is undoable.", json!({"id":module_id,"kind":s,"params":{"type":"object","additionalProperties":{"type":"number"}},"inputs":{"type":"object","additionalProperties":{"type":"string"}},"outputs":{"type":"object","additionalProperties":{"type":"string"}},"expected_revision":rev}), &["id","kind","inputs","outputs"], false),
+        tool("remove_unresolved_module", "Remove an unresolved placeholder and its incident routes in one undoable edit, retaining the immutable original source package/assets.", json!({"id":module_id,"expected_revision":rev}), &["id"], false),
         tool("inspect_document", "Inspect the complete project boundary and explicit execution permission. Compact references omit source JSON/assets; include_source_data returns the portable document.", json!({"include_source_data":{"type":"boolean","default":false}}), &[], true),
         tool("replace_document", "Explicitly replace the complete project, retaining original Rack records/assets and unresolved modules. Loads in exact mode; unresolved dependencies suspend playback. One undo step.", json!({"document":{"type":"object"},"expected_revision":rev}), &["document"], false),
         tool("load_document", "Load a portable project JSON from workspace, preserving original source data. Migrates native legacy projects. Exact playback is the default.", json!({"filename":s,"expected_revision":rev}), &["filename"], false),

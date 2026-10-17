@@ -156,7 +156,7 @@ pub struct SourceCable {
     pub index: usize,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectLayout {
     pub version: u32,
@@ -172,6 +172,36 @@ impl Default for ProjectLayout {
             pan: [0.0; 2],
             positions: BTreeMap::new(),
         }
+    }
+}
+
+impl ProjectLayout {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        let layout = self;
+        if layout.version != 1
+            || !layout.zoom.is_finite()
+            || !(0.25..=4.0).contains(&layout.zoom)
+            || layout.positions.len() > MAX_NODES
+            || layout
+                .pan
+                .iter()
+                .any(|p| !p.is_finite() || p.abs() > 1_000_000.0)
+        {
+            return Err("invalid document layout".into());
+        }
+        for (id, position) in &layout.positions {
+            // Legacy layout accepted any bounded nonempty ID, including stale
+            // positions. Do not silently tighten that migration contract.
+            if id.is_empty()
+                || id.len() > 64
+                || position
+                    .iter()
+                    .any(|p| !p.is_finite() || p.abs() > 100_000.0)
+            {
+                return Err("invalid document module position".into());
+            }
+        }
+        Ok(())
     }
 }
 
@@ -245,6 +275,36 @@ pub struct RuntimeProjection {
     pub unresolved_modules: Vec<String>,
     pub omitted_routes: Vec<OmittedRoute>,
     pub omitted_output: Option<String>,
+}
+
+// Anchor opaque entries before the next surviving native entry. Native order
+// remains exactly the executable candidate's order (including engine-v1
+// scheduling); a state capture does not regroup imported nodes or cables.
+fn overlay_opaque_order<T: Clone>(
+    original: &[T],
+    native: Vec<T>,
+    key: impl Fn(&T) -> String,
+    opaque: impl Fn(&T) -> bool,
+) -> Vec<T> {
+    let ids: BTreeSet<_> = native.iter().map(&key).collect();
+    let mut before = BTreeMap::new();
+    let mut pending = Vec::new();
+    for entry in original {
+        if opaque(entry) {
+            pending.push(entry.clone());
+        } else if ids.contains(&key(entry)) {
+            before.insert(key(entry), std::mem::take(&mut pending));
+        }
+    }
+    let mut result = Vec::with_capacity(native.len() + original.len());
+    for entry in native {
+        if let Some(opaque) = before.remove(&key(&entry)) {
+            result.extend(opaque);
+        }
+        result.push(entry);
+    }
+    result.extend(pending);
+    result
 }
 
 impl ProjectDocument {
@@ -491,31 +551,7 @@ impl ProjectDocument {
     }
 
     fn validate_layout(&self) -> Result<(), String> {
-        let layout = &self.layout;
-        if layout.version != 1
-            || !layout.zoom.is_finite()
-            || !(0.25..=4.0).contains(&layout.zoom)
-            || layout.positions.len() > MAX_NODES
-            || layout
-                .pan
-                .iter()
-                .any(|p| !p.is_finite() || p.abs() > 1_000_000.0)
-        {
-            return Err("invalid document layout".into());
-        }
-        for (id, position) in &layout.positions {
-            // Legacy layout accepted any bounded nonempty ID, including stale
-            // positions. Do not silently tighten that migration contract.
-            if id.is_empty()
-                || id.len() > 64
-                || position
-                    .iter()
-                    .any(|p| !p.is_finite() || p.abs() > 100_000.0)
-            {
-                return Err("invalid document module position".into());
-            }
-        }
-        Ok(())
+        self.layout.validate()
     }
 
     fn validate_sources(&self) -> Result<(), String> {
@@ -633,7 +669,7 @@ impl ProjectDocument {
             });
         }
         let mut document = self.clone();
-        document.graph.nodes = candidate
+        let native_nodes = candidate
             .nodes
             .iter()
             .map(|node| {
@@ -649,30 +685,27 @@ impl ProjectDocument {
                     source,
                 }
             })
-            .chain(
-                self.graph
-                    .nodes
-                    .iter()
-                    .filter(|node| matches!(node, DocumentNode::Unresolved { .. }))
-                    .cloned(),
-            )
             .collect();
-        // Incident opaque routes disappear only when a native endpoint was
-        // intentionally deleted. Candidate routes cannot address placeholders.
-        document.graph.cables = self
-            .graph
-            .cables
-            .iter()
-            .filter(|cable| {
+        document.graph.nodes = overlay_opaque_order(
+            &self.graph.nodes,
+            native_nodes,
+            |node| node.id().to_owned(),
+            |node| matches!(node, DocumentNode::Unresolved { .. }),
+        );
+        // Retain opaque routes only while both endpoints survive. Keep their
+        // position among native routes without changing candidate DSP ordering.
+        document.graph.cables = overlay_opaque_order(
+            &self.graph.cables,
+            native_cables,
+            |cable| cable.route.id.clone().expect("validated"),
+            |cable| {
                 let route = &cable.route;
                 (unresolved.contains(route.from.as_str()) || unresolved.contains(route.to.as_str()))
                     && [route.from.as_str(), route.to.as_str()]
                         .iter()
                         .all(|id| unresolved.contains(id) || candidate_ids.contains(id))
-            })
-            .cloned()
-            .collect();
-        document.graph.cables.extend(native_cables);
+            },
+        );
         let preserve_output = prior.omitted_output.is_some()
             && candidate.output == prior.patch.output
             && candidate.output_port == prior.patch.output_port;

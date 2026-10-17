@@ -1,6 +1,6 @@
 # Compatibility boundary
 
-Decision recorded 2026-10-16 following one focused Astra planning advisory. This records the contract for the next import milestone; it does not claim the importer or extension host is implemented.
+Decision recorded 2026-10-16 following one focused Astra planning advisory. This records the compatibility contract. The importer/native workflow is implemented on `work/rack-import` and undergoing qualification; the extension host remains separate. See [current import support and limits](VCV_IMPORT.md).
 
 ## Stable identities and state
 

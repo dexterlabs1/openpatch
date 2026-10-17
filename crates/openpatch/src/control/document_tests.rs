@@ -4,7 +4,7 @@ use crate::project_document::{
     SourcePackage,
 };
 
-fn imported() -> ProjectDocument {
+pub(super) fn imported() -> ProjectDocument {
     let patch: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
         "nodes":[{"id":"dc","kind":"constant","params":{"value":2.0}}],"cables":[],"output":"dc"}))
     .unwrap();

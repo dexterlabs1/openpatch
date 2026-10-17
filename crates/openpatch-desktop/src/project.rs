@@ -2,8 +2,11 @@
 //! and rack layout together. Cooperative writers serialize through a stable
 //! companion lock; an unrelated external editor can still race the final rename.
 use crate::rack::Rack;
+use openpatch::project_document::{ProjectDocument, ProjectLayout};
 use openpatch_core::{catalog, Patch, MAX_PATCH_FILE_BYTES};
-use serde_json::{json, Value};
+#[cfg(test)]
+use serde_json::json;
+use serde_json::Value;
 use std::{
     collections::BTreeMap,
     fs::{self, File, OpenOptions, TryLockError},
@@ -14,44 +17,60 @@ use tempfile::{Builder, NamedTempFile};
 
 const MAX_DOCUMENT_BYTES: usize = MAX_PATCH_FILE_BYTES;
 const MAX_LEGACY_LAYOUT_BYTES: usize = 1_048_576;
+const MAX_VCV_INPUT_BYTES: usize = 16 * 1_048_576;
 const RECOVERY_PREFIX: &str = ".openpatch-recovery-";
 const EXTENSION: &str = ".openpatch";
 const TEMPLATE_NAME: &str = ".openpatch-template.openpatch";
 
+/// The portable document is authoritative. Cached native/layout views are
+/// derived together after validation and cannot be edited independently.
 #[derive(Clone, Debug)]
 pub struct Document {
-    pub patch: Patch,
-    pub layout: Value,
+    project: ProjectDocument,
+    patch: Patch,
+    layout: Value,
 }
 impl Document {
-    pub fn new(mut patch: Patch, layout: Value) -> Result<Self, String> {
-        patch.assign_missing_cable_ids()?;
-        let document = Self { patch, layout };
-        document.encode()?;
-        Ok(document)
+    pub fn new(patch: Patch, layout: Value) -> Result<Self, String> {
+        let layout: ProjectLayout =
+            serde_json::from_value(layout).map_err(|e| format!("invalid project layout: {e}"))?;
+        Self::from_project(ProjectDocument::from_patch(patch, layout)?)
+    }
+    pub fn from_project(project: ProjectDocument) -> Result<Self, String> {
+        // A state carrier is editable native state, never implicit permission to
+        // play the supported subset of an unresolved document.
+        let patch = project.state_carrier()?.patch;
+        let layout = serde_json::to_value(&project.layout).map_err(|e| e.to_string())?;
+        Rack::default().restore_layout(&layout)?;
+        project.encode()?;
+        Ok(Self {
+            project,
+            patch,
+            layout,
+        })
+    }
+    pub fn project(&self) -> &ProjectDocument {
+        &self.project
+    }
+    pub fn patch(&self) -> &Patch {
+        &self.patch
+    }
+    pub fn layout(&self) -> &Value {
+        &self.layout
+    }
+    pub fn with_layout(self, layout: Value) -> Result<Self, String> {
+        let mut project = self.project;
+        project.layout =
+            serde_json::from_value(layout).map_err(|e| format!("invalid project layout: {e}"))?;
+        Self::from_project(project)
     }
     pub fn encode(&self) -> Result<Vec<u8>, String> {
-        self.patch.validate()?;
-        let object = self.layout.as_object().ok_or("layout must be an object")?;
-        if object.len() != 4
-            || object
-                .keys()
-                .any(|key| !["version", "zoom", "pan", "positions"].contains(&key.as_str()))
-        {
-            return Err("layout accepts exactly version, zoom, pan, and positions".into());
-        }
-        Rack::default().restore_layout(&self.layout)?;
-        let bytes = serde_json::to_vec_pretty(&json!({"format":"openpatch-project","version":1,"patch":self.patch,"layout":self.layout})).map_err(|e| e.to_string())?;
-        if bytes.len() > MAX_DOCUMENT_BYTES {
-            return Err(format!(
-                "project exceeds {} MiB",
-                MAX_DOCUMENT_BYTES / 1_048_576
-            ));
-        }
-        Ok(bytes)
+        self.project.encode()
     }
     pub fn equivalent(&self, other: &Self) -> bool {
-        self.patch.reference_view() == other.patch.reference_view() && self.layout == other.layout
+        // Validated source package/blob keys and native asset IDs are content
+        // digests, so this includes opaque payloads without expanding them.
+        self.project.reference_view() == other.project.reference_view()
     }
 }
 #[derive(Clone, Debug)]
@@ -136,8 +155,25 @@ impl Store {
             })
         } else if name.ends_with(".json") && !name.ends_with(".layout.json") {
             let bytes = read_regular(&self.workspace.join(name), MAX_DOCUMENT_BYTES)?;
-            let patch: Patch =
+            let value: Value =
                 serde_json::from_slice(&bytes).map_err(|e| format!("invalid legacy patch: {e}"))?;
+            if value.get("format").is_some() {
+                let document = decode(&bytes)?;
+                let document = if !document.project().sources.is_empty()
+                    || !document.project().source_blobs.is_empty()
+                {
+                    fit_imported_source_layout(document)?
+                } else {
+                    document
+                };
+                return Ok(Loaded {
+                    document,
+                    token: None,
+                    imported: true,
+                });
+            }
+            let patch: Patch =
+                serde_json::from_value(value).map_err(|e| format!("invalid legacy patch: {e}"))?;
             patch.validate()?;
             let sidecar = self.workspace.join(format!("{name}.layout.json"));
             let layout = match fs::symlink_metadata(&sidecar) {
@@ -155,8 +191,16 @@ impl Store {
                 token: None,
                 imported: true,
             })
+        } else if name.ends_with(".vcv") {
+            let bytes = read_regular(&self.workspace.join(name), MAX_VCV_INPUT_BYTES)?;
+            let imported = openpatch::vcv_import::import(&bytes)?;
+            Ok(Loaded {
+                document: fit_imported_source_layout(Document::from_project(imported.document)?)?,
+                token: None,
+                imported: true,
+            })
         } else {
-            Err("project filename must end with .openpatch or .json".into())
+            Err("project filename must end with .openpatch, .json, or .vcv".into())
         }
     }
     pub fn save_new(&self, name: &str, document: &Document) -> Result<FileToken, String> {
@@ -281,23 +325,27 @@ impl Store {
         Ok(())
     }
 }
+/// A one-time adapter at external import boundaries. Native project loads use
+/// their authored layout verbatim, including deliberate overlap or close spacing.
+fn fit_imported_source_layout(document: Document) -> Result<Document, String> {
+    let mut rack = Rack::default();
+    rack.restore_layout(document.layout())?;
+    rack.reconcile_document(document.patch(), document.project(), &catalog());
+    rack.reflow_imported_source_layout(document.project());
+    document.with_layout(rack.layout())
+}
+
 fn decode(bytes: &[u8]) -> Result<Document, String> {
-    let value: Value =
+    #[derive(serde::Deserialize)]
+    struct Header {
+        format: Option<String>,
+    }
+    let header: Header =
         serde_json::from_slice(bytes).map_err(|e| format!("invalid project: {e}"))?;
-    let object = value.as_object().ok_or("project must be an object")?;
-    if object.len() != 4
-        || object
-            .keys()
-            .any(|key| !["format", "version", "patch", "layout"].contains(&key.as_str()))
-    {
-        return Err("project accepts exactly format, version, patch, and layout".into());
+    if header.format.as_deref() != Some("openpatch-project") {
+        return Err("native project format marker is missing".into());
     }
-    if value["format"] != "openpatch-project" || value["version"] != 1 {
-        return Err("unsupported project format or version".into());
-    }
-    let patch = serde_json::from_value(value["patch"].clone())
-        .map_err(|e| format!("invalid project patch: {e}"))?;
-    Document::new(patch, value["layout"].clone())
+    Document::from_project(ProjectDocument::decode(bytes)?)
 }
 fn validate_name(name: &str) -> Result<(), String> {
     if name.is_empty()
@@ -485,6 +533,65 @@ thread_local! {
     static FAIL_DIRECTORY_SYNC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+/// A complete opaque module, route and asset fixture shared by storage and
+/// editor acceptance tests. All records pass the public shared validation.
+#[cfg(test)]
+pub(crate) fn test_source_document(payload: Value, asset_bytes: &[u8]) -> Document {
+    use openpatch::project_document::{
+        DocumentCable, DocumentNode, ObservedPort, PortDirection, SourceBlob, SourceCable,
+        SourceModule, SourcePackage,
+    };
+    use std::{collections::BTreeSet, sync::Arc};
+    let patch: Patch = serde_json::from_value(json!({
+        "version":2, "nodes":[{"id":"amp","kind":"gain","params":{"gain":0.5}}],
+        "output":"amp"
+    }))
+    .unwrap();
+    let mut project = ProjectDocument::from_patch(patch, ProjectLayout::default()).unwrap();
+    let blob = SourceBlob::new(asset_bytes.to_vec()).unwrap();
+    let blob_id = blob.id();
+    let package = Arc::new(SourcePackage {
+        patch: Arc::new(json!({
+            "version":"2.6.4", "global_unknown":{"retained":true},
+            "modules":[{"id":42,"plugin":"MissingVendor","model":"OpaqueVoice",
+                "version":"1.2.3","pos":[0,0],"data":payload}],
+            "cables":[{"id":9,"outputModuleId":42,"outputId":0,
+                "inputModuleId":7,"inputId":0,"unknown_route_state":{"retained":true}}]
+        })),
+        assets: BTreeMap::from([("res/opaque.bin".into(), blob_id.clone())]),
+        missing_assets: BTreeSet::from(["res/unavailable.wav".into()]),
+    });
+    let package_id = package.id().unwrap();
+    project.sources.insert(package_id.clone(), package);
+    project.source_blobs.insert(blob_id, blob);
+    project.graph.nodes.push(DocumentNode::Unresolved {
+        id: "unknown".into(),
+        source: SourceModule {
+            package: package_id.clone(),
+            index: 0,
+            mapping: None,
+        },
+        ports: vec![ObservedPort {
+            direction: PortDirection::Output,
+            index: 0,
+        }],
+    });
+    project.graph.cables.push(DocumentCable {
+        route: serde_json::from_value(json!({
+            "id":"opaque-route", "from":"unknown", "output":"vcv_out_0",
+            "to":"amp", "input":"signal", "color":[12,34,56], "input_order":8
+        }))
+        .unwrap(),
+        source: Some(SourceCable {
+            package: package_id,
+            index: 0,
+        }),
+    });
+    project.layout.positions =
+        BTreeMap::from([("amp".into(), [180.0, 0.0]), ("unknown".into(), [0.0, 0.0])]);
+    Document::from_project(project).unwrap()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -504,6 +611,208 @@ mod tests {
         Document::new(patch, rack.layout()).unwrap()
     }
     #[test]
+    fn raw_rack_import_fits_native_widths_and_keeps_original_source_rows_and_coordinates() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::new(directory.path()).unwrap();
+        let source = json!({"version":"2.6.4","modules":[
+            {"id":1,"plugin":"Fundamental","model":"VCMixer","version":"2.6.4","pos":[0,0]},
+            {"id":2,"plugin":"MissingVendor","model":"Unknown","version":"1","pos":[1,0]},
+            {"id":3,"plugin":"MissingVendor","model":"Unknown","version":"1","pos":[3,1]}
+        ],"cables":[]});
+        let bytes = serde_json::to_vec(&source).unwrap();
+        fs::write(directory.path().join("overlap.vcv"), &bytes).unwrap();
+        let loaded = store.load("overlap.vcv").unwrap();
+        assert!(loaded.imported && loaded.token.is_none());
+        let document = &loaded.document;
+        let native = &document.patch().nodes[0];
+        let node_at = |index| {
+            document
+                .project()
+                .graph
+                .nodes
+                .iter()
+                .find(|node| node.source().is_some_and(|source| source.index == index))
+                .unwrap()
+        };
+        let positions = &document.project().layout.positions;
+        assert_eq!(positions[&native.id], [0.0, 0.0]);
+        assert_eq!(
+            positions[node_at(1).id()],
+            [crate::rack::module_width(native) + 15.0, 0.0]
+        );
+        assert_eq!(positions[node_at(2).id()], [45.0, 420.0]);
+        assert_eq!(
+            document
+                .project()
+                .sources
+                .values()
+                .next()
+                .unwrap()
+                .patch
+                .as_ref(),
+            &source
+        );
+        assert_eq!(
+            fs::read(directory.path().join("overlap.vcv")).unwrap(),
+            bytes
+        );
+        assert!(document.equivalent(&store.load("overlap.vcv").unwrap().document));
+        store.save_new("fitted.openpatch", document).unwrap();
+        assert_eq!(
+            store
+                .load("fitted.openpatch")
+                .unwrap()
+                .document
+                .encode()
+                .unwrap(),
+            document.encode().unwrap()
+        );
+    }
+
+    #[test]
+    fn portable_json_import_fits_source_panels_but_native_project_layouts_remain_authored() {
+        use openpatch::project_document::DocumentNode;
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::new(directory.path()).unwrap();
+        let original = test_source_document(json!({"opaque":true}), &[1, 7, 9]);
+        let mut project = original.project().clone();
+        let wide: openpatch_core::Node = serde_json::from_value(json!({
+            "id":"wide", "kind":"stock_scope"
+        }))
+        .unwrap();
+        let width = crate::rack::module_width(&wide);
+        project.graph.nodes.push(DocumentNode::Native {
+            node: wide,
+            source: None,
+        });
+        project.layout.positions.insert("wide".into(), [0.0, 0.0]);
+        project
+            .layout
+            .positions
+            .insert("unknown".into(), [15.0, 0.0]);
+        project.layout.positions.insert("amp".into(), [30.0, 0.0]);
+        let original = Document::from_project(project).unwrap();
+        let bytes = original.encode().unwrap();
+        fs::write(directory.path().join("portable.json"), &bytes).unwrap();
+        fs::write(
+            directory.path().join("portable.json.layout.json"),
+            b"ignored native sidecar",
+        )
+        .unwrap();
+        let loaded = store.load("portable.json").unwrap();
+        assert!(loaded.imported && loaded.token.is_none());
+        let positions = &loaded.document.project().layout.positions;
+        assert_eq!(positions["wide"], [0.0, 0.0]);
+        assert_eq!(positions["unknown"], [width + 15.0, 0.0]);
+        assert_eq!(positions["amp"], [width + 15.0 + 180.0 + 15.0, 0.0]);
+        assert_eq!(
+            serde_json::to_value(&loaded.document.project().sources).unwrap(),
+            serde_json::to_value(&original.project().sources).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&loaded.document.project().source_blobs).unwrap(),
+            serde_json::to_value(&original.project().source_blobs).unwrap()
+        );
+        assert_eq!(
+            fs::read(directory.path().join("portable.json")).unwrap(),
+            bytes
+        );
+        assert!(loaded
+            .document
+            .equivalent(&store.load("portable.json").unwrap().document));
+
+        // The same authored overlap in a saved native project remains exact.
+        store.save_new("authored.openpatch", &original).unwrap();
+        assert_eq!(
+            store
+                .load("authored.openpatch")
+                .unwrap()
+                .document
+                .encode()
+                .unwrap(),
+            bytes
+        );
+        store
+            .save_new("fitted.openpatch", &loaded.document)
+            .unwrap();
+        assert!(loaded
+            .document
+            .equivalent(&store.load("fitted.openpatch").unwrap().document));
+
+        // Portable native-only JSON is recognized without consulting a legacy
+        // sidecar and keeps its layout, just like its .openpatch counterpart.
+        let native = document(1.0);
+        fs::write(
+            directory.path().join("native.json"),
+            native.encode().unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            directory.path().join("native.json.layout.json"),
+            b"ignored native sidecar",
+        )
+        .unwrap();
+        let loaded = store.load("native.json").unwrap();
+        assert!(loaded.imported && loaded.token.is_none());
+        assert!(native.equivalent(&loaded.document));
+    }
+
+    #[test]
+    fn opaque_payload_routes_and_assets_round_trip_save_template_and_recovery() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::new(directory.path()).unwrap();
+        let original = test_source_document(json!({"opaque":[1,{"arbitrary":true}]}), &[0, 255, 7]);
+        assert_eq!(original.patch().nodes.len(), 1);
+        assert!(original.patch().cables.is_empty());
+        assert!(original
+            .project()
+            .project(openpatch::project_document::PlaybackMode::Exact)
+            .is_err());
+        let token = store.save_new("opaque.openpatch", &original).unwrap();
+        let loaded = store.load("opaque.openpatch").unwrap();
+        assert!(original.equivalent(&loaded.document));
+        assert_eq!(
+            loaded.document.encode().unwrap(),
+            original.encode().unwrap()
+        );
+        assert!(!loaded.imported && loaded.token.is_some());
+
+        // Both opaque state and same-length asset changes leave the carrier
+        // identical, but must still change saved content/equivalence.
+        let revised = test_source_document(json!({"opaque":[2,{"arbitrary":true}]}), &[0, 254, 7]);
+        assert_eq!(
+            original.patch().reference_view(),
+            revised.patch().reference_view()
+        );
+        assert!(!original.equivalent(&revised));
+        store
+            .save_existing("opaque.openpatch", &revised, &token)
+            .unwrap();
+        assert!(revised.equivalent(&store.load("opaque.openpatch").unwrap().document));
+        store.save_template(&revised, None).unwrap();
+        assert!(revised.equivalent(&store.load_template().unwrap().unwrap()));
+        store.save_recovery(&revised).unwrap();
+        let recovery = store.recovery_name.clone();
+        drop(store);
+        let restarted = Store::new(directory.path()).unwrap();
+        assert_eq!(restarted.recoveries(), vec![recovery.clone()]);
+        let recovered = restarted.load_recovery(&recovery).unwrap().document;
+        assert_eq!(recovered.encode().unwrap(), revised.encode().unwrap());
+        assert_eq!(
+            recovered
+                .project()
+                .source_blobs
+                .values()
+                .next()
+                .unwrap()
+                .bytes(),
+            &[0, 254, 7]
+        );
+        assert!(recovered.project().native_patch_for_legacy_api().is_err());
+        assert!(revised.equivalent(&restarted.load_template().unwrap().unwrap()));
+    }
+
+    #[test]
     fn maximum_wave_asset_round_trips_native_overwrite_template_recovery_and_legacy() {
         use openpatch_core::{wavetable_file::MAX_WAVETABLE_SAMPLES, WaveAsset};
         use std::sync::Arc;
@@ -515,7 +824,9 @@ mod tests {
         let asset = Arc::new(WaveAsset::new(&samples).unwrap());
         let id = asset.id().to_owned();
         let mut original = document(1.0);
-        original.patch.assets.insert(id.clone(), asset.clone());
+        let mut patch = original.patch().clone();
+        patch.assets.insert(id.clone(), asset.clone());
+        original = Document::new(patch, original.layout().clone()).unwrap();
         let encoded = original.encode().unwrap();
         assert!(
             encoded.len() > 2 * 1_048_576,
@@ -524,14 +835,14 @@ mod tests {
         assert!(encoded.len() < MAX_DOCUMENT_BYTES);
         let envelope: Value = serde_json::from_slice(&encoded).unwrap();
         assert_eq!(envelope["format"], "openpatch-project");
-        assert_eq!(envelope["version"], 1);
-        assert!(envelope["patch"]["assets"][&id]["data"].is_string());
+        assert_eq!(envelope["version"], 2);
+        assert!(envelope["graph"]["assets"][&id]["data"].is_string());
         drop(envelope);
         drop(encoded);
 
         let verify = |loaded: &Document, expected: &Document| {
             assert!(loaded.equivalent(expected));
-            let decoded = &loaded.patch.assets[&id];
+            let decoded = &loaded.patch().assets[&id];
             assert_eq!(decoded.id(), id);
             assert_eq!(decoded.sample_count(), MAX_WAVETABLE_SAMPLES);
             assert_eq!(decoded.decoded_bytes(), 2 * 1_048_576);
@@ -545,10 +856,12 @@ mod tests {
         verify(&store.load("wave.openpatch").unwrap().document, &original);
 
         let mut revised = original.clone();
-        revised.patch.nodes[0].params.insert("value".into(), 2.0);
+        let mut patch = revised.patch().clone();
+        patch.nodes[0].params.insert("value".into(), 2.0);
+        revised = Document::new(patch, revised.layout().clone()).unwrap();
         assert!(Arc::ptr_eq(
-            &original.patch.assets[&id],
-            &revised.patch.assets[&id]
+            &original.patch().assets[&id],
+            &revised.patch().assets[&id]
         ));
         store
             .save_existing("wave.openpatch", &revised, &token)
@@ -559,7 +872,7 @@ mod tests {
         store.save_recovery(&revised).unwrap();
         let recovery = store.recovery_name.clone();
 
-        let legacy = serde_json::to_vec(&revised.patch).unwrap();
+        let legacy = serde_json::to_vec(revised.patch()).unwrap();
         assert!(
             legacy.len() > 2 * 1_048_576,
             "Legacy patch JSON needs the expanded envelope too"
@@ -568,7 +881,7 @@ mod tests {
         fs::write(&legacy_path, &legacy).unwrap();
         fs::write(
             directory.path().join("wave.json.layout.json"),
-            serde_json::to_vec(&revised.layout).unwrap(),
+            serde_json::to_vec(revised.layout()).unwrap(),
         )
         .unwrap();
         let imported = store.load("wave.json").unwrap();
@@ -594,30 +907,29 @@ mod tests {
 
         let asset = Arc::new(WaveAsset::new(&[0.0, 0.25, -0.5, 1.0]).unwrap());
         let mut original = document(1.0);
-        original
-            .patch
-            .assets
-            .insert(asset.id().into(), asset.clone());
+        let mut patch = original.patch().clone();
+        patch.assets.insert(asset.id().into(), asset.clone());
+        original = Document::new(patch, original.layout().clone()).unwrap();
         assert!(original.equivalent(&original.clone()));
         // Different immutable content with the same sample count must dirty
         // the document; a descriptor cannot be reduced to length alone.
         let replacement = Arc::new(WaveAsset::new(&[0.0, 0.25, -0.5, 0.75]).unwrap());
-        let mut changed = original.clone();
-        changed.patch.assets.clear();
-        changed
-            .patch
-            .assets
-            .insert(replacement.id().into(), replacement);
+        let mut patch = original.patch().clone();
+        patch.assets.clear();
+        patch.assets.insert(replacement.id().into(), replacement);
+        let changed = Document::new(patch, original.layout().clone()).unwrap();
         assert!(!original.equivalent(&changed));
-        let mut changed = original.clone();
-        changed.patch.nodes[0].params.insert("value".into(), 2.0);
+        let mut patch = original.patch().clone();
+        patch.nodes[0].params.insert("value".into(), 2.0);
+        let changed = Document::new(patch, original.layout().clone()).unwrap();
         assert!(!original.equivalent(&changed));
-        let mut changed = original.clone();
-        changed.layout["pan"] = json!([100.0, 200.0]);
+        let mut layout = original.layout().clone();
+        layout["pan"] = json!([100.0, 200.0]);
+        let changed = original.clone().with_layout(layout).unwrap();
         assert!(!original.equivalent(&changed));
         let ordinary = document(1.0);
         assert!(ordinary.equivalent(&ordinary.clone()));
-        assert!(serde_json::to_value(&ordinary.patch)
+        assert!(serde_json::to_value(ordinary.patch())
             .unwrap()
             .get("assets")
             .is_none());
@@ -678,11 +990,14 @@ mod tests {
             token = Some(store.save_template(&original, token.as_ref()).unwrap());
             let loaded = store.load_template().unwrap().unwrap();
             assert!(original.equivalent(&loaded));
-            assert_eq!(loaded.patch.cables[0].id.as_deref(), Some("retained_cable"));
+            assert_eq!(
+                loaded.patch().cables[0].id.as_deref(),
+                Some("retained_cable")
+            );
             if version == 2 {
                 assert_eq!(
                     loaded
-                        .patch
+                        .patch()
                         .nodes
                         .iter()
                         .find(|n| n.id == "pattern")
@@ -692,7 +1007,7 @@ mod tests {
                 );
                 assert_eq!(
                     loaded
-                        .patch
+                        .patch()
                         .nodes
                         .iter()
                         .find(|n| n.id == "latch")
@@ -769,9 +1084,10 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::new(directory.path()).unwrap();
         let path = directory.path().join(TEMPLATE_NAME);
-        let mut invalid = document(1.0);
-        invalid.layout["extra"] = json!(true);
-        assert!(store.save_template(&invalid, None).is_err());
+        let original = document(1.0);
+        let mut invalid = original.layout().clone();
+        invalid["extra"] = json!(true);
+        assert!(original.with_layout(invalid).is_err());
         assert!(!path.exists());
         assert!(!directory
             .path()
@@ -878,9 +1194,11 @@ mod tests {
         for zoom in [0.25, 0.85, 1.0, 4.0] {
             let directory = tempfile::tempdir().unwrap();
             let store = Store::new(directory.path()).unwrap();
-            let mut original = document(1.0);
-            original.layout["zoom"] = json!(zoom);
-            original.layout["pan"] = json!([-452.5, 930.0]);
+            let original = document(1.0);
+            let mut layout = original.layout().clone();
+            layout["zoom"] = json!(zoom);
+            layout["pan"] = json!([-452.5, 930.0]);
+            let original = original.with_layout(layout).unwrap();
             store.save_new("zoom.openpatch", &original).unwrap();
             assert!(original.equivalent(&store.load("zoom.openpatch").unwrap().document));
             store.save_recovery(&original).unwrap();
@@ -890,9 +1208,9 @@ mod tests {
             assert_eq!(names.len(), 1);
             assert!(original.equivalent(&reopened.load_recovery(&names[0]).unwrap().document));
             for invalid in [json!(0.249), json!(4.001), Value::Null, json!("1.0")] {
-                let mut candidate = original.clone();
-                candidate.layout["zoom"] = invalid;
-                assert!(candidate.encode().is_err());
+                let mut layout = original.layout().clone();
+                layout["zoom"] = invalid;
+                assert!(original.clone().with_layout(layout).is_err());
             }
         }
     }
@@ -1014,9 +1332,10 @@ mod tests {
     fn malformed_or_oversized_documents_never_publish() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::new(directory.path()).unwrap();
-        let mut bad = document(1.0);
-        bad.layout["extra"] = json!(true);
-        assert!(store.save_new("bad.openpatch", &bad).is_err());
+        let original = document(1.0);
+        let mut layout = original.layout().clone();
+        layout["extra"] = json!(true);
+        assert!(original.with_layout(layout).is_err());
         assert!(!directory.path().join("bad.openpatch").exists());
         assert!(!directory.path().join("bad.openpatch.lock").exists());
         assert_eq!(MAX_DOCUMENT_BYTES, 64 * 1_048_576);
@@ -1045,12 +1364,12 @@ mod tests {
         let store = Store::new(directory.path()).unwrap();
         let original = document(1.0);
         let path = directory.path().join("legacy.json");
-        let bytes = serde_json::to_vec(&original.patch).unwrap();
+        let bytes = serde_json::to_vec(original.patch()).unwrap();
         fs::write(&path, &bytes).unwrap();
         let loaded = store.load("legacy.json").unwrap();
         assert!(loaded.imported);
         assert!(loaded.token.is_none());
-        assert!(loaded.document.layout["positions"]["source"].is_array());
+        assert!(loaded.document.layout()["positions"]["source"].is_array());
         assert_eq!(fs::read(&path).unwrap(), bytes);
         let sidecar = directory.path().join("legacy.json.layout.json");
         fs::write(&sidecar, b"not JSON").unwrap();
@@ -1082,7 +1401,7 @@ mod tests {
             fs::read(directory.path().join("real.openpatch")).unwrap(),
             token.bytes
         );
-        let bytes = serde_json::to_vec(&original.patch).unwrap();
+        let bytes = serde_json::to_vec(original.patch()).unwrap();
         fs::write(directory.path().join("legacy.json"), bytes).unwrap();
         symlink(
             directory.path().join("real.openpatch"),

@@ -5,6 +5,7 @@ use crate::port_light_transport::{self, PortLightProducer, PortLightReader};
 pub(crate) use crate::port_light_transport::{offline_frame, PortLightFrame, PortLightKey};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use openpatch::control::LiveModuleEvents;
+use openpatch::project_document::ExecutionDisposition;
 pub use openpatch_core::ModuleTelemetry as SequenceTelemetry;
 use openpatch_core::{
     Engine, MidiEvent, Patch, PreparedWaveBanks, ResolvedTap, TapSample, BLOCK_SIZE,
@@ -533,11 +534,31 @@ impl Audio {
     }
 
     /// Uses a Session-prepared ticket; device-rate compilation never prepares banks.
+    #[allow(dead_code)] // Native-only construction remains available for host/probe callers.
     pub fn new_with_device_and_wave_banks(
         patch: &Patch,
         banks: Arc<PreparedWaveBanks>,
         selected: Option<&str>,
         port_lights_enabled: bool,
+    ) -> Result<Self, String> {
+        Self::new_with_device_and_wave_banks_and_execution(
+            patch,
+            banks,
+            selected,
+            port_lights_enabled,
+            0,
+            ExecutionDisposition::RunnableExact,
+        )
+    }
+
+    /// Fence the initial document before the stream can invoke its first callback.
+    pub fn new_with_device_and_wave_banks_and_execution(
+        patch: &Patch,
+        banks: Arc<PreparedWaveBanks>,
+        selected: Option<&str>,
+        port_lights_enabled: bool,
+        revision: u64,
+        disposition: ExecutionDisposition,
     ) -> Result<Self, String> {
         let host = cpal::default_host();
         let device = if let Some(name) = selected {
@@ -581,11 +602,7 @@ impl Audio {
             .as_ref()
             .unwrap()
             .clone();
-        callback.performance.sync_patch(patch, 0);
-        callback.graphs.active.modules =
-            callback
-                .performance
-                .plan(patch, &callback.graphs.active.engine, 0)?;
+        callback.prepare_initial_execution(patch, revision, disposition)?;
         let performance = callback.performance.clone();
         let scope_packets = callback.scope_packets.take().unwrap();
         let midi_ui = callback.midi.take_ui().unwrap();
@@ -619,7 +636,7 @@ impl Audio {
             scope_generation: 0,
             scope_packets,
             performance,
-            submitted_revision: 0,
+            submitted_revision: revision,
             accepted_patch: patch.clone(),
             prepared_wave_banks: banks,
             port_light_reader,
@@ -1153,6 +1170,24 @@ impl Callback {
             execution_cancel: 0,
             execution_frozen: false,
         }
+    }
+
+    /// Control-thread setup shared by native startup and headless callback tests.
+    /// No stream may own this callback until its initial permission/plan agree.
+    fn prepare_initial_execution(
+        &mut self,
+        patch: &Patch,
+        revision: u64,
+        disposition: ExecutionDisposition,
+    ) -> Result<(), String> {
+        self.performance
+            .request_document_execution(revision, disposition);
+        self.performance.sync_patch(patch, revision);
+        self.graphs.active.modules =
+            self.performance
+                .plan(patch, &self.graphs.active.engine, revision)?;
+        self.graphs.active.revision = revision;
+        Ok(())
     }
 
     fn render<T: OutputSample>(&mut self, output: &mut [T], channels: usize) {
@@ -4998,6 +5033,49 @@ mod tests {
     include!("rack_scope_audio_tests.rs");
     include!("stock_scope_audio_tests.rs");
     include!("import_execution_tests.rs");
+
+    #[test]
+    fn imported_unresolved_startup_is_suspended_before_the_first_callback() {
+        let patch = rack_scope_patch(false);
+        let (mut callback, _, _retired) = callback_for(&patch);
+        callback
+            .prepare_initial_execution(&patch, 9, ExecutionDisposition::SuspendedUnresolved)
+            .unwrap();
+        assert_eq!(callback.graphs.active.revision, 9);
+        assert!(!callback.performance.execution_available());
+        assert!(callback.performance.scope_identity("scope").is_some());
+        let handle = callback
+            .graphs
+            .active
+            .engine
+            .resolve_module_scope("scope")
+            .unwrap();
+        assert_eq!(
+            callback
+                .graphs
+                .active
+                .engine
+                .module_scope(handle)
+                .unwrap()
+                .buffer_index,
+            0
+        );
+        let mut output = [99.0_f32; 1024];
+        without_heap_activity(|| callback.render(&mut output, 1));
+        assert_eq!(output, [0.0; 1024]);
+        assert_eq!(
+            callback
+                .graphs
+                .active
+                .engine
+                .module_scope(handle)
+                .unwrap()
+                .buffer_index,
+            0
+        );
+        assert!(callback.performance.scope_frame("scope").is_none());
+        assert_eq!(callback.performance.snapshot()["coherent"], false);
+    }
 
     #[test]
     fn mixer_meters_follow_audio_revisions_bypass_and_document_identity_without_heap_work() {

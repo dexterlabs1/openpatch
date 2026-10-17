@@ -1,6 +1,7 @@
 //! Content-based saved state, independent of revision/history identities.
 //! Refreshed when graph, persisted rack layout, or effective persistent module state changes.
 use crate::{project::Document, rack::Rack};
+use openpatch::project_document::{DocumentNode, ProjectDocument};
 use openpatch_core::{Patch, SavedModuleState};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -14,9 +15,9 @@ pub struct DocumentState {
     known: bool,
 }
 impl DocumentState {
-    pub fn new(patch: &Patch, revision: u64, rack: &Rack) -> Self {
-        let saved_states = configured_saved_states(patch);
-        let current = saved_content(patch, rack.layout(), &saved_states);
+    pub fn new(project: &ProjectDocument, revision: u64, rack: &Rack) -> Self {
+        let saved_states = configured_document_states(project);
+        let current = saved_content(project, rack.layout(), &saved_states);
         Self {
             baseline: Some(current.clone()),
             current,
@@ -72,11 +73,13 @@ impl DocumentState {
             );
             states
         });
-        self.observe_saved_runtime(patch, revision, rack, states)
+        let document =
+            Document::new(patch.clone(), rack.layout()).expect("valid native test document");
+        self.observe_saved_runtime(document.project(), revision, rack, states)
     }
     pub fn observe_saved_runtime(
         &mut self,
-        patch: &Patch,
+        project: &ProjectDocument,
         revision: u64,
         rack: &Rack,
         states: Option<BTreeMap<String, SavedModuleState>>,
@@ -88,13 +91,17 @@ impl DocumentState {
             return changed;
         };
         let key = (revision, rack.layout_revision());
-        if self.known && self.observed == Some(key) && self.saved_states == saved_states {
+        let next = saved_content(project, rack.layout(), &saved_states);
+        if self.known
+            && self.observed == Some(key)
+            && self.saved_states == saved_states
+            && self.current == next
+        {
             return false;
         }
         let was_unknown = !self.known;
         self.known = true;
         self.observed = Some(key);
-        let next = saved_content(patch, rack.layout(), &saved_states);
         self.saved_states = saved_states;
         let changed = was_unknown || self.current != next;
         self.current = next;
@@ -159,17 +166,33 @@ fn configured_saved_states(patch: &Patch) -> BTreeMap<String, SavedModuleState> 
         .collect()
 }
 
+fn configured_document_states(project: &ProjectDocument) -> BTreeMap<String, SavedModuleState> {
+    project
+        .graph
+        .nodes
+        .iter()
+        .filter_map(|node| match node {
+            DocumentNode::Native { node, .. } => {
+                SavedModuleState::from_node(node).map(|state| (node.id.clone(), state))
+            }
+            DocumentNode::Unresolved { .. } => None,
+        })
+        .collect()
+}
+
 fn document_content(document: &Document) -> Value {
     saved_content(
-        &document.patch,
-        document.layout.clone(),
-        &configured_saved_states(&document.patch),
+        document.project(),
+        document.layout().clone(),
+        &configured_saved_states(document.patch()),
     )
 }
 
-// Normalize omitted state to its deterministic initial state only in this projection.
+// Source package/blob keys and native asset IDs are validated content digests.
+// Their reference view therefore tracks every persisted byte without expanding
+// immutable payloads during each UI observation. Normalize only native state.
 fn saved_content(
-    patch: &Patch,
+    project: &ProjectDocument,
     layout: Value,
     states: &BTreeMap<String, SavedModuleState>,
 ) -> Value {
@@ -185,11 +208,16 @@ fn saved_content(
             _ => None,
         })
         .collect::<BTreeMap<_, _>>();
-    let mut value = json!({"patch":patch,"layout":layout,"persistent_bits":bits});
-    for node in value["patch"]["nodes"]
+    let mut document = project.reference_view();
+    document["layout"] = layout;
+    for entry in document["graph"]["nodes"]
         .as_array_mut()
-        .expect("serialized patch nodes")
+        .expect("serialized document nodes")
     {
+        if entry["type"] != "native" {
+            continue;
+        }
+        let node = &mut entry["node"];
         if let Some(state) = node["id"].as_str().and_then(|id| states.get(id)) {
             let mut params: BTreeMap<String, f32> =
                 serde_json::from_value(node["params"].clone()).expect("serialized params");
@@ -197,14 +225,16 @@ fn saved_content(
             node["params"] = json!(params);
         }
     }
-    value
+    json!({"document":document,"persistent_bits":bits})
 }
 
 pub struct AppliedDocument {
+    pub project: ProjectDocument,
     pub patch: Patch,
     pub rack: Rack,
     pub revision: u64,
     pub state_id: u64,
+    pub layout_generation: u64,
 }
 
 /// Prepare every fallible part before committing the session. The caller only
@@ -243,22 +273,28 @@ fn install_document_guarded(
     new_document: bool,
     before_commit: impl FnOnce(&openpatch::control::Session) -> Result<(), String>,
 ) -> Result<AppliedDocument, String> {
-    let validated = Document::new(document.patch.clone(), document.layout.clone())?;
     let mut rack = Rack::default();
-    rack.restore_layout(&validated.layout)?;
-    rack.reconcile(&validated.patch, &openpatch_core::catalog());
+    rack.restore_layout(document.layout())?;
+    rack.reconcile_document(
+        document.patch(),
+        document.project(),
+        &openpatch_core::catalog(),
+    );
+    let document = document.clone().with_layout(rack.layout())?;
     let mut live = shared.lock().map_err(|_| "Session lock poisoned")?;
     before_commit(&live)?;
     let revision = if new_document {
-        live.new_document(validated.patch, Some(expected_revision))?
+        live.new_prepared_project_document(document.project().clone(), Some(expected_revision))?
     } else {
-        live.replace_patch(validated.patch, Some(expected_revision))?
+        live.replace_prepared_project_document(document.project().clone(), Some(expected_revision))?
     };
     Ok(AppliedDocument {
+        project: live.project_document().clone(),
         patch: live.patch().clone(),
         rack,
         revision,
         state_id: live.state_id(),
+        layout_generation: live.layout_generation(),
     })
 }
 
@@ -268,6 +304,63 @@ mod tests {
     use openpatch::control::Session;
 
     #[test]
+    fn opaque_payload_assets_and_layout_dirty_even_when_native_carrier_and_revision_match() {
+        use crate::project::test_source_document;
+        let original = test_source_document(json!({"value":1}), &[1, 2, 3]);
+        let mut rack = Rack::default();
+        rack.restore_layout(original.layout()).unwrap();
+        rack.reconcile_document(
+            original.patch(),
+            original.project(),
+            &openpatch_core::catalog(),
+        );
+        let mut state = DocumentState::new(original.project(), 7, &rack);
+        state.mark_saved(&original);
+        assert!(!state.dirty());
+        for changed in [
+            test_source_document(json!({"value":2}), &[1, 2, 3]),
+            test_source_document(json!({"value":1}), &[1, 2, 4]),
+        ] {
+            assert_eq!(
+                original.patch().reference_view(),
+                changed.patch().reference_view()
+            );
+            assert!(!state.matches_saved(&changed));
+            assert!(state.observe_saved_runtime(
+                changed.project(),
+                7,
+                &rack,
+                Some(BTreeMap::new())
+            ));
+            assert!(
+                state.dirty(),
+                "opaque changes cannot be hidden by an unchanged native carrier"
+            );
+            assert!(state.observe_saved_runtime(
+                original.project(),
+                7,
+                &rack,
+                Some(BTreeMap::new())
+            ));
+            assert!(!state.dirty());
+        }
+        let mut layout = original.layout().clone();
+        layout["positions"]["unknown"] = json!([45.0, 380.0]);
+        let moved = original.clone().with_layout(layout).unwrap();
+        rack.restore_layout(moved.layout()).unwrap();
+        assert!(state.observe_saved_runtime(moved.project(), 7, &rack, Some(BTreeMap::new())));
+        assert!(state.dirty());
+        state.mark_saved(&moved);
+        assert!(!state.dirty());
+        assert!(state.matches_saved(&moved));
+        state.mark_saved(&original);
+        assert!(
+            state.dirty(),
+            "an older completed save cannot clean a newer source layout"
+        );
+    }
+
+    #[test]
     fn run_projection_normalizes_defaults_and_unknown_state_never_claims_clean() {
         let patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
             {"id":"seq","kind":"seq3"}
@@ -275,16 +368,14 @@ mod tests {
         .unwrap();
         let mut rack = Rack::default();
         rack.reconcile(&patch, &openpatch_core::catalog());
-        let mut state = DocumentState::new(&patch, 1, &rack);
-        let original = Document {
-            patch: patch.clone(),
-            layout: rack.layout(),
-        };
+        let original = Document::new(patch.clone(), rack.layout()).unwrap();
+        let mut state = DocumentState::new(original.project(), 1, &rack);
         let running = |run| Some(BTreeMap::from([("seq".into(), run)]));
         assert!(!state.observe_running(&patch, 1, &rack, running(true)));
         assert!(!state.dirty());
-        let mut explicit = original.clone();
-        explicit.patch.nodes[0].params.insert("running".into(), 1.0);
+        let mut explicit = original.patch().clone();
+        explicit.nodes[0].params.insert("running".into(), 1.0);
+        let explicit = Document::new(explicit, original.layout().clone()).unwrap();
         assert!(state.matches_saved(&explicit));
         assert!(state.observe_running(&patch, 1, &rack, running(false)));
         assert!(state.dirty());
@@ -305,15 +396,11 @@ mod tests {
         .unwrap();
         let mut rack = Rack::default();
         rack.reconcile(&patch, &openpatch_core::catalog());
-        let mut state = DocumentState::new(&patch, 7, &rack);
-        let original = Document {
-            patch: patch.clone(),
-            layout: rack.layout(),
-        };
-        let mut explicit_zero = original.clone();
-        explicit_zero.patch.nodes[0]
-            .params
-            .insert("holding".into(), 0.0);
+        let original = Document::new(patch.clone(), rack.layout()).unwrap();
+        let mut state = DocumentState::new(original.project(), 7, &rack);
+        let mut explicit_zero = original.patch().clone();
+        explicit_zero.nodes[0].params.insert("holding".into(), 0.0);
+        let explicit_zero = Document::new(explicit_zero, original.layout().clone()).unwrap();
         assert!(state.matches_saved(&explicit_zero));
         let observed = |held| Some((BTreeMap::new(), BTreeMap::from([("button".into(), held)])));
         assert!(!state.observe_runtime(&patch, 7, &rack, observed(false)));
@@ -340,11 +427,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut session = Session::new(dir.path()).unwrap();
         let mut rack = Rack::default();
-        let mut state = DocumentState::new(session.patch(), session.revision(), &rack);
-        let captured = Document {
-            patch: session.patch().clone(),
-            layout: rack.layout(),
-        };
+        let mut state = DocumentState::new(session.project_document(), session.revision(), &rack);
+        let captured = Document::new(session.patch().clone(), rack.layout()).unwrap();
         session
             .execute("add_module", json!({"id":"dc","kind":"constant"}))
             .unwrap();
@@ -376,7 +460,7 @@ mod tests {
             .unwrap();
         let mut rack = Rack::default();
         rack.reconcile(session.patch(), &openpatch_core::catalog());
-        let mut state = DocumentState::new(session.patch(), session.revision(), &rack);
+        let mut state = DocumentState::new(session.project_document(), session.revision(), &rack);
         let identity = session.state_id();
         session
             .execute(
@@ -387,10 +471,7 @@ mod tests {
         assert_eq!(identity, session.state_id());
         state.observe(session.patch(), session.revision(), &rack);
         assert!(state.dirty());
-        let captured = Document {
-            patch: session.patch().clone(),
-            layout: rack.layout(),
-        };
+        let captured = Document::new(session.patch().clone(), rack.layout()).unwrap();
         state.mark_saved(&captured);
         assert!(!state.dirty());
         rack.set_zoom(0.75);
@@ -408,24 +489,93 @@ mod loading_tests {
     use super::*;
     use openpatch::control::Session;
     #[test]
+    fn full_document_apply_preserves_opaque_content_and_resets_playback_permission_atomically() {
+        use crate::project::test_source_document;
+        use openpatch::project_document::{ExecutionDisposition, PlaybackMode};
+        let dir = tempfile::tempdir().unwrap();
+        let shared = Session::new(dir.path()).unwrap().into_shared();
+        let original = test_source_document(json!({"opaque":1}), &[2, 4, 6]);
+        let applied = apply_document(&shared, 0, &original).unwrap();
+        assert_eq!(applied.rack.layout(), *original.layout());
+        {
+            let mut live = shared.lock().unwrap();
+            assert_eq!(
+                live.project_document().encode().unwrap(),
+                original.encode().unwrap()
+            );
+            assert_eq!(
+                live.execution_disposition(),
+                ExecutionDisposition::SuspendedUnresolved
+            );
+            assert_eq!(live.playback_mode(), PlaybackMode::Exact);
+            assert_eq!(
+                live.capture_project_document(Some(1)).unwrap().state_source,
+                "suspended_persisted"
+            );
+            live.set_document_playback(PlaybackMode::Partial, Some(1))
+                .unwrap();
+        }
+        let revised = test_source_document(json!({"opaque":2}), &[2, 4, 7]);
+        let before = shared.lock().unwrap().snapshot();
+        assert!(
+            apply_document_guarded(&shared, 2, &revised, |_| Err("discard rejected".into()))
+                .is_err()
+        );
+        assert_eq!(shared.lock().unwrap().snapshot(), before);
+        assert!(apply_document(&shared, 1, &revised).is_err());
+        assert_eq!(shared.lock().unwrap().snapshot(), before);
+        let next = apply_document(&shared, 2, &revised).unwrap();
+        assert_ne!(next.state_id, applied.state_id);
+        let mut live = shared.lock().unwrap();
+        assert_eq!(
+            live.execution_disposition(),
+            ExecutionDisposition::SuspendedUnresolved
+        );
+        assert_eq!(
+            live.project_document().encode().unwrap(),
+            revised.encode().unwrap()
+        );
+        live.execute("undo", json!({})).unwrap();
+        assert_eq!(live.playback_mode(), PlaybackMode::Partial);
+        assert_eq!(
+            live.project_document().encode().unwrap(),
+            original.encode().unwrap()
+        );
+        live.execute("redo", json!({})).unwrap();
+        assert_eq!(live.playback_mode(), PlaybackMode::Exact);
+        assert_eq!(
+            live.project_document().encode().unwrap(),
+            revised.encode().unwrap()
+        );
+        let revision = live.revision();
+        drop(live);
+        new_document_guarded(&shared, revision, &original, |_| Ok(())).unwrap();
+        let live = shared.lock().unwrap();
+        assert!(!live.can_undo() && !live.can_redo());
+        assert_eq!(
+            live.project_document().encode().unwrap(),
+            original.encode().unwrap()
+        );
+        assert_eq!(
+            live.execution_disposition(),
+            ExecutionDisposition::SuspendedUnresolved
+        );
+    }
+
+    #[test]
     fn malformed_layout_and_stale_load_leave_session_and_history_untouched() {
         let dir = tempfile::tempdir().unwrap();
         let shared = Session::new(dir.path()).unwrap().into_shared();
         let initial = shared.lock().unwrap().snapshot();
-        let malformed = Document {
-            patch: openpatch_core::demo_patch(),
-            layout: json!({"version":1,"zoom":-1}),
-        };
-        assert!(apply_document(&shared, 0, &malformed).is_err());
+        assert!(
+            Document::new(openpatch_core::demo_patch(), json!({"version":1,"zoom":-1})).is_err()
+        );
         assert_eq!(shared.lock().unwrap().snapshot(), initial);
         let mut rack = Rack::default();
         let mut patch = openpatch_core::demo_patch();
         patch.assign_missing_cable_ids().unwrap();
         rack.reconcile(&patch, &openpatch_core::catalog());
-        let candidate = Document {
-            patch,
-            layout: rack.layout(),
-        };
+        let candidate = Document::new(patch, rack.layout()).unwrap();
         shared
             .lock()
             .unwrap()
@@ -436,10 +586,10 @@ mod loading_tests {
         assert_eq!(shared.lock().unwrap().snapshot(), newer);
         let applied = apply_document(&shared, 1, &candidate).unwrap();
         assert_eq!(applied.revision, 2);
-        assert_eq!(applied.rack.layout(), candidate.layout);
+        assert_eq!(applied.rack.layout(), *candidate.layout());
         assert_eq!(
             serde_json::to_value(applied.patch).unwrap(),
-            serde_json::to_value(candidate.patch).unwrap()
+            serde_json::to_value(candidate.patch()).unwrap()
         );
     }
 
@@ -453,17 +603,17 @@ mod loading_tests {
         let shared = session.into_shared();
         let before = shared.lock().unwrap().snapshot();
         let candidate = crate::startup::factory_document();
-        let original_layout = candidate.layout.clone();
+        let original_layout = candidate.layout().clone();
         assert!(new_document_guarded(&shared, 1, &candidate, |_| Err(
             "unsaved runtime changes".into()
         ))
         .is_err());
         assert_eq!(shared.lock().unwrap().snapshot(), before);
-        assert_eq!(candidate.layout, original_layout);
+        assert_eq!(*candidate.layout(), original_layout);
         assert!(new_document_guarded(&shared, 0, &candidate, |_| Ok(())).is_err());
         assert_eq!(shared.lock().unwrap().snapshot(), before);
         let applied = new_document_guarded(&shared, 1, &candidate, |_| Ok(())).unwrap();
-        assert_eq!(applied.rack.layout(), candidate.layout);
+        assert_eq!(applied.rack.layout(), *candidate.layout());
         let live = shared.lock().unwrap();
         assert!(!live.can_undo() && !live.can_redo());
         assert_eq!(applied.revision, 2);

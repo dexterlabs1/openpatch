@@ -219,7 +219,7 @@ fn library_zoom_survives_new_template_example_open_import_revert_recovery_and_hi
     }
     std::fs::write(
         dir.path().join("legacy.json"),
-        serde_json::to_vec(&expected.patch).unwrap(),
+        serde_json::to_vec(&expected.patch()).unwrap(),
     )
     .unwrap();
     let mut app = host(dir.path());
