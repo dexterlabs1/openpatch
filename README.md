@@ -152,6 +152,10 @@ volts per screen, read minimum/maximum/peak-to-peak voltage, and see whether
 triggering follows X or an external input. MCP can inspect the same live
 capture, including individual voices. Empty captures remain visibly unavailable.
 
+Choose the separate [Stock Scope](docs/STOCK_SCOPE.md) for the pinned Fundamental
+acquisition behavior, calibrated TIME controls and a native AUTO view that leaves
+source settings and undo history untouched. Existing Scope patches keep their model.
+
 </details>
 
 <details>
@@ -410,23 +414,27 @@ after its recorded review of 139 native captures. The new Stock Noise
 [controlled-draw reference gate](docs/STOCK_NOISE.md#recorded-reference-and-limits)
 passes; combined application, UI and release qualification merged in [PR20](https://github.com/dexterlabs1/openpatch/pull/20).
 
-**80 built-in module kinds.** [Studio Mixer](docs/STUDIO_MIXER.md) adds an original 1–16-channel console with two stereo send/return loops. It appears in both **Custom** and **Mixing**. The separate [Stock Noise](docs/STOCK_NOISE.md) retains seven consumer-gated outputs, distinct from the original [seven-color Noise](docs/COLORED_NOISE.md).
+**81 built-in module kinds.** [Studio Mixer](docs/STUDIO_MIXER.md) adds an original 1–16-channel console with two stereo send/return loops. It appears in both **Custom** and **Mixing**. The separate [Stock Noise](docs/STOCK_NOISE.md) retains seven consumer-gated outputs, distinct from the original [seven-color Noise](docs/COLORED_NOISE.md).
 
 The separate [Stock Process](docs/STOCK_PROCESS.md) adds six sample/hold, slew and glide outputs with a frozen source/host comparison. Its bounded source/host, local release, platform CI and native render checks passed before [PR22](https://github.com/dexterlabs1/openpatch/pull/22) merged. The macOS ARM app includes all four visualizers, including Ferrofluid.
 
 The [Signal Atlas panel redesign](docs/MODULE_DESIGN.md) uses prominent black
 knobs, warm ivory, clear titles and source-backed markings, with identical panels
-in the rack and library. The current development candidate accounts for all
-**77 non-MIDI panels**: 76 detailed conversions plus the existing Studio Mixer.
+in the rack and library. The shared design now covers all
+**78 non-MIDI panels**, including Stock Scope: 77 detailed panels plus the existing
+Studio Mixer.
 The three MIDI panels remain deferred. Exact values, grouped undo and visible
 MCP edits remain part of the controls; LED and screen glow is now more restrained.
 
-[Review the panels and audit](design/reviews/signal-atlas-two-modules-v1/README.md#non-midi-design-candidate-audit) · [Current development PR](https://github.com/dexterlabs1/openpatch/pull/28)
+[Review the panels and audit](design/reviews/signal-atlas-two-modules-v1/README.md#non-midi-design-candidate-audit) · [Stock Scope and softer lighting](https://github.com/dexterlabs1/openpatch/pull/29)
 
 The installed Mac checkpoint is **0.2.6 build 8**, with the earlier 34-panel pass
 and stronger glow. The redesign is [merged](https://github.com/dexterlabs1/openpatch/pull/28), with
 [full Mac workspace/MCP CI](https://github.com/dexterlabs1/openpatch/actions/runs/39007243527)
-and the internal app artifact verified. It has not replaced that installed app.
+and the internal app artifact verified. [Stock Scope and the softer lighting](https://github.com/dexterlabs1/openpatch/pull/29)
+also passed [full Mac CI](https://github.com/dexterlabs1/openpatch/actions/runs/39009839579):
+2,312 Rust tests, 115 Python/MCP tests, release packaging and visualizer integration.
+These changes have not replaced that installed app.
 Native-window and physical audio-device qualification remain separate.
 
 The library also includes [Stock VCA Mix](docs/STOCK_VCA_MIX.md), [Stock Mix](docs/STOCK_MIX.md), [Stock Mid/Side](docs/STOCK_MID_SIDE.md), [Stock VCO](docs/STOCK_VCO.md), [Stock LFO](docs/STOCK_LFO.md), [Stock Delay](docs/STOCK_DELAY.md), [Stock Quantizer](docs/STOCK_QUANTIZER.md), and [Stock SEQ3](docs/STOCK_SEQ3.md), alongside voices, modulation, scores, effects and utilities. Search controls and ports, filter by musical role, and save favorites in the docked library. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; the number of OpenPatch kinds is not a count of completed equivalents.

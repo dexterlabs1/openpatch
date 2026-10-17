@@ -20,27 +20,33 @@ The approved [01 reference](../design/concepts/module-panels-20261016-v1/01-sign
 
 The existing CI app artifact was reused rather than rebuilt. Its GitHub SHA-256 digest, ARM64 binaries, deep/strict ad-hoc signature, 80-kind catalog, Studio Mixer Custom/Mixing tags, icon/licenses, selected font and embedded GLSL/Ferrofluid passed inspection. Read-only early-exit CLI flags passed; installed app hashes stayed unchanged. This internal candidate is identified by source **`c4f9509`** and run, with base bundle metadata **0.2.6/build 8**; it is not a newly versioned release or installation. No native-window/audio-device/driver qualification is claimed.
 
-## Active next: Stock Scope integration
+## Delivered: Stock Scope integration
 
-The design checkpoint is delivered; resume the existing Stock Scope implementation. Its branch/worktree is `work/stock-scope-integration` / `openpatch-stock-scope-integration`.
+[PR #29](https://github.com/dexterlabs1/openpatch/pull/29) is merged at `903021c`. The separate Stock Scope uses the shared Signal Atlas panel, source-correct lifecycle, nominal millisecond TIME controls, native AUTO fitting and real Callback → MCP publication. Existing Scope patches retain their model. Successive TIME edits stay one undoable gesture; stale typed edits cannot overwrite newer revisions. The user's softer, tighter glow is included. [Contract and actual normal/dim captures](STOCK_SCOPE.md).
 
-- **Proven:** the optimized actual Core probe matched all 4,242 frozen genuine-Rack snapshots across 1,056 cases, including full 50-second sweeps at three rates. The reference declaration remains unchanged. This establishes the bounded source/host numerical result, not complete application or hardware qualification.
-- **Focused application checks passed:** seven Core tests, 66 affected desktop Scope checks, actual Callback → Session lifecycle/publication under heap checks, source-correct initialize/recreation and native AUTO separation. TIME uses the current Session revision during successive drags while typed entry retains its opening revision; one gesture remains one undo/redo. Reduced-zoom controls clear real jack targets. [Qualification and captures](STOCK_SCOPE.md#application-evidence).
-- **Safety passed:** all 46 unchanged local inputs ran through the real Engine: 12 accepted finite updates and 34 atomic rejections. No SDK-equivalence claim applies to this safety set. Frozen numerical evidence is reused after binary, source, toolchain and artifact audits; executable model/host/probe logic is unchanged.
-- **UI checks passed:** all 81 catalog kinds share matching rack/browser default drawing; workspace strict Clippy and formatting pass. The user's latest glow feedback further reduces halo intensity/spread and screen spill; normal/dim captures and 16 lighting checks pass. Installed 0.2.6 build 8 remains unchanged.
-- **Next verification:** one complete macOS regression on the settled milestone PR, then review the result. No Linux/Windows, repeated oracle generation or packaging/install during this check.
-- **Done:** source controls/lifecycle remain truthful; the stock panel, weak-signal AUTO, cable interactions and live inspection work together; affected focused tests and one macOS regression pass. Then review one milestone PR. Package/install only at a useful release milestone, with the user's session preserved.
+The frozen actual Core/genuine Rack result covers **4,242 complete snapshots across 1,056 cases**, including full 50-second sweeps. Binary/source/toolchain audits establish unchanged executable model/host/probe logic, so the proof was reused. All **46 local safety records** passed: 12 accepted finite updates and 34 atomic rejections; no SDK-equivalence claim applies to that set.
 
-The authoritative local evidence is `native-test-output/stock-scope/STATE.json` in the integration worktree. Full logs/traces stay outside chat and Git. Existing `scope` and user patches keep their separate behavior.
+[Full macOS CI](https://github.com/dexterlabs1/openpatch/actions/runs/39009839579) passed **2,312 Rust tests**, including **1,188 desktop cases** (seven intentionally ignored), **115 Python/MCP tests**, strict workspace Clippy/formatting, optimized binaries, application packaging and visualizer integration. The first CI attempt stopped on an obsolete global catalog-count assertion; all five unrelated count fixtures were corrected and their affected checks passed before the successful run. The shared renderer retains its exhaustive 81-kind coverage guard. Installed 0.2.6 build 8 is unchanged; no native-window/audio-device qualification is claimed.
+
+## Active next: real Rack patch workflows
+
+Implement the existing [compatibility decision](COMPATIBILITY_DECISION.md) with a **shared control-owned project document**, used by desktop and MCP transactions, history and persistence. A focused Astra review confirmed that desktop-only provenance would be lost through the current MCP patch-only save/replace and undo paths. Core Patch remains an executable projection; source payloads never become hidden DSP parameters.
+
+- First unify versioned document authority, including native/unresolved module identities, source records, cables, layout and bounded immutable source assets. Preserve native-only project v1 and legacy Patch JSON behavior through explicit migrations/adapters.
+- Then add bounded `.vcv` decoding, pinned parameter/port/state/layout mappings, visible recoverable unknown modules and shared native/MCP import/repair actions. Exact playback reports unresolved dependencies; any explicit partial playback must show affected routes and normaling differences.
+- Use the user's real “So There I Was” patch plus a small declared polyphony/feedback/effects collection. Its read-only inventory contains **55 modules, 83 cables and 24 plugin/model/version identities**. The existing curated reconstruction is not a general importer.
+- **Done:** open/import, inspect and repair, edit with coherent undo, play declared supported behavior, save and reopen while preserving unsupported payloads, cables and assets. Then one settled macOS milestone PR; no automatic install.
+
+Reuse the existing integration worktree on branch `work/rack-import`; do not create another checkout for each subtask. The active state moves to `native-test-output/rack-import/STATE.json`. Stock Scope's completed numerical/application evidence remains under `native-test-output/stock-scope/`.
 
 ## Course to completion
 
-One focused Astra advisory reviewed the remaining scope and this execution policy. The user's subsequent priority puts the approved module redesign first. Resume the checkpointed Scope integration now, then prioritize making music with real imported patches. A blocking regression in the current instrument takes priority immediately.
+One focused Astra advisory reviewed the remaining scope and this execution policy. The user's subsequent priority puts the approved module redesign first. Stock Scope is now delivered; prioritize making music with real imported patches. A blocking regression in the current instrument takes priority immediately.
 
 | Milestone | User-visible exit |
 |---|---|
 | 1. Signal Atlas module design | Delivered: audited non-MIDI design, full Mac CI, inspected internal app candidate and merged source. Installed app remains stable. |
-| 2. Scope integration | Connect, adjust and inspect Stock Scope reliably, including successive TIME drags, native AUTO view and real Callback → MCP publication. Focused safety/lifecycle/realtime and one Mac regression pass. |
+| 2. Scope integration | Delivered: source/acquisition, shared panel, native AUTO, live MCP lifecycle, local safety and full Mac CI; PR29 merged. |
 | 3. Real Rack patch workflows | Open, repair, play, save and reopen a declared collection of actual `.vcv` patches with routing, parameters, layout and assets preserved. Unsupported modules remain explicit, recoverable placeholders. Publish the supported mapping. |
 | 4. Complete non-MIDI Mac instrument | Close module gaps in coherent families, including hidden VCA-2/Unity compatibility; complete editing/history, project recovery, audio configuration and Audio 2/8/16 requirements. Qualify shared physical audio paths once at the host milestone. |
 | 5. Demonstrated performance/reliability | Comparable representative small, polyphonic, feedback, delay-heavy and large patch measurements support specific CPU/latency claims. Fix measured bottlenecks; verify callback deadlines, live graph changes, overload, installation/upgrade and recovery. |

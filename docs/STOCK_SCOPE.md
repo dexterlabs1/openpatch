@@ -2,7 +2,7 @@
 
 `stock_scope` is the separate Rust realization of the pinned Fundamental Scope acquisition contract. The existing `scope` kind and saved patches keep their independent behavior. This is a digital source-behavior model; it is not a physical instrument or hardware timing claim.
 
-The source model and application integration have passed their focused qualification checks. The production probe matched all 4,242 frozen genuine-Rack snapshots without discarding observations. Seven Core checks, 66 affected desktop Scope checks and the separate 46-record local safety probe passed. Complete macOS milestone CI remains pending; this is not an installed release or a physical-device qualification.
+The source model and application integration have passed their focused qualification checks. The production probe matched all 4,242 frozen genuine-Rack snapshots without discarding observations. Seven Core checks, 66 affected desktop Scope checks and the separate 46-record local safety probe passed. [Full macOS CI](https://github.com/dexterlabs1/openpatch/actions/runs/39009839579) passed 2,312 Rust tests (including 1,188 desktop cases), 115 Python/MCP tests, optimized binaries, application packaging and visualizer integration before [PR #29](https://github.com/dexterlabs1/openpatch/pull/29) merged. This is not an installed release or a physical-device qualification.
 
 ## Source controls and ports
 
