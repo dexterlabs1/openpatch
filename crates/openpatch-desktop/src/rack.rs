@@ -2161,18 +2161,18 @@ impl Rack {
             self.pan += response.drag_delta();
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         }
-        // arrow keys accelerate and glide to a stop instead of starting and stopping instantly
-        let target = if navigation_enabled && !ui.input(|i| i.pointer.any_down()) {
-            let dt = ui.input(|i| i.stable_dt.clamp(1.0 / 240.0, 0.1));
-            ui.input(keyboard_pan_delta) / dt
-        } else {
-            Vec2::ZERO
-        };
-        if target != Vec2::ZERO || self.key_velocity.length() > 2.0 {
-            let dt = ui.input(|i| i.stable_dt.clamp(1.0 / 240.0, 0.05));
-            self.key_velocity += (target - self.key_velocity) * (1.0 - (-dt * 10.0).exp());
-            self.pan += self.key_velocity * dt;
-            ui.ctx().request_repaint();
+        // Arrow keys accelerate and glide to a stop while navigation remains available.
+        if navigation_enabled && !ui.input(|i| i.pointer.any_down()) {
+            let input_dt = ui.input(|i| i.stable_dt.clamp(1.0 / 240.0, 0.1));
+            let target = ui.input(keyboard_pan_delta) / input_dt;
+            if target != Vec2::ZERO || self.key_velocity.length() > 2.0 {
+                let dt = ui.input(|i| i.stable_dt.clamp(1.0 / 240.0, 0.05));
+                self.key_velocity += (target - self.key_velocity) * (1.0 - (-dt * 10.0).exp());
+                self.pan += self.key_velocity * dt;
+                ui.ctx().request_repaint();
+            } else {
+                self.key_velocity = Vec2::ZERO;
+            }
         } else {
             self.key_velocity = Vec2::ZERO;
         }
@@ -18055,55 +18055,105 @@ mod tests {
                 120.0,
             ),
         ] {
-            let ctx = egui::Context::default();
-            let mut rack = Rack::default();
-            let patch = Patch::new_v2();
-            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-            let before = rack.pan;
-            frame(
-                &ctx,
-                &mut rack,
-                &patch,
-                0.02,
-                vec![
-                    navigation_key(egui::Key::ArrowRight, modifiers),
-                    navigation_key(egui::Key::ArrowUp, modifiers),
-                ],
-            );
-            let dt = ctx.input(|i| i.stable_dt.min(0.1));
-            assert_near_vec(rack.pan - before, vec2(-speed, speed) * dt);
-            let before = rack.pan;
-            // A held key continues on the next frame without a fresh press.
-            let _ = ctx.run(
-                egui::RawInput {
-                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 700.0))),
-                    time: Some(0.04),
-                    modifiers,
-                    focused: true,
-                    ..Default::default()
-                },
-                |ctx| {
-                    egui::CentralPanel::default()
-                        .frame(egui::Frame::NONE)
-                        .show(ctx, |ui| {
-                            rack.show(ui, &patch, &openpatch_core::catalog(), 48_000, 0);
-                        });
-                },
-            );
-            let dt = ctx.input(|i| i.stable_dt.min(0.1));
-            assert_near_vec(rack.pan - before, vec2(-speed, speed) * dt);
-            let before = rack.pan;
-            frame(
-                &ctx,
-                &mut rack,
-                &patch,
-                0.06,
-                vec![
-                    navigation_key(egui::Key::ArrowLeft, modifiers),
-                    navigation_key(egui::Key::ArrowDown, modifiers),
-                ],
-            );
-            assert_eq!(rack.pan, before);
+            for opposing_keys in [false, true] {
+                let ctx = egui::Context::default();
+                let patch = Patch::new_v2();
+                let catalog = openpatch_core::catalog();
+                let mut rack = Rack::default();
+                let step = |rack: &mut Rack, time, events| {
+                    let _ = ctx.run(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 700.0))),
+                            time: Some(time),
+                            events,
+                            modifiers,
+                            focused: true,
+                            ..Default::default()
+                        },
+                        |ctx| {
+                            egui::CentralPanel::default().frame(egui::Frame::NONE).show(
+                                ctx,
+                                |ui| {
+                                    rack.show(ui, &patch, &catalog, 48_000, 0);
+                                },
+                            );
+                        },
+                    );
+                };
+                step(&mut rack, 0.0, vec![]);
+                let before = rack.pan;
+                step(
+                    &mut rack,
+                    0.02,
+                    vec![
+                        navigation_key(egui::Key::ArrowRight, modifiers),
+                        navigation_key(egui::Key::ArrowUp, modifiers),
+                    ],
+                );
+                let first_delta = rack.pan - before;
+                let first_speed = first_delta.y / ctx.input(|i| i.stable_dt);
+                assert!(first_speed > 0.0 && first_speed < speed);
+                assert_near_vec(first_delta, vec2(-first_delta.y, first_delta.y));
+
+                // Held keys keep accelerating without additional key events.
+                let before = rack.pan;
+                step(&mut rack, 0.04, vec![]);
+                let held_speed = (rack.pan.y - before.y) / ctx.input(|i| i.stable_dt);
+                assert!(held_speed > first_speed && held_speed < speed);
+                let mut time = 0.04;
+                let mut last_speed = held_speed;
+                for _ in 0..40 {
+                    time += 0.02;
+                    let before = rack.pan;
+                    step(&mut rack, time, vec![]);
+                    last_speed = (rack.pan.y - before.y) / ctx.input(|i| i.stable_dt);
+                }
+                assert!(
+                    (last_speed - speed).abs() < speed * 0.01,
+                    "steady speed {last_speed} should approach {speed} for {modifiers:?}"
+                );
+
+                // Both release and opposing keys coast briefly, then stop completely.
+                let events = if opposing_keys {
+                    vec![
+                        navigation_key(egui::Key::ArrowLeft, modifiers),
+                        navigation_key(egui::Key::ArrowDown, modifiers),
+                    ]
+                } else {
+                    [egui::Key::ArrowRight, egui::Key::ArrowUp]
+                        .into_iter()
+                        .map(|key| egui::Event::Key {
+                            key,
+                            physical_key: None,
+                            pressed: false,
+                            repeat: false,
+                            modifiers,
+                        })
+                        .collect()
+                };
+                let before = rack.pan;
+                time += 0.02;
+                step(&mut rack, time, events);
+                let coast = rack.pan - before;
+                let mut coast_speed = coast.y / ctx.input(|i| i.stable_dt);
+                assert!(coast_speed > 0.0 && coast_speed < last_speed);
+                assert_near_vec(coast, vec2(-coast.y, coast.y));
+                for _ in 0..64 {
+                    let before = rack.pan;
+                    time += 0.02;
+                    step(&mut rack, time, vec![]);
+                    let next_speed = (rack.pan.y - before.y) / ctx.input(|i| i.stable_dt);
+                    assert!(next_speed >= 0.0 && next_speed <= coast_speed + 0.05);
+                    coast_speed = next_speed;
+                }
+                assert_eq!(rack.key_velocity, Vec2::ZERO);
+                let settled = rack.pan;
+                for _ in 0..8 {
+                    time += 0.02;
+                    step(&mut rack, time, vec![]);
+                    assert_eq!(rack.pan, settled, "settled camera must not drift");
+                }
+            }
         }
     }
 
@@ -18125,6 +18175,8 @@ mod tests {
             let patch = Patch::new_v2();
             frame(&ctx, &mut rack, &patch, 0.0, vec![]);
             let before = rack.pan;
+            // Navigation guards must also stop motion from a previously held arrow.
+            rack.key_velocity = vec2(-800.0, 400.0);
             if guard == "shortcuts" {
                 rack.set_shortcuts_enabled(false);
             }
@@ -18184,6 +18236,7 @@ mod tests {
                 },
             );
             assert_eq!(rack.pan, before, "guard {guard}");
+            assert_eq!(rack.key_velocity, Vec2::ZERO, "guard {guard}");
         }
     }
 

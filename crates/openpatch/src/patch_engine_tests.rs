@@ -28,45 +28,69 @@ fn flatten(steps: &[Value]) -> Vec<Value> {
 
 #[test]
 fn every_word_combination_builds_in_every_mode() {
-    let mut fails = vec![];
-    for g in GENRES {
-        for m in MOODS {
-            for t in TEXTURES {
-                for seed in [1u64, 7, 4242] {
-                    let r = Recipe::new(g, m, t, seed).unwrap();
-                    let tag = format!("{g}|{m}|{t}|{seed}");
-                    // plan caps used by start_construction
-                    let (mods, steps) = r.reveal();
-                    let show = r.showtime();
-                    for (name, plan) in [("reveal", &steps), ("showtime", &show)] {
-                        assert!(plan.len() <= 64, "{tag}: {name} has {} steps", plan.len());
-                        for s in plan.iter() {
-                            assert!(
-                                s["edits"].as_array().unwrap().len() <= 8,
-                                "{tag}: {name} step over 8 edits"
-                            );
+    // Each recipe owns its Session. Bound independent genre workers so the
+    // exhaustive coverage stays the same without serializing every graph on CI.
+    let workers = std::thread::available_parallelism()
+        .map_or(1, usize::from)
+        .min(4);
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = GENRES
+            .chunks(GENRES.len().div_ceil(workers))
+            .map(|genres| {
+                scope.spawn(move || {
+                    let mut fails = vec![];
+                    for &g in genres {
+                        for m in MOODS {
+                            for t in TEXTURES {
+                                for seed in [1u64, 7, 4242] {
+                                    let r = Recipe::new(g, m, t, seed).unwrap();
+                                    let tag = format!("{g}|{m}|{t}|{seed}");
+                                    // plan caps used by start_construction
+                                    let (mods, steps) = r.reveal();
+                                    let show = r.showtime();
+                                    for (name, plan) in [("reveal", &steps), ("showtime", &show)] {
+                                        assert!(
+                                            plan.len() <= 64,
+                                            "{tag}: {name} has {} steps",
+                                            plan.len()
+                                        );
+                                        for s in plan.iter() {
+                                            assert!(
+                                                s["edits"].as_array().unwrap().len() <= 8,
+                                                "{tag}: {name} step over 8 edits"
+                                            );
+                                        }
+                                        assert!(
+                                            flatten(plan).len() <= 256,
+                                            "{tag}: {name} over 256 edits"
+                                        );
+                                    }
+                                    for (name, edits) in [
+                                        ("instant", r.edits()),
+                                        ("reveal", [mods.clone(), flatten(&steps)].concat()),
+                                        ("showtime", flatten(&show)),
+                                    ] {
+                                        if let Err(e) = apply_all(&edits) {
+                                            fails.push(format!("{tag} {name}: {e}"));
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        assert!(flatten(plan).len() <= 256, "{tag}: {name} over 256 edits");
+                        assert!(
+                            fails.is_empty(),
+                            "{} failures, first: {:?}",
+                            fails.len(),
+                            &fails[..fails.len().min(5)]
+                        );
                     }
-                    for (name, edits) in [
-                        ("instant", r.edits()),
-                        ("reveal", [mods.clone(), flatten(&steps)].concat()),
-                        ("showtime", flatten(&show)),
-                    ] {
-                        if let Err(e) = apply_all(&edits) {
-                            fails.push(format!("{tag} {name}: {e}"));
-                        }
-                    }
-                }
-            }
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().expect("keyword combination worker failed");
         }
-        assert!(
-            fails.is_empty(),
-            "{} failures, first: {:?}",
-            fails.len(),
-            &fails[..fails.len().min(5)]
-        );
-    }
+    });
 }
 
 #[test]

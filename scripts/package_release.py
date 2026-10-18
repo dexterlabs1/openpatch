@@ -157,7 +157,9 @@ def package(args):
         else:
             instructions = (
                 "Extract the entire folder, then run openpatch-desktop.exe.\n"
-                "openpatch.exe is the command-line / MCP attachment tool.\n"
+                "openpatch.exe is the command-line tool. For a live MCP window, use\n"
+                "openpatch-desktop.exe --mcp; attachment to an existing Windows window\n"
+                "is not supported yet.\n"
                 if args.platform == "windows-x86_64" else
                 "Move OpenPatch.app to Applications.\n"
                 "This app is ad-hoc signed, not Developer ID signed or notarized.\n"
