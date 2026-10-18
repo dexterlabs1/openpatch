@@ -16,11 +16,16 @@ on:
         description: 'Validate and package macOS, Windows and Steam Deck without benchmarks'
         type: boolean
         default: false
+      qualified_run:
+        description: 'Reuse passed platform checks only for unchanged source and workflow/shader-EOL fixes'
+        type: string
+        default: ''
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 permissions:
   contents: read
+  actions: read
 jobs:
   test:
     strategy:
@@ -55,11 +60,49 @@ jobs:
       - name: Linux desktop dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libgl1-mesa-dev xvfb
+      - name: Verify reusable correctness evidence
+        id: qualification
+        shell: python
+        env:
+          QUALIFIED_RUN: ${{ inputs.qualified_run }}
+          QUALIFIED_PLATFORM: ${{ matrix.artifact }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          import json, os, pathlib, subprocess, urllib.request
+          prior = os.environ.get("QUALIFIED_RUN", "")
+          reuse = False
+          if prior:
+              assert prior.isdecimal(), "qualified_run must be a run ID"
+              repository = os.environ["GITHUB_REPOSITORY"]
+              def fetch(path):
+                  request = urllib.request.Request(f"https://api.github.com/repos/{repository}/{path}", headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"})
+                  with urllib.request.urlopen(request) as response:
+                      return json.load(response)
+              run = fetch(f"actions/runs/{prior}")
+              assert run["event"] == "pull_request", "reuse requires the original PR correctness gate"
+              source = run["head_sha"]
+              changes = subprocess.check_output(["git", "diff", "--name-only", source, "HEAD"], text=True).splitlines()
+              assert set(changes) <= {".github/workflows/ci.yml", ".gitattributes"}, f"runtime, package or test source changed: {changes}"
+              if ".gitattributes" in changes:
+                  assert pathlib.Path(".gitattributes").read_text() == "*.frag text eol=lf\n", "only canonical shader LF policy may reuse unchanged source"
+              jobs = fetch(f"actions/runs/{prior}/jobs?per_page=100")["jobs"]
+              platform = os.environ["QUALIFIED_PLATFORM"]
+              matches = [job for job in jobs if platform in job["name"] and job["name"].startswith("test (")]
+              assert len(matches) == 1, f"missing unique {platform} evidence"
+              steps = {step["name"]: step.get("conclusion") for step in matches[0]["steps"]}
+              reuse = all(steps.get(name) == "success" for name in ("Format check", "Clippy", "Rust correctness and allocation tests"))
+              if platform == "windows-x86_64" and ".gitattributes" in changes:
+                  reuse = False
+              print(f"Prior PR run {prior} at {source}: {platform} reuse={reuse}; failed/unqualified checks run again")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("reuse=" + str(reuse).lower() + "\n")
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Clippy
+        if: steps.qualification.outputs.reuse != 'true'
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Rust correctness and allocation tests
+        if: steps.qualification.outputs.reuse != 'true'
         run: cargo test --locked --workspace
       - name: Release binary
         env:
@@ -80,6 +123,7 @@ jobs:
       - name: Check packaged macOS signatures
         if: runner.os == 'macOS'
         run: |
+          mkdir -p native-test-output/packaged-mac
           unzip -q dist/OpenPatch-macos-arm64.zip -d native-test-output/packaged-mac
           codesign --verify --deep --strict native-test-output/packaged-mac/OpenPatch-macos-arm64/OpenPatch.app
           native-test-output/packaged-mac/OpenPatch-macos-arm64/OpenPatch.app/Contents/MacOS/openpatch catalog > native-test-output/packaged-mac/catalog.json
