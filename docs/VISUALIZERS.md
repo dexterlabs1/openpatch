@@ -8,10 +8,14 @@ control. They must never stall the audio callback.
 `openpatch-desktop` includes an optional OpenGL view in the native analysis dock.
 Click the **Visuals** toolbar icon or choose **View → Visualizers**, then drag the
 dock's divider to resize. Scope and Visuals are tabs in the same dock, keeping
-space available for the rack and library. Aurora, Spectrum, Waveform, and Ferrofluid modes
-react to the same audio output as the rack. Playback
-starts paused; press Play in the window to hear the patch and drive its visuals.
-The animated background continues while paused, with audio input fading to zero.
+space available for the rack and library. The default **Horizon** view joins
+**Phosphor, Ridges, Pulsar and Vector**: five line-art modes derived from
+waveform sweeps and recent spectrum history. **Aurora, Spectrum, Waveform and
+Ferrofluid** remain available in the same picker. All modes react to the rack
+output. Press Play to hear a paused patch and drive its visuals. The original
+procedural modes can continue animating while paused, with audio input fading
+to zero. The line-art modes use bounded, level-normalized signal history, so
+quiet signals remain visible; they are creative displays, not calibrated meters.
 Ferrofluid renders a head-on black liquid sculpture with reflective spikes and
 studio lighting. Low-frequency energy swells the body; upper bands reshape the
 surface and add rapid ripples. Fast attack/release envelopes
@@ -35,8 +39,10 @@ fullscreen vertex shader. The built-in source in
 | `uniform float u_level` | Recent decaying peak after transport and volume gain |
 | `uniform float u_wave[256]` | Best-effort waveform, oldest sample first |
 | `uniform float u_spectrum[64]` | Hann-windowed DFT magnitudes from the waveform |
-| `uniform int u_mode` | 0 Aurora, 1 Spectrum, 2 Waveform, 3 Ferrofluid |
+| `uniform int u_mode` | 0 Aurora, 1 Spectrum, 2 Waveform, 3 Ferrofluid, 4 Phosphor, 5 Horizon, 6 Pulsar, 7 Vector, 8 Ridges |
 | `uniform vec4 u_ferro` | Smoothed low, middle, high and peak envelopes, each 0..1 |
+| `uniform sampler2D u_history` | 128 × 48 single-channel history: rows 0–31 spectrum, rows 32–47 waveform sweeps; newest first |
+| `uniform vec4 u_history_info` | Spectrum scroll phase, sweep scroll phase, XY delay in samples, wrapped row count |
 
 Compile/link errors keep the previous working shader active and show driver
 diagnostics. Sources are limited to 64 KiB. Restore source restores the editor

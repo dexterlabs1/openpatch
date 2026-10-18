@@ -2,7 +2,7 @@
 
 Updated 2026-10-17. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
 
-## Stable release
+## Installed Mac build
 
 **OpenPatch 0.2.7 build 9 is installed at `~/Applications/OpenPatch.app`.**
 The user explicitly requested this upgrade on 2026-10-17. It includes the 77-panel
@@ -17,24 +17,40 @@ Rust tests and 123 Python/MCP tests, plus four bundled-release CLI smoke tests.
 native-window/audio-device qualification. Keep the installed app stable; macOS
 ARM remains first, Windows/Linux and MIDI/live performance remain deferred.
 
-## Public cross-platform release candidate
+## Latest public release: 0.3.0 build 10
 
-The user requested a combined macOS ARM, Windows x64 and Steam Deck/Linux x64
-release, including Claude's Patch Engine, followed by a product README refresh.
-`work/release-0-3-0` integrates the finished five-instrument family and
-`work/patch-engine` at `9b0dcfc`, with scoped rack organization, signal tracing,
-cable materials, footer controls and the Patch Engine. The candidate is
-**0.3.0 build 10**. Packaging includes the desktop and CLI, examples, license
-notices and matching source links. One release PR will qualify all three targets.
-The existing installed 0.2.7 build 9 remains untouched.
+[OpenPatch 0.3.0](https://github.com/dexterlabs1/openpatch/releases/tag/v0.3.0)
+is published for macOS ARM, Windows x64 and Steam Deck/Linux x64. [PR #35](https://github.com/dexterlabs1/openpatch/pull/35)
+merges Claude's latest Patch Engine and visual modes, the five finished creative
+instruments, scoped rack organization, signal tracing, cable materials and footer
+tools. The installed Mac app remains **0.2.7 build 9**; this publication did not
+replace it. Experimental VCV binary hosting is excluded.
 
-Release hardening protects Save/Discard/Cancel when replacing a generated patch
-and fences asynchronous edits against external document changes. Portable Linux
-installation preserves user data. Release publication is pending the full gate;
-Windows audio devices and Steam Deck hardware/game mode are not yet qualified.
-Recall Random's unfinished source-kernel checkpoint is preserved separately on
-`work/recall-random` and is excluded. Experimental VCV binary hosting remains
-excluded; ecosystem parity and the remaining fifteen instruments remain open.
+The [final release gate](https://github.com/dexterlabs1/openpatch/actions/runs/39090065990)
+passed strict workspace lint, complete refreshed desktop suites and workspace
+doc tests on all three platforms, optimized binaries, packaged launch/signature/
+installer checks, all **153 Linux native/Mesa captures**, Python/MCP and browser
+integration. Mac and Linux each pass **1,381 desktop tests** (15 intentionally
+ignored); Python discovery runs 131 tests per platform, with platform-specific
+skips where applicable. Unchanged CLI/Core results are source-checked against
+[the preceding full source gate](https://github.com/dexterlabs1/openpatch/actions/runs/39088036745).
+The reuse check rejects changed CLI/Core/dependency/package source and reruns
+complete desktop and doc tests for desktop changes. Release archives include
+SHA-256 checksums and source-tree provenance. Windows audio devices and Steam
+Deck hardware/game mode still require device qualification; these are separate
+from the automated native-window and protocol checks.
+
+Release fixes protect Save/Discard/Cancel for generated patches and fence
+asynchronous construction against another client's document edits. Shader LF
+checkout works consistently on Windows; native smoke scenes explicitly close
+the small-screen startup panel so it cannot steal editor input. Normal startup
+behavior is unchanged. Portable Linux installation preserves user patches and
+settings. The new installer also installs the updated release-asset updater.
+
+Recall Random's source checkpoint remains separately preserved on
+`work/recall-random`; it is not a sixth catalog instrument. Continue its native
+state/capture/UI integration and the remaining fifteen creative instruments,
+while retaining all broader parity, compatibility and device requirements.
 
 ## User-requested rack workflow and creative expansion (2026-10-17)
 
@@ -50,7 +66,7 @@ are separate pending integration work. No source change is installed; keep
 The user's next creative-library milestone is [twenty genuinely new instruments](CREATIVE_MODULES_20.md),
 with independent contracts rather than renamed existing kinds. **Tidal Functions,
 Frame Scene and Segment Garden passed the first family gate. Event Fork and Rhythm Terrain are the
-fourth and fifth implemented development candidates; fifteen remain.** Tidal
+fourth and fifth finished instruments in 0.3.0; fifteen remain.** Tidal
 Functions’ native Rust generator/extractor matches 129,840 frames in 34 pinned C++ reference cases
 bit for bit, including nonzero amplitude scans, while preserving the original
 frame-zero clock failure as a negative and explicitly adapting native startup.
@@ -72,7 +88,7 @@ The focused family cut passes local Mac validation: **2,693 Rust tests and 127 P
 MCP save integration, active panels and actual device qualification remain open
 parallel goal requirements; no hosting-completion or new installation is claimed.
 
-**Next family, `work/creative-rhythm`:** [Event Fork](EVENT_FORK.md) adds two source-derived Bernoulli routers with physical input normaling, shared seeded RNG, toggle and latch memory. Eighteen source cases cover 12,190 exact raw scans plus the complete ADC table; 513 genuine frames also pass through the actual native Engine. Six adapter checks, four Engine contracts, callback allocation/deallocation checks at five rates, six UI checks, the 90-kind shared-renderer guard, readable factory guides, actual stdio MCP/history/preset/reopen, strict Clippy and reviewed normal/dim panels pass. Its quiet routed-duet example renders offline without clipping. Family-level CI remains pending; no install or hardware/device qualification is claimed. [Rhythm Terrain](RHYTHM_TERRAIN.md) adds the pinned Grids drum maps and Euclidean engine, accents, swing, source clock/reset and runtime tap authority. Its genuine source/audited/Rust comparison passes 49 cases / 377,402 operations; the actual Engine matches 29,400 source frames. Focused native callback/no-heap, shared UI/history, stdio MCP/presets/reopen, normal/dim panels and a quiet offline groove have evidence. Fast TAP clicks preserve ordered HIGH/LOW snapshots, and emergency release cancels stale presses. The shared default rack/browser renderer now covers 91 kinds. Continue Recall Random, then run one full Mac family gate. Retain all broader parity/host/rack-workflow requirements above.
+**Next family, `work/creative-rhythm`:** [Event Fork](EVENT_FORK.md) adds two source-derived Bernoulli routers with physical input normaling, shared seeded RNG, toggle and latch memory. Eighteen source cases cover 12,190 exact raw scans plus the complete ADC table; 513 genuine frames also pass through the actual native Engine. Six adapter checks, four Engine contracts, callback allocation/deallocation checks at five rates, six UI checks, the 90-kind shared-renderer guard, readable factory guides, actual stdio MCP/history/preset/reopen, strict Clippy and reviewed normal/dim panels pass. Its quiet routed-duet example renders offline without clipping. The 0.3.0 release gate provides family-level validation; no local install or hardware/device qualification is claimed. [Rhythm Terrain](RHYTHM_TERRAIN.md) adds the pinned Grids drum maps and Euclidean engine, accents, swing, source clock/reset and runtime tap authority. Its genuine source/audited/Rust comparison passes 49 cases / 377,402 operations; the actual Engine matches 29,400 source frames. Focused native callback/no-heap, shared UI/history, stdio MCP/presets/reopen, normal/dim panels and a quiet offline groove have evidence. Fast TAP clicks preserve ordered HIGH/LOW snapshots, and emergency release cancels stale presses. The shared default rack/browser renderer now covers 91 kinds. Continue Recall Random after the completed cross-platform release gate. Retain all broader parity/host/rack-workflow requirements above.
 
 ## Execution changes
 
