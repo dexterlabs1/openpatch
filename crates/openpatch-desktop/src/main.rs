@@ -22,6 +22,7 @@ mod mcp_session_ui;
 mod menu_motion;
 mod midi;
 mod panel_skin;
+mod patch_engine_ui;
 mod port_light_transport;
 mod project;
 #[cfg(test)]
@@ -60,13 +61,15 @@ fn run() -> Result<(), String> {
         match arg.as_str() {
             "--third-party-licenses" => {
                 println!(
-                    "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+                    "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
                     include_str!("../assets/licenses/THIRD_PARTY.txt"),
                     include_str!("../assets/licenses/triple_buffer-MPL-2.0.txt"),
                     include_str!("../assets/licenses/Plaits-algorithms.txt"),
                     include_str!("../assets/licenses/Tides-algorithms.txt"),
                     include_str!("../assets/licenses/Frames-algorithms.txt"),
                     include_str!("../assets/licenses/Stages-algorithms.txt"),
+                    include_str!("../assets/licenses/Branches-algorithms.txt"),
+                    include_str!("../assets/licenses/Grids-algorithms.txt"),
                     include_str!("../assets/licenses/libsamplerate-0.1.9.txt"),
                     include_str!("../../openpatch-core/LICENSE-GPL-3.0.txt")
                 );

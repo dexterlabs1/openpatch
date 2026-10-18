@@ -75,6 +75,8 @@ mod rackmcp_transport;
 #[cfg(test)]
 mod rackmcp_transport_tests;
 #[cfg(test)]
+mod rhythm_terrain_tests;
+#[cfg(test)]
 mod score_tests;
 #[cfg(test)]
 mod sequence_tests;
@@ -513,6 +515,78 @@ const EDIT_TOOLS: &[&str] = &[
 /// Shared only by control threads; never acquire this mutex in an audio callback.
 pub type SharedSession = Arc<Mutex<Session>>;
 
+/// Identity of one native document at a specific authored graph and layout boundary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DocumentExecutionFence {
+    pub generation: u64,
+    pub revision: u64,
+    pub layout_generation: u64,
+    pub layout_pending: bool,
+}
+
+impl DocumentExecutionFence {
+    pub fn capture(session: &Session) -> Self {
+        Self {
+            generation: session.project_save_baseline().generation(),
+            revision: session.revision(),
+            layout_generation: session.layout_generation(),
+            layout_pending: session.layout_pending(),
+        }
+    }
+
+    pub fn matches(&self, session: &Session) -> bool {
+        *self == Self::capture(session)
+    }
+
+    fn check(&self, session: &Session) -> Result<(), String> {
+        let current = Self::capture(session);
+        // A pending native geometry checkpoint may be completed once by the
+        // host without changing document identity or authored graph revision.
+        let completed_placement = self.generation == current.generation
+            && self.revision == current.revision
+            && self.layout_pending
+            && !current.layout_pending
+            && self.layout_generation.checked_add(1) == Some(current.layout_generation);
+        if self.matches(session) || completed_placement {
+            Ok(())
+        } else {
+            Err("document changed since native build preparation".into())
+        }
+    }
+}
+
+/// Execute native build edits against their exact document boundary. The next
+/// fence is captured under the same lock as the mutation, never by rebasing to
+/// a subsequently observed live revision. Construction checks both preflight
+/// capture and final registration; ordinary bridge/stdin authority is unchanged.
+pub fn execute_shared_fenced(
+    session: &SharedSession,
+    name: &str,
+    args: Value,
+    fence: DocumentExecutionFence,
+) -> Result<(Value, DocumentExecutionFence), String> {
+    if name == "start_construction" {
+        let result = construction::start_fenced(session, args, None, Some(fence));
+        if let Ok(mut live) = session.lock() {
+            let recorded = result
+                .as_ref()
+                .map(|(value, _)| value.clone())
+                .map_err(Clone::clone);
+            live.record_operation(name, false, &recorded);
+        }
+        return result;
+    }
+    if name != "apply_edits" {
+        return Err("native build fences support only apply_edits and start_construction".into());
+    }
+    let mut live = session.lock().map_err(|_| "session lock poisoned")?;
+    fence.check(&live)?;
+    live.reconcile_midi_cc_learn()?;
+    fence.check(&live)?;
+    let result = execute_mutation_locked(session, &mut live, name, args, None)?;
+    Ok((result, DocumentExecutionFence::capture(&live)))
+}
+
 /// Compatibility name for the original offline command-line application.
 pub type Application = Session;
 
@@ -600,13 +674,21 @@ pub(crate) fn execute_shared_authorized(
             }
             result
         }
-        _ => {
-            let result = live.execute(name, args);
-            live.record_operation(name, authorization.is_some(), &result);
-            midi_cc::start_worker(session, &mut live);
-            result
-        }
+        _ => execute_mutation_locked(session, &mut live, name, args, authorization),
     }
+}
+
+fn execute_mutation_locked(
+    session: &SharedSession,
+    live: &mut Session,
+    name: &str,
+    args: Value,
+    authorization: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<Value, String> {
+    let result = live.execute(name, args);
+    live.record_operation(name, authorization.is_some(), &result);
+    midi_cc::start_worker(session, live);
+    result
 }
 
 fn check_transport_authorization(
@@ -620,6 +702,8 @@ fn check_transport_authorization(
 
 #[cfg(test)]
 mod grouped_parameter_tests;
+#[cfg(test)]
+mod native_build_fence_tests;
 #[cfg(test)]
 pub(crate) mod transport_authorization_tests;
 
@@ -1523,6 +1607,13 @@ impl Session {
                             | ModuleAction::ResetPress
                             | ModuleAction::ResetRelease
                     ),
+                    "rhythm_terrain" => matches!(
+                        action,
+                        ModuleAction::TapPress
+                            | ModuleAction::TapRelease
+                            | ModuleAction::ReleaseTap
+                            | ModuleAction::Reset
+                    ),
                     "push" => matches!(
                         action,
                         ModuleAction::PushPress
@@ -1533,7 +1624,7 @@ impl Session {
                     _ => false,
                 };
                 if !supported {
-                    return Err("module action requires a seq3 or stock_seq3 module for clock/run/reset; stock_seq3 also supports clock_press/release, run_press/release, reset_press/release, seq_gate1_press/release through seq_gate8_press/release, logic b_press/b_release, process or stock_process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release, or gates reset_press/reset_release, or random_values/adsr_eg push_press/push_release, or sh_asr push_press/push_release/reset_press/reset_release, or midi_gate midi_panic".into());
+                    return Err("module action requires a seq3 or stock_seq3 module for clock/run/reset; stock_seq3 also supports clock_press/release, run_press/release, reset_press/release, seq_gate1_press/release through seq_gate8_press/release, logic b_press/b_release, process or stock_process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release, or gates reset_press/reset_release, or random_values/adsr_eg push_press/push_release, or sh_asr push_press/push_release/reset_press/reset_release, or rhythm_terrain tap_press/tap_release/release_tap/reset, or midi_gate midi_panic".into());
                 }
                 if node.bypassed
                     && !matches!(
@@ -1547,6 +1638,7 @@ impl Session {
                             | ModuleAction::ClockRelease
                             | ModuleAction::RunRelease
                             | ModuleAction::SeqGateRelease(1..=8)
+                            | ModuleAction::TapRelease
                     )
                     && !matches!(action.pulse_button(), Some((_, false)))
                 {
@@ -2763,7 +2855,7 @@ pub fn tools() -> Value {
         tool("pause_construction","Pause a running construction plan. The serialized receipt guarantees no later step commits until an explicit valid resume.",json!({"plan_id":plan_id}),&["plan_id"],false),
         tool("resume_construction","Resume only a paused plan when both its expected revision and the caller's required expected_revision match the current session. A mismatch conflicts the plan and requires a newly reviewed plan.",json!({"plan_id":plan_id,"expected_revision":rev}),&["plan_id","expected_revision"],false),
         tool("cancel_construction","Cancel the latest construction plan and retain all committed steps. The receipt guarantees no later step commits. Undo committed steps individually through normal history.",json!({"plan_id":plan_id}),&["plan_id"],false),
-        tool("trigger_module","Queue a live module action: seq3 or stock_seq3 clock/run/reset; stock_seq3 physical clock_press/release, run_press/release, reset_press/release, seq_gate1_press/release through seq_gate8_press/release; logic b_press/b_release, process or stock_process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release, or gates reset_press/reset_release, or random_values/adsr_eg push_press/push_release, or sh_asr push_press/push_release/reset_press/reset_release, or midi_gate midi_panic. Matching releases and MIDI Gate Panic remain available while bypassed and use an emergency release if the queue is full. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":MODULE_ACTION_NAMES},"expected_revision":rev}),&["id","action"],false),
+        tool("trigger_module","Queue a live module action: seq3 or stock_seq3 clock/run/reset; stock_seq3 physical clock_press/release, run_press/release, reset_press/release, seq_gate1_press/release through seq_gate8_press/release; logic b_press/b_release, process or stock_process gate_press/gate_release, or pulses pulse1_press/pulse1_release through pulse10_press/pulse10_release, or push push_press/push_release/hold_press/hold_release, or gates reset_press/reset_release, or random_values/adsr_eg push_press/push_release, or sh_asr push_press/push_release/reset_press/reset_release, or rhythm_terrain tap_press/tap_release/release_tap/reset, or midi_gate midi_panic. Matching releases and MIDI Gate Panic remain available while bypassed and use an emergency release if the queue is full. Returns a queue receipt, not confirmation of callback application. Requires a live backend; does not edit the patch or history.",json!({"id":s,"action":{"type":"string","enum":MODULE_ACTION_NAMES},"expected_revision":rev}),&["id","action"],false),
         tool("inspect_scope","Read one voice (1..16) from a coherent live rack Scope or Stock Scope capture. Returns both axes as 256 raw-voltage min/max bins, acquisition settings, channel counts, graph identity, and callback frame; empty bins are null. Measurements cover selected and all active voices from completed bins, which may mix capture eras and are not a timestamped sample window. Stock Scope adds its eight raw source controls, raw TIME/nominal duration, next-bin width, acquisition rate, and actual source lamp bits. Stock AUTO fitting is temporary native view state, not a source parameter or part of this capture. Legacy Scope retains its saved auto_range parameter. Publication is bounded and may lag; unavailable is distinct from silence. Requires desktop audio attachment; never renders offline or edits history.",json!({"id":s,"channel":{"type":"integer","minimum":1,"maximum":16,"default":1},"expected_revision":rev}),&["id"],true),
         tool("learn_midi_gate","Arm a MIDI Gate cell (1..16) to learn the next accepted positive-velocity NoteOn on the audio timeline. Completion records one undoable mapping edit independently of the GUI.",json!({"id":s,"cell":{"type":"integer","minimum":1,"maximum":16},"expected_revision":rev}),&["id","cell"],false),
         tool("cancel_midi_gate_learn","Cancel an armed MIDI Gate Learn request. Completed decisions reconcile before cancellation.",json!({"id":s,"expected_revision":rev}),&["id"],false),

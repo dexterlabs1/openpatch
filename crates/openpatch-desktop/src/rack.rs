@@ -66,6 +66,8 @@ include!("atlas_creative_panels.rs");
 include!("tidal_functions_panel.rs");
 include!("frame_scene_panel.rs");
 include!("segment_garden_panel.rs");
+include!("event_fork_panel.rs");
+include!("rhythm_terrain_panel.rs");
 include!("atlas_svf_panel.rs");
 include!("atlas_multi_panels.rs");
 include!("atlas_wavetable_panel.rs");
@@ -108,9 +110,8 @@ fn port_material_scale(kind: &str) -> f32 {
         "seq3" => 1.20,
         "stock_seq3" => 1.07,
         "stock_delay" => 1.20, // y380 sockets must remain inside the 396-point panel.
-        "modal_resonator" | "tidal_functions" | "frame_scene" | "segment_garden" => {
-            REDESIGNED_PORT_SCALE
-        }
+        "modal_resonator" | "tidal_functions" | "frame_scene" | "segment_garden" | "event_fork"
+        | "rhythm_terrain" => REDESIGNED_PORT_SCALE,
         "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "rackmcp_sequencer"
         | "rackmcp_listen" | "crossfade" | "quantizer" | "stock_quantizer" | "poly_sum"
         | "mid_side" | "stock_mid_side" | "mix6" | "stock_mix" => REDESIGNED_PORT_SCALE,
@@ -197,6 +198,7 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("stock_vcf" | "rack264_vcf", _, false) => Above(21.0),
         ("lfo" | "lowpass" | "gain" | "analog_vca", _, false) => Above(25.0),
         ("adsr" | "svf_filter", _, false) => Above(21.0),
+        ("event_fork" | "rhythm_terrain", _, _) => Above(25.0),
         ("frame_scene", _, _) => Above(25.0),
         ("segment_garden", _, _) => Above(24.0),
         ("tidal_functions", _, false) => Above(21.0),
@@ -343,7 +345,10 @@ fn generic_parameter_hardware(
         || atlas_voice(kind)
         || atlas_studio_effect(kind)
         || atlas_creative_kind(kind)
-        || matches!(kind, "tidal_functions" | "segment_garden")
+        || matches!(
+            kind,
+            "tidal_functions" | "segment_garden" | "event_fork" | "rhythm_terrain"
+        )
         || matches!(
             kind,
             "stock_vco" | "rack264_vco" | "stock_lfo" | "mix6" | "stock_mix"
@@ -634,6 +639,7 @@ enum RenderMode {
         allow_manual_press: bool,
     },
     Preview,
+    Inspect,
 }
 impl RenderMode {
     fn is_interactive(self) -> bool {
@@ -742,8 +748,12 @@ impl ModulePreview {
 }
 
 include!("rack_import_panels.rs");
+include!("signal_path.rs");
+include!("cable_surface.rs");
+include!("rack_organize.rs");
 
 pub struct Rack {
+    signal_path: SignalPath,
     bridge_ui: BridgeUi,
     rackmcp_ui: RackMcpUi,
     listen_ui: ListenUi,
@@ -761,6 +771,10 @@ pub struct Rack {
     reveal_module_once: Option<String>,
     positions: BTreeMap<String, Pos2>,
     pan: Vec2,
+    // Eased, momentum-carrying camera motion for scroll and keys (trackpads, Steam Deck pads, arrow keys).
+    pan_pending: Vec2,
+    pan_velocity: Vec2,
+    key_velocity: Vec2,
     zoom: f32,
     viewport: Option<Rect>,
     // Center zoom may arrive from the toolbar before this frame measures the
@@ -819,6 +833,7 @@ pub struct Rack {
 impl Default for Rack {
     fn default() -> Self {
         Self {
+            signal_path: SignalPath::default(),
             bridge_ui: BridgeUi::default(),
             rackmcp_ui: RackMcpUi::default(),
             listen_ui: ListenUi::default(),
@@ -836,6 +851,9 @@ impl Default for Rack {
             reveal_module_once: None,
             positions: BTreeMap::new(),
             pan: vec2(24.0, 12.0),
+            pan_pending: Vec2::ZERO,
+            pan_velocity: Vec2::ZERO,
+            key_velocity: Vec2::ZERO,
             zoom: 1.0,
             viewport: None,
             pending_center_zoom_ratio: 1.0,
@@ -1670,6 +1688,42 @@ impl Rack {
     pub fn zoom(&self) -> f32 {
         self.zoom
     }
+
+    /// Show the top-left of the rack at the given zoom (e.g. after a new patch is built), keeping the user's zoom.
+    pub fn show_origin(&mut self, zoom: f32) {
+        self.set_agent_follow(false);
+        self.agent_follow.promote_view();
+        self.pan = vec2(24.0, 12.0);
+        self.pan_pending = Vec2::ZERO;
+        self.pan_velocity = Vec2::ZERO;
+        self.zoom = zoom.clamp(0.25, 4.0);
+        self.layout_revision = self.layout_revision.wrapping_add(1);
+    }
+
+    /// Mac-like scroll smoothing: ease toward the scrolled distance, then glide with decaying momentum.
+    fn ease_camera(&mut self, ui: &egui::Ui) {
+        if ui.input(|i| i.pointer.any_down()) {
+            self.pan_velocity = Vec2::ZERO;
+        }
+        let dt = ui.input(|i| i.stable_dt.clamp(1.0 / 240.0, 0.05));
+        if self.pan_pending.length() > 0.25 {
+            let step = self.pan_pending * (1.0 - (-dt * 18.0).exp());
+            self.pan_pending -= step;
+            self.pan += step;
+            self.pan_velocity = self.pan_velocity * 0.6 + (step / dt) * 0.4;
+            ui.ctx().request_repaint();
+        } else if self.pan_velocity.length() > 8.0 {
+            self.pan += self.pan_pending;
+            self.pan_pending = Vec2::ZERO;
+            self.pan += self.pan_velocity * dt;
+            self.pan_velocity *= (-dt * 5.5).exp();
+            ui.ctx().request_repaint();
+        } else {
+            self.pan += self.pan_pending;
+            self.pan_pending = Vec2::ZERO;
+            self.pan_velocity = Vec2::ZERO;
+        }
+    }
     /// Zoom about the latest rack viewport center. Before the first frame,
     /// preserve the origin because no viewport has been measured yet.
     pub fn set_zoom(&mut self, zoom: f32) {
@@ -1929,6 +1983,7 @@ impl Rack {
                     }))
         });
         let drag_interactive = interactive
+            && !self.signal_path.enabled
             && self.annotation_edit.is_none()
             && self.shortcuts_enabled
             && !gesture_interrupted
@@ -2047,7 +2102,11 @@ impl Rack {
             && !popup_open_at_frame_start
             && navigation_idle_at_frame_start
             && self.navigation_idle();
-        if navigation_enabled
+        let scroll_enabled = interactive
+            && !popup_open_at_frame_start
+            && navigation_idle_at_frame_start
+            && self.navigation_idle();
+        if scroll_enabled
             && !ui.input(|i| i.pointer.any_down())
             && canvas.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or(Pos2::ZERO)))
         {
@@ -2064,9 +2123,10 @@ impl Rack {
                     .unwrap_or(canvas.center());
                 self.set_zoom_at(self.zoom * zoom_delta, pointer - canvas.min);
             } else if !command {
-                self.pan += scroll;
+                self.pan_pending += scroll;
             }
         }
+        self.ease_camera(ui);
         if navigation_enabled
             && !ui.input(|i| {
                 i.pointer.primary_down()
@@ -2101,14 +2161,23 @@ impl Rack {
             self.pan += response.drag_delta();
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         }
+        // Arrow keys accelerate and glide to a stop while navigation remains available.
         if navigation_enabled && !ui.input(|i| i.pointer.any_down()) {
-            let delta = ui.input(keyboard_pan_delta);
-            if delta != Vec2::ZERO {
-                self.pan += delta;
+            let input_dt = ui.input(|i| i.stable_dt.clamp(1.0 / 240.0, 0.1));
+            let target = ui.input(keyboard_pan_delta) / input_dt;
+            if target != Vec2::ZERO || self.key_velocity.length() > 2.0 {
+                let dt = ui.input(|i| i.stable_dt.clamp(1.0 / 240.0, 0.05));
+                self.key_velocity += (target - self.key_velocity) * (1.0 - (-dt * 10.0).exp());
+                self.pan += self.key_velocity * dt;
                 ui.ctx().request_repaint();
+            } else {
+                self.key_velocity = Vec2::ZERO;
             }
+        } else {
+            self.key_velocity = Vec2::ZERO;
         }
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.set_signal_path_mode(false);
             self.cancel_module_drag();
             self.pending = None;
             self.cable_press = None;
@@ -2116,6 +2185,18 @@ impl Rack {
             self.editing = None;
         }
         if interactive
+            && self.shortcuts_enabled
+            && self.navigation_idle()
+            && !ui.ctx().wants_keyboard_input()
+            && !egui::Popup::is_any_open(ui.ctx())
+            && ui.input(|i| {
+                i.focused && i.modifiers == egui::Modifiers::NONE && i.key_pressed(egui::Key::P)
+            })
+        {
+            self.set_signal_path_mode(!self.signal_path_mode());
+        }
+        if interactive
+            && !self.signal_path.enabled
             && self.shortcuts_enabled
             && ui.input(|i| i.focused)
             && !ui.ctx().wants_keyboard_input()
@@ -2233,6 +2314,20 @@ impl Rack {
         paint_background(&painter, canvas, self.pan, self.zoom);
         self.lighting.finish(&painter, background_start);
 
+        self.signal_path.refresh(patch, &self.source_routes);
+        let inspecting = self.signal_path.enabled;
+        let mut inspect_ui = inspecting.then(|| {
+            let mut style = (**ui.style()).clone();
+            style.visuals.disabled_alpha = 1.;
+            style.visuals.widgets.noninteractive = style.visuals.widgets.inactive;
+            ui.new_child(
+                egui::UiBuilder::new()
+                    .id_salt("signal-path-inspect")
+                    .max_rect(canvas)
+                    .style(style)
+                    .disabled(),
+            )
+        });
         let RenderedModules {
             outputs,
             inputs,
@@ -2243,17 +2338,23 @@ impl Rack {
             cable_ordinals,
             action: module_action,
         } = self.render_modules(
-            ui,
+            inspect_ui.as_mut().unwrap_or(ui),
             patch,
             catalog,
             canvas,
             device_rate,
             revision,
-            RenderMode::Interactive {
-                drag_interactive,
-                allow_manual_press: released_manual.is_none(),
+            if inspecting {
+                RenderMode::Inspect
+            } else {
+                RenderMode::Interactive {
+                    drag_interactive,
+                    allow_manual_press: released_manual.is_none(),
+                }
             },
         );
+        let path_geometry = self.signal_path_geometry(&outputs, &inputs, animation_now);
+        self.pick_signal_path(ui, canvas, &path_geometry);
         if let Some(RackAction::Command("set_parameter", args)) = &module_action {
             if let (Some(id), Some(parameter)) = (args["id"].as_str(), args["parameter"].as_str()) {
                 self.construction_animation
@@ -2355,19 +2456,26 @@ impl Rack {
                     CableEnd::Output { node, port } => *node == cable.from && *port == cable.output,
                     CableEnd::Input { node, port } => *node == cable.to && *port == cable.input,
                 });
-                let color = cable_instance_color(cable).gamma_multiply(if picked_up {
-                    0.24
-                } else if self.dragging_cable
-                    && self.pending.as_ref().is_some_and(|pending| {
-                        !cable_gesture_related(cable, pending, nearest.map(|(end, _)| end))
-                    })
-                {
-                    0.32
-                } else if nearest.is_some() && !traced && self.pending.is_none() {
-                    0.48
-                } else {
-                    1.0
-                });
+                let color = cable_instance_color(cable).gamma_multiply(
+                    self.signal_path.dim(cable)
+                        * if picked_up {
+                            0.24
+                        } else if self.dragging_cable
+                            && self.pending.as_ref().is_some_and(|pending| {
+                                !cable_gesture_related(cable, pending, nearest.map(|(end, _)| end))
+                            })
+                        {
+                            0.32
+                        } else if !self.signal_path.enabled
+                            && nearest.is_some()
+                            && !traced
+                            && self.pending.is_none()
+                        {
+                            0.48
+                        } else {
+                            1.0
+                        },
+                );
                 let fan = {
                     let count = input_groups[&(cable.to.as_str(), cable.input.as_str())].len();
                     let ordinal = cable_ordinals[cable_index];
@@ -2449,8 +2557,10 @@ impl Rack {
                     .cables
                     .phase(cable, animation_now);
                 let presentation = crate::cable_presentation::CablePresentation {
-                    opacity: if traced {
+                    opacity: if self.signal_path.contains(cable) || traced {
                         1.0
+                    } else if self.signal_path.enabled {
+                        self.cable_presentation.opacity.max(0.55)
                     } else {
                         self.cable_presentation.opacity
                     },
@@ -2543,19 +2653,30 @@ impl Rack {
                         }
                         CableEnd::Input { node, port } => *node == cable.to && *port == cable.input,
                     });
-                    let color = cable_instance_color(cable).gamma_multiply(if picked_up {
-                        0.24
-                    } else if self.dragging_cable
-                        && self.pending.as_ref().is_some_and(|pending| {
-                            !cable_gesture_related(cable, pending, nearest.map(|(end, _)| end))
-                        })
-                    {
-                        0.32
-                    } else if nearest.is_some() && !route_traced && self.pending.is_none() {
-                        0.48
-                    } else {
-                        1.0
-                    });
+                    let color = cable_instance_color(cable).gamma_multiply(
+                        self.signal_path.dim(cable)
+                            * if picked_up {
+                                0.24
+                            } else if self.dragging_cable
+                                && self.pending.as_ref().is_some_and(|pending| {
+                                    !cable_gesture_related(
+                                        cable,
+                                        pending,
+                                        nearest.map(|(end, _)| end),
+                                    )
+                                })
+                            {
+                                0.32
+                            } else if !self.signal_path.enabled
+                                && nearest.is_some()
+                                && !route_traced
+                                && self.pending.is_none()
+                            {
+                                0.48
+                            } else {
+                                1.0
+                            },
+                    );
                     paint_cable_plug(&painter, point, color, self.zoom);
                     if ordinal + 1 == order.len() && !picked_up {
                         let direction = if output {
@@ -2585,6 +2706,7 @@ impl Rack {
             }
         }
         self.lighting.finish(&painter, cable_start);
+        self.paint_signal_path(ui, &painter, canvas, &path_geometry, patch);
         for (center, count) in stack_badges {
             painter.circle_filled(center, 8.0 * self.zoom, INK);
             painter.circle_stroke(center, 8.0 * self.zoom, Stroke::new(self.zoom, PAPER));
@@ -2777,7 +2899,7 @@ impl Rack {
             }
         }
 
-        if !pointer_on_module {
+        if !pointer_on_module && !self.signal_path.enabled {
             if response.secondary_clicked() || response.double_clicked() {
                 if self.pending.take().is_none() {
                     action = Some(RackAction::OpenBrowser);
@@ -2866,7 +2988,7 @@ impl Rack {
                 drag_interactive,
                 allow_manual_press,
             } => (drag_interactive, allow_manual_press),
-            RenderMode::Preview => (false, false),
+            RenderMode::Preview | RenderMode::Inspect => (false, false),
         };
         let popup_open_at_frame_start =
             !mode.is_interactive() || egui::Popup::is_any_open(ui.ctx());
@@ -3862,6 +3984,20 @@ impl Rack {
                     &self.lighting,
                 );
             }
+            if node.kind == "rhythm_terrain" {
+                if let Some(edit) =
+                    self.rhythm_terrain_panel(ui, node, module, rect, revision, interactive)
+                {
+                    action = Some(edit);
+                }
+            }
+            if node.kind == "event_fork" {
+                if let Some(edit) =
+                    self.event_fork_panel(ui, node, patch, module, rect, revision, interactive)
+                {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "frame_scene" {
                 if let Some(edit) = self.frame_scene_panel(ui, node, rect, revision, interactive) {
                     action = Some(edit);
@@ -3875,9 +4011,11 @@ impl Rack {
                 }
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
-                if (node.kind == "segment_garden"
-                    && !name.starts_with("level")
-                    && !name.starts_with("shape"))
+                if (node.kind == "rhythm_terrain" && !RHYTHM_TERRAIN_KNOBS.contains(name))
+                    || (node.kind == "event_fork" && !name.starts_with("probability"))
+                    || (node.kind == "segment_garden"
+                        && !name.starts_with("level")
+                        && !name.starts_with("shape"))
                     || (node.kind == "random" && *name == "seed")
                     || matches!(node.kind.as_str(), "scope" | "stock_scope")
                     || node.kind == "modal_resonator"
@@ -4323,7 +4461,11 @@ impl Rack {
                     "macro_voice" => 8.0,
                     _ => 13.0,
                 };
-                let (knob_position, radius) = if node.kind == "segment_garden" {
+                let (knob_position, radius) = if node.kind == "rhythm_terrain" {
+                    rhythm_terrain_control(name)
+                } else if node.kind == "event_fork" {
+                    event_fork_control(name)
+                } else if node.kind == "segment_garden" {
                     segment_garden_control(name)
                 } else if node.kind == "tidal_functions" {
                     tidal_control(name)
@@ -4427,7 +4569,10 @@ impl Rack {
                 let geometric = (matches!(node.kind.as_str(), "multi_lfo" | "multi_vco")
                     && *name == "frequency")
                     || ((atlas_voice(&node.kind)
-                        || matches!(node.kind.as_str(), "tidal_functions" | "segment_garden"))
+                        || matches!(
+                            node.kind.as_str(),
+                            "tidal_functions" | "segment_garden" | "event_fork" | "rhythm_terrain"
+                        ))
                         && logarithmic
                         && min > 0.0);
                 let wave_rate = node.kind == "wavetable_lfo" && *name == "rate";
@@ -4451,7 +4596,7 @@ impl Rack {
                 let fade_percent = (node.kind == "stock_seq3"
                     && matches!(*name, "tempo_amount" | "steps_amount"))
                     || node.kind == "fade"
-                    || node.kind == "segment_garden"
+                    || matches!(node.kind.as_str(), "segment_garden" | "event_fork")
                     || (node.kind == "tidal_functions" && *name != "frequency")
                     || (node.kind == "random" && !matches!(*name, "rate" | "unipolar" | "seed"));
                 let vco_percent =
@@ -4642,7 +4787,13 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if node.kind == "segment_garden" {
+                let value_center = if node.kind == "rhythm_terrain" {
+                    let local = rhythm_terrain_value_center(name);
+                    point(local.x, local.y)
+                } else if node.kind == "event_fork" {
+                    let local = event_fork_value_center(name);
+                    point(local.x, local.y)
+                } else if node.kind == "segment_garden" {
                     let local = segment_garden_value_center(name);
                     point(local.x, local.y)
                 } else if node.kind == "tidal_functions" {
@@ -4722,7 +4873,11 @@ impl Rack {
                 } else {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
-                let readout_width = if node.kind == "segment_garden" {
+                let readout_width = if node.kind == "rhythm_terrain" {
+                    84.0
+                } else if node.kind == "event_fork" {
+                    100.0
+                } else if node.kind == "segment_garden" {
                     82.0
                 } else if node.kind == "tidal_functions" {
                     88.0
@@ -5087,7 +5242,10 @@ impl Rack {
                         || atlas_voice(&node.kind)
                         || atlas_studio_effect(&node.kind)
                         || atlas_creative_kind(&node.kind)
-                        || matches!(node.kind.as_str(), "tidal_functions" | "segment_garden")
+                        || matches!(
+                            node.kind.as_str(),
+                            "tidal_functions" | "segment_garden" | "event_fork" | "rhythm_terrain"
+                        )
                         || matches!(
                             node.kind.as_str(),
                             "stock_vco" | "rack264_vco" | "stock_lfo" | "mix6" | "stock_mix"
@@ -5180,6 +5338,10 @@ impl Rack {
                     );
                 } else if node.kind == "svf_filter" {
                     paint_atlas_svf_print(&painter, rect, name, self.zoom);
+                } else if node.kind == "rhythm_terrain" {
+                    paint_rhythm_terrain_control_print(&painter, rect, node, name, self.zoom);
+                } else if node.kind == "event_fork" {
+                    paint_event_fork_control_print(&painter, rect, name, self.zoom);
                 } else if node.kind == "segment_garden" {
                     paint_segment_garden_control_print(
                         &painter, rect, node, patch, name, self.zoom,
@@ -5265,7 +5427,10 @@ impl Rack {
                     || atlas_voice(&node.kind)
                     || atlas_studio_effect(&node.kind)
                     || atlas_creative_kind(&node.kind)
-                    || matches!(node.kind.as_str(), "tidal_functions" | "segment_garden")
+                    || matches!(
+                        node.kind.as_str(),
+                        "tidal_functions" | "segment_garden" | "event_fork" | "rhythm_terrain"
+                    )
                     || matches!(
                         node.kind.as_str(),
                         "stock_vco" | "rack264_vco" | "stock_lfo" | "mix6" | "stock_mix"
@@ -5423,7 +5588,9 @@ impl Rack {
                         location,
                         &node.kind,
                         port,
-                        if node.kind == "audio_stereo" {
+                        if node.kind == "rhythm_terrain" {
+                            rhythm_terrain_port_label(node, port, true)
+                        } else if node.kind == "audio_stereo" {
                             atlas_audio_port_label(port)
                         } else if node.kind == "stock_noise" {
                             stock_noise_port_label(port)
@@ -5471,7 +5638,9 @@ impl Rack {
                     &node.kind,
                     port,
                     ui.id().with(("input", &node.id, port)),
-                    if node.kind == "audio_stereo" {
+                    if node.kind == "rhythm_terrain" {
+                        rhythm_terrain_port_label(node, port, true)
+                    } else if node.kind == "audio_stereo" {
                         atlas_audio_port_label(port)
                     } else if node.kind == "stock_noise" {
                         stock_noise_port_label(port)
@@ -5635,7 +5804,9 @@ impl Rack {
                         output_point,
                         &node.kind,
                         port,
-                        if node.kind == "audio_stereo" {
+                        if node.kind == "rhythm_terrain" {
+                            rhythm_terrain_port_label(node, port, false)
+                        } else if node.kind == "audio_stereo" {
                             atlas_audio_port_label(port)
                         } else if node.kind == "stock_noise" {
                             stock_noise_port_label(port)
@@ -5693,7 +5864,9 @@ impl Rack {
                     &node.kind,
                     port,
                     ui.id().with(("output", &node.id, port)),
-                    if node.kind == "audio_stereo" {
+                    if node.kind == "rhythm_terrain" {
+                        rhythm_terrain_port_label(node, port, false)
+                    } else if node.kind == "audio_stereo" {
                         atlas_audio_port_label(port)
                     } else if node.kind == "stock_noise" {
                         stock_noise_port_label(port)
@@ -5893,7 +6066,7 @@ impl Rack {
                 }
             }
         }
-        if mode.is_interactive() {
+        if !matches!(mode, RenderMode::Preview) {
             pointer_on_module |=
                 self.paint_unresolved_panels(ui, &painter, canvas, &mut inputs, &mut outputs);
         }
@@ -5920,6 +6093,20 @@ impl Rack {
         port_index: usize,
         output_point: Pos2,
     ) {
+        if matches!(node.kind.as_str(), "event_fork" | "rhythm_terrain") {
+            let strength = event_fork_lamp(self.module_lights.get(&node.id), port_index);
+            let center = output_point + vec2(24.0, -1.0) * self.zoom;
+            painter.circle_filled(center, 3.0 * self.zoom, Color32::from_gray(78));
+            self.lighting.circle(
+                painter,
+                center,
+                2.2 * self.zoom,
+                Color32::from_rgb(230, 183, 92).gamma_multiply(0.12 + strength * 0.88),
+                strength,
+                0.12,
+            );
+            return;
+        }
         let light_index = match node.kind.as_str() {
             "logic" | "tidal_functions" => Some(port_index),
             "segment_garden" if port_index < 6 => Some(port_index),
@@ -8880,6 +9067,8 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
                 if input { 341.0 } else { 382.0 },
             );
         }
+        "rhythm_terrain" => return rhythm_terrain_port(input, index),
+        "event_fork" => return event_fork_port(input, index),
         "frame_scene" => return frame_scene_port(input, index),
         "segment_garden" => return segment_garden_port(input, index),
         "tidal_functions" => return tidal_port(input, index),
@@ -9884,6 +10073,8 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "studio_mixer" => 804.0,
         "modal_resonator" => HP * 32.0,
         "macro_voice" => HP * 20.0,
+        "rhythm_terrain" => HP * 48.0,
+        "event_fork" => HP * 20.0,
         "frame_scene" => HP * 36.0,
         "segment_garden" => HP * 48.0,
         "tidal_functions" => HP * 28.0,
@@ -9938,6 +10129,8 @@ pub(crate) fn title(kind: &str) -> &str {
         "blank" => "BLANK",
         "modal_resonator" => "MODAL RESONATOR",
         "macro_voice" => "MACRO VOICE",
+        "rhythm_terrain" => "RHYTHM TERRAIN",
+        "event_fork" => "EVENT FORK",
         "frame_scene" => "FRAME SCENE",
         "segment_garden" => "SEGMENT GARDEN",
         "tidal_functions" => "TIDAL FUNCTIONS",
@@ -10149,6 +10342,31 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         return Vec::new();
     };
     let order: &[&str] = match node.kind.as_str() {
+        "rhythm_terrain" => &[
+            "x",
+            "y",
+            "chaos",
+            "fill1",
+            "fill2",
+            "fill3",
+            "tempo",
+            "mode",
+            "resolution",
+            "gate_mode",
+            "alternate",
+            "swing",
+            "tap_tempo",
+            "seed",
+        ],
+        "event_fork" => &[
+            "probability1",
+            "probability2",
+            "toggle1",
+            "toggle2",
+            "latch1",
+            "latch2",
+            "seed",
+        ],
         "tidal_functions" => &[
             "ramp_mode",
             "output_mode",
@@ -10786,6 +11004,8 @@ fn paint_panel(
                 | "tidal_functions"
                 | "frame_scene"
                 | "segment_garden"
+                | "event_fork"
+                | "rhythm_terrain"
                 | "multi_vco"
                 | "multi_lfo"
                 | "wavetable_vco"
@@ -10803,24 +11023,7 @@ fn paint_panel(
         for x in [rect.left() + 7.5 * zoom, rect.right() - 7.5 * zoom] {
             for y in [rect.top() + 5.0 * zoom, rect.bottom() - 5.0 * zoom] {
                 let center = pos2(x, y);
-                painter.circle_filled(
-                    center + vec2(0.0, 0.6) * zoom,
-                    3.7 * zoom,
-                    Color32::from_black_alpha(104),
-                );
-                painter.circle_filled(center, 3.2 * zoom, Color32::from_rgb(100, 103, 100));
-                painter.circle_stroke(
-                    center,
-                    3.2 * zoom,
-                    Stroke::new(0.65 * zoom, Color32::from_rgb(143, 146, 140)),
-                );
-                painter.line_segment(
-                    [
-                        center + vec2(-1.7, 1.0) * zoom,
-                        center + vec2(1.7, -1.0) * zoom,
-                    ],
-                    Stroke::new(1.0 * zoom, Color32::from_rgb(39, 42, 40)),
-                );
+                crate::panel_skin::mounting_screw(painter, center, zoom);
             }
         }
     }
@@ -10894,6 +11097,8 @@ fn paint_panel(
                 | "tidal_functions"
                 | "frame_scene"
                 | "segment_garden"
+                | "event_fork"
+                | "rhythm_terrain"
                 | "multi_vco"
                 | "multi_lfo"
                 | "wavetable_vco"
@@ -11063,7 +11268,9 @@ fn paint_jack(
     compact: bool,
     port_scale: f32,
 ) {
-    let label = if kind == "segment_garden" {
+    let label = if kind == "event_fork" {
+        event_fork_port_label(port)
+    } else if kind == "segment_garden" {
         segment_garden_port_label(port)
     } else if kind == "frame_scene" {
         frame_scene_port_label(port)
@@ -11153,6 +11360,8 @@ fn paint_jack(
                 | "tidal_functions"
                 | "frame_scene"
                 | "segment_garden"
+                | "event_fork"
+                | "rhythm_terrain"
                 | "multi_vco"
                 | "multi_lfo"
                 | "wavetable_vco"
@@ -11230,25 +11439,21 @@ fn paint_cable_curves(
         zoom,
         bus,
         112,
-        presentation.opacity,
+        presentation,
     );
 }
 
 fn cable_curve_points(from: Pos2, to: Pos2, zoom: f32, fan: f32, tension: f32) -> [Pos2; 4] {
     let sag = (from.distance(to) * 0.29 + 38.0 * zoom).clamp(45.0 * zoom, 195.0 * zoom);
-    let original = [
-        from,
-        from + vec2(fan * zoom, sag),
-        to + vec2(fan * zoom, sag),
-        to,
-    ];
+    let sag = (sag + fan * zoom * 0.15).max(0.);
+    let original = [from, from + vec2(0., sag), to + vec2(0., sag), to];
     let tension = if tension.is_finite() {
         tension.clamp(0.0, 1.0)
     } else {
         0.5
     };
-    // Keep the established default and lower-half looseness unchanged. Taut
-    // cables retain a restrained gravity bow instead of becoming rigid rulers.
+    // Gravity changes vertical slack only; horizontal control points stay
+    // inside the plug span, including stacked, vertical and reversed cables.
     if tension == 0.5 {
         return original;
     }
@@ -11257,18 +11462,15 @@ fn cable_curve_points(from: Pos2, to: Pos2, zoom: f32, fan: f32, tension: f32) -
         let looseness = 2.0 * (1.0 - tension);
         return [
             from,
-            straight[1] + (original[1] - straight[1]) * looseness,
-            straight[2] + (original[2] - straight[2]) * looseness,
+            from + vec2(0., sag * looseness),
+            to + vec2(0., sag * looseness),
             to,
         ];
     }
     let distance = from.distance(to);
     // Distance-relative bounds prevent tiny or vertical cables folding back.
     // These are presentation controls, not a physical cable simulation.
-    let bow = vec2(
-        (fan * zoom * 0.12).clamp(-distance * 0.03, distance * 0.03),
-        (distance * 0.055).min(16.0 * zoom),
-    );
+    let bow = vec2(0., (distance * 0.055).min(16.0 * zoom));
     let amount = (tension - 0.5) * 2.0;
     [
         from,
@@ -11577,11 +11779,11 @@ fn paint_committed_cable_curves(
         zoom,
         bus,
         32,
-        presentation.opacity,
+        presentation,
     );
     if progress > 0.0 {
         let prefix = cable_curve_prefix(points, progress);
-        paint_cable_segment(painter, prefix, color, zoom, bus, 112, presentation.opacity);
+        paint_cable_segment(painter, prefix, color, zoom, bus, 112, presentation);
         let accent_start = crate::lighting::next(painter);
         painter.circle_stroke(prefix[3], 4.2 * zoom, Stroke::new(1.2 * zoom, color));
         accent_start
@@ -11590,6 +11792,7 @@ fn paint_committed_cable_curves(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint_cable_segment(
     painter: &egui::Painter,
     points: [Pos2; 4],
@@ -11597,8 +11800,10 @@ fn paint_cable_segment(
     zoom: f32,
     bus: bool,
     shadow_alpha: u8,
-    opacity: f32,
+    presentation: crate::cable_presentation::CablePresentation,
 ) {
+    use crate::cable_presentation::CableFinish;
+    let opacity = presentation.opacity;
     if opacity <= 0.0 {
         return;
     }
@@ -11615,16 +11820,37 @@ fn paint_cable_segment(
         (if bus { 10.0 } else { 8.0 }) * zoom,
         Color32::from_black_alpha((f32::from(shadow_alpha) * opacity).round() as u8),
     ));
-    painter.add(curve(
-        points,
-        (if bus { 7.8 } else { 6.0 }) * zoom,
-        color.gamma_multiply(0.64).gamma_multiply(opacity),
-    ));
-    painter.add(curve(
-        points.map(|point| point - vec2(0.5, 0.8) * zoom),
-        (if bus { 3.6 } else { 2.6 }) * zoom,
-        color.gamma_multiply(1.13).gamma_multiply(opacity),
-    ));
+    let body = (if bus { 7.8 } else { 6.0 }) * zoom;
+    match presentation.finish {
+        CableFinish::Translucent => {
+            painter.add(curve(points, body, color.gamma_multiply(0.42 * opacity)));
+            painter.add(curve(
+                points,
+                1.3 * zoom,
+                Color32::from_rgb(31, 35, 34).gamma_multiply(opacity),
+            ));
+            painter.add(curve(
+                points.map(|p| p - vec2(0.7, 0.8) * zoom),
+                0.9 * zoom,
+                Color32::from_rgba_unmultiplied(235, 247, 239, 95).gamma_multiply(opacity),
+            ));
+        }
+        finish => {
+            painter.add(curve(
+                points,
+                body,
+                color.gamma_multiply(0.64).gamma_multiply(opacity),
+            ));
+            painter.add(curve(
+                points.map(|point| point - vec2(0.5, 0.8) * zoom),
+                (if bus { 3.6 } else { 2.6 }) * zoom,
+                color.gamma_multiply(1.13).gamma_multiply(opacity),
+            ));
+            if finish != CableFinish::Classic && zoom >= 0.6 {
+                paint_cable_surface(painter, points, color, zoom, body, finish, opacity);
+            }
+        }
+    }
 }
 
 fn paint_cable_plug(painter: &egui::Painter, point: Pos2, color: Color32, zoom: f32) {
@@ -12031,6 +12257,9 @@ mod tests {
     mod port_signal_ui_tests {
         include!("port_signal_ui_tests.rs");
     }
+    mod signal_path_tests {
+        include!("signal_path_tests.rs");
+    }
     mod cable_presentation_ui_tests {
         include!("cable_presentation_ui_tests.rs");
     }
@@ -12189,7 +12418,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            89,
+            91,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -17826,55 +18055,105 @@ mod tests {
                 120.0,
             ),
         ] {
-            let ctx = egui::Context::default();
-            let mut rack = Rack::default();
-            let patch = Patch::new_v2();
-            frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-            let before = rack.pan;
-            frame(
-                &ctx,
-                &mut rack,
-                &patch,
-                0.02,
-                vec![
-                    navigation_key(egui::Key::ArrowRight, modifiers),
-                    navigation_key(egui::Key::ArrowUp, modifiers),
-                ],
-            );
-            let dt = ctx.input(|i| i.stable_dt.min(0.1));
-            assert_near_vec(rack.pan - before, vec2(-speed, speed) * dt);
-            let before = rack.pan;
-            // A held key continues on the next frame without a fresh press.
-            let _ = ctx.run(
-                egui::RawInput {
-                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 700.0))),
-                    time: Some(0.04),
-                    modifiers,
-                    focused: true,
-                    ..Default::default()
-                },
-                |ctx| {
-                    egui::CentralPanel::default()
-                        .frame(egui::Frame::NONE)
-                        .show(ctx, |ui| {
-                            rack.show(ui, &patch, &openpatch_core::catalog(), 48_000, 0);
-                        });
-                },
-            );
-            let dt = ctx.input(|i| i.stable_dt.min(0.1));
-            assert_near_vec(rack.pan - before, vec2(-speed, speed) * dt);
-            let before = rack.pan;
-            frame(
-                &ctx,
-                &mut rack,
-                &patch,
-                0.06,
-                vec![
-                    navigation_key(egui::Key::ArrowLeft, modifiers),
-                    navigation_key(egui::Key::ArrowDown, modifiers),
-                ],
-            );
-            assert_eq!(rack.pan, before);
+            for opposing_keys in [false, true] {
+                let ctx = egui::Context::default();
+                let patch = Patch::new_v2();
+                let catalog = openpatch_core::catalog();
+                let mut rack = Rack::default();
+                let step = |rack: &mut Rack, time, events| {
+                    let _ = ctx.run(
+                        egui::RawInput {
+                            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 700.0))),
+                            time: Some(time),
+                            events,
+                            modifiers,
+                            focused: true,
+                            ..Default::default()
+                        },
+                        |ctx| {
+                            egui::CentralPanel::default().frame(egui::Frame::NONE).show(
+                                ctx,
+                                |ui| {
+                                    rack.show(ui, &patch, &catalog, 48_000, 0);
+                                },
+                            );
+                        },
+                    );
+                };
+                step(&mut rack, 0.0, vec![]);
+                let before = rack.pan;
+                step(
+                    &mut rack,
+                    0.02,
+                    vec![
+                        navigation_key(egui::Key::ArrowRight, modifiers),
+                        navigation_key(egui::Key::ArrowUp, modifiers),
+                    ],
+                );
+                let first_delta = rack.pan - before;
+                let first_speed = first_delta.y / ctx.input(|i| i.stable_dt);
+                assert!(first_speed > 0.0 && first_speed < speed);
+                assert_near_vec(first_delta, vec2(-first_delta.y, first_delta.y));
+
+                // Held keys keep accelerating without additional key events.
+                let before = rack.pan;
+                step(&mut rack, 0.04, vec![]);
+                let held_speed = (rack.pan.y - before.y) / ctx.input(|i| i.stable_dt);
+                assert!(held_speed > first_speed && held_speed < speed);
+                let mut time = 0.04;
+                let mut last_speed = held_speed;
+                for _ in 0..40 {
+                    time += 0.02;
+                    let before = rack.pan;
+                    step(&mut rack, time, vec![]);
+                    last_speed = (rack.pan.y - before.y) / ctx.input(|i| i.stable_dt);
+                }
+                assert!(
+                    (last_speed - speed).abs() < speed * 0.01,
+                    "steady speed {last_speed} should approach {speed} for {modifiers:?}"
+                );
+
+                // Both release and opposing keys coast briefly, then stop completely.
+                let events = if opposing_keys {
+                    vec![
+                        navigation_key(egui::Key::ArrowLeft, modifiers),
+                        navigation_key(egui::Key::ArrowDown, modifiers),
+                    ]
+                } else {
+                    [egui::Key::ArrowRight, egui::Key::ArrowUp]
+                        .into_iter()
+                        .map(|key| egui::Event::Key {
+                            key,
+                            physical_key: None,
+                            pressed: false,
+                            repeat: false,
+                            modifiers,
+                        })
+                        .collect()
+                };
+                let before = rack.pan;
+                time += 0.02;
+                step(&mut rack, time, events);
+                let coast = rack.pan - before;
+                let mut coast_speed = coast.y / ctx.input(|i| i.stable_dt);
+                assert!(coast_speed > 0.0 && coast_speed < last_speed);
+                assert_near_vec(coast, vec2(-coast.y, coast.y));
+                for _ in 0..64 {
+                    let before = rack.pan;
+                    time += 0.02;
+                    step(&mut rack, time, vec![]);
+                    let next_speed = (rack.pan.y - before.y) / ctx.input(|i| i.stable_dt);
+                    assert!(next_speed >= 0.0 && next_speed <= coast_speed + 0.05);
+                    coast_speed = next_speed;
+                }
+                assert_eq!(rack.key_velocity, Vec2::ZERO);
+                let settled = rack.pan;
+                for _ in 0..8 {
+                    time += 0.02;
+                    step(&mut rack, time, vec![]);
+                    assert_eq!(rack.pan, settled, "settled camera must not drift");
+                }
+            }
         }
     }
 
@@ -17896,6 +18175,8 @@ mod tests {
             let patch = Patch::new_v2();
             frame(&ctx, &mut rack, &patch, 0.0, vec![]);
             let before = rack.pan;
+            // Navigation guards must also stop motion from a previously held arrow.
+            rack.key_velocity = vec2(-800.0, 400.0);
             if guard == "shortcuts" {
                 rack.set_shortcuts_enabled(false);
             }
@@ -17955,6 +18236,7 @@ mod tests {
                 },
             );
             assert_eq!(rack.pan, before, "guard {guard}");
+            assert_eq!(rack.key_velocity, Vec2::ZERO, "guard {guard}");
         }
     }
 
@@ -19071,6 +19353,15 @@ mod tests {
     }
     mod frame_scene_ui_tests {
         include!("frame_scene_ui_tests.rs");
+    }
+
+    mod rhythm_terrain_ui_tests {
+        include!("rhythm_terrain_ui_tests.rs");
+    }
+
+    #[cfg(test)]
+    mod event_fork_ui_tests {
+        include!("event_fork_ui_tests.rs");
     }
 
     mod segment_garden_ui_tests {

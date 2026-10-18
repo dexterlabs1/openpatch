@@ -3,12 +3,39 @@ use eframe::{egui, egui_glow, glow};
 use glow::HasContext;
 use std::sync::{Arc, Mutex};
 
-pub const MODES: [(i32, &str); 4] = [
+/// Built-in modes in display order. Ids are the `u_mode` values in
+/// `visuals.frag`; the original four keep ids 0-3, and the studio set (4-8)
+/// comes first in the picker. Every studio mode draws the signal itself as
+/// thin lines: live waveform sweeps, or the recent spectrum history.
+pub const MODES: [(i32, &str); 9] = [
+    (5, "Horizon"),
+    (4, "Phosphor"),
+    (8, "Ridges"),
+    (6, "Pulsar"),
+    (7, "Vector"),
     (0, "Aurora"),
     (1, "Spectrum"),
     (2, "Waveform"),
     (3, "Ferrofluid"),
 ];
+/// The first mode shown when the Visuals tab opens.
+pub const DEFAULT_MODE: i32 = 5;
+/// Modes before this display index are the newer studio set; a thin divider
+/// separates them from the original four.
+pub const STUDIO_MODE_COUNT: usize = 5;
+
+/// Signal history uploaded as a small single-channel float texture
+/// (`u_history`): rows `0..SPECTRUM_ROWS` hold the log-frequency spectrum, newest
+/// first (row 0 is live); the next `SWEEP_ROWS` rows hold trigger-aligned,
+/// level-normalised waveform sweeps, newest first (also live in its first row).
+pub const HISTORY_WIDTH: usize = 128;
+pub const SPECTRUM_ROWS: usize = 32;
+pub const SWEEP_ROWS: usize = 16;
+const HISTORY_ROWS: usize = SPECTRUM_ROWS + SWEEP_ROWS;
+/// Spectrum rows per second; slow enough that each ridge reads as one line.
+const SPECTRUM_RATE: f32 = 5.0;
+/// Sweeps per second kept for phosphor persistence.
+const SWEEP_RATE: f32 = 24.0;
 
 pub const DEFAULT_SHADER: &str = include_str!("../assets/shaders/visuals.frag");
 const VERTEX: &str = "#version 330 core\nout vec2 v_uv;\nvoid main(){ vec2 p=vec2(float((gl_VertexID << 1) & 2),float(gl_VertexID & 2)); v_uv=p; gl_Position=vec4(p*2.0-1.0,0.0,1.0); }";
@@ -23,6 +50,8 @@ struct Program {
     spectrum: Option<glow::UniformLocation>,
     mode: Option<glow::UniformLocation>,
     ferro: Option<glow::UniformLocation>,
+    history: Option<glow::UniformLocation>,
+    history_info: Option<glow::UniformLocation>,
 }
 
 impl Program {
@@ -69,6 +98,8 @@ impl Program {
                 spectrum: gl.get_uniform_location(program, "u_spectrum[0]"),
                 mode: gl.get_uniform_location(program, "u_mode"),
                 ferro: gl.get_uniform_location(program, "u_ferro"),
+                history: gl.get_uniform_location(program, "u_history"),
+                history_info: gl.get_uniform_location(program, "u_history_info"),
                 program,
                 vao,
             })
@@ -86,12 +117,51 @@ impl Program {
 pub struct Visualizer {
     program: Arc<Mutex<Program>>,
     dynamics: Mutex<FerroDynamics>,
+    history: Mutex<SignalHistory>,
+    history_texture: glow::Texture,
 }
 impl Visualizer {
     pub fn new(gl: &glow::Context) -> Result<Self, String> {
+        let program = Program::new(gl, DEFAULT_SHADER)?;
+        // SAFETY: caller owns the current GL context on the native UI thread.
+        let history_texture = unsafe {
+            let texture = match gl.create_texture() {
+                Ok(texture) => texture,
+                Err(err) => {
+                    program.destroy(gl);
+                    return Err(err);
+                }
+            };
+            gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+            for (parameter, value) in [
+                (glow::TEXTURE_MIN_FILTER, glow::NEAREST),
+                (glow::TEXTURE_MAG_FILTER, glow::NEAREST),
+                (glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE),
+                (glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE),
+            ] {
+                gl.tex_parameter_i32(glow::TEXTURE_2D, parameter, value as i32);
+            }
+            let zeros = vec![0_u8; HISTORY_WIDTH * HISTORY_ROWS * 4];
+            gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 4);
+            gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::R32F as i32,
+                HISTORY_WIDTH as i32,
+                HISTORY_ROWS as i32,
+                0,
+                glow::RED,
+                glow::FLOAT,
+                glow::PixelUnpackData::Slice(Some(&zeros)),
+            );
+            gl.bind_texture(glow::TEXTURE_2D, None);
+            texture
+        };
         Ok(Self {
-            program: Arc::new(Mutex::new(Program::new(gl, DEFAULT_SHADER)?)),
+            program: Arc::new(Mutex::new(program)),
             dynamics: Mutex::new(FerroDynamics::default()),
+            history: Mutex::new(SignalHistory::default()),
+            history_texture,
         })
     }
     pub fn compile(&mut self, gl: &glow::Context, source: &str) -> Result<(), String> {
@@ -117,15 +187,38 @@ impl Visualizer {
         let program = self.program.clone();
         let spectrum = spectrum(&wave);
         let ferro = self.dynamics.lock().unwrap().update(time, &spectrum, level);
+        let (texels, info) = {
+            let mut history = self.history.lock().unwrap();
+            let info = history.update(time, &wave, &spectrum);
+            (history.texel_bytes(), info)
+        };
+        let texture = self.history_texture;
         ui.painter().add(egui::PaintCallback {
             rect,
             callback: Arc::new(egui_glow::CallbackFn::new(move |_, painter| {
                 let gl = painter.gl();
                 let p = program.lock().unwrap();
-                // SAFETY: eframe invokes the callback on its current render context.
+                // SAFETY: eframe invokes the callback on its current render context;
+                // egui_glow restores its program, VAO and texture unit 0 afterwards.
                 unsafe {
                     gl.use_program(Some(p.program));
                     gl.bind_vertex_array(Some(p.vao));
+                    gl.active_texture(glow::TEXTURE0);
+                    gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+                    gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 4);
+                    gl.tex_sub_image_2d(
+                        glow::TEXTURE_2D,
+                        0,
+                        0,
+                        0,
+                        HISTORY_WIDTH as i32,
+                        HISTORY_ROWS as i32,
+                        glow::RED,
+                        glow::FLOAT,
+                        glow::PixelUnpackData::Slice(Some(&texels)),
+                    );
+                    gl.uniform_1_i32(p.history.as_ref(), 0);
+                    gl.uniform_4_f32(p.history_info.as_ref(), info[0], info[1], info[2], info[3]);
                     gl.uniform_1_f32(p.time.as_ref(), time);
                     gl.uniform_2_f32(p.resolution.as_ref(), rect.width(), rect.height());
                     gl.uniform_1_f32(p.level.as_ref(), level);
@@ -140,6 +233,148 @@ impl Visualizer {
     }
     pub fn destroy(&self, gl: &glow::Context) {
         self.program.lock().unwrap().destroy(gl);
+        // SAFETY: same context that created the texture in `new`.
+        unsafe { gl.delete_texture(self.history_texture) };
+    }
+}
+
+/// Visual-thread signal history behind the line-art modes. Everything is
+/// sanitised and bounded before upload, so the shader never sees NaN or Inf.
+struct SignalHistory {
+    previous_time: Option<f32>,
+    texels: Vec<f32>,
+    /// Live per-column spectrum envelope (fast attack, gentle release).
+    envelope: [f32; HISTORY_WIDTH],
+    spectrum_gain: f32,
+    sweep_gain: f32,
+    spectrum_clock: f32,
+    sweep_clock: f32,
+    rows_pushed: u32,
+    delay: f32,
+}
+impl Default for SignalHistory {
+    fn default() -> Self {
+        Self {
+            previous_time: None,
+            texels: vec![0.0; HISTORY_WIDTH * HISTORY_ROWS],
+            envelope: [0.0; HISTORY_WIDTH],
+            spectrum_gain: 0.25,
+            sweep_gain: 0.25,
+            spectrum_clock: 0.0,
+            sweep_clock: 0.0,
+            rows_pushed: 0,
+            delay: 16.0,
+        }
+    }
+}
+impl SignalHistory {
+    /// Advances the history and returns `u_history_info`: spectrum scroll
+    /// phase, sweep scroll phase, XY delay in samples and a wrapped row count.
+    fn update(&mut self, time: f32, wave: &[f32; 256], spectrum: &[f32; 64]) -> [f32; 4] {
+        let finite = |x: f32| if x.is_finite() { x } else { 0.0 };
+        let dt = self
+            .previous_time
+            .map_or(1.0 / 60.0, |old| finite(time - old).clamp(0.0, 0.1));
+        if time.is_finite() {
+            self.previous_time = Some(time);
+        }
+        let follow = |current: &mut f32, target: f32, attack: f32, release: f32| {
+            let tau = if target > *current { attack } else { release };
+            *current += (target - *current) * (1.0 - (-dt / tau).exp());
+        };
+
+        // Spectrum: log-like frequency axis, compressed, with slow auto-gain so
+        // quiet patches still draw ridges and loud ones do not clip.
+        let mut target = [0.0_f32; HISTORY_WIDTH];
+        let mut loudest = 0.0_f32;
+        for (column, value) in target.iter_mut().enumerate() {
+            let x = column as f32 / (HISTORY_WIDTH - 1) as f32;
+            let bin = 1.0 + x.powf(1.7) * 61.0;
+            let index = (bin as usize).min(61);
+            let a = finite(spectrum[index]).clamp(0.0, 4.0);
+            let b = finite(spectrum[index + 1]).clamp(0.0, 4.0);
+            *value = (a + (b - a) * (bin - index as f32)).max(0.0).sqrt() * (1.0 + x * 1.6);
+            loudest = loudest.max(*value);
+        }
+        follow(&mut self.spectrum_gain, loudest, 0.25, 4.0);
+        let spectrum_scale = 0.9 / self.spectrum_gain.max(0.06);
+        for (column, value) in target.iter().enumerate() {
+            follow(
+                &mut self.envelope[column],
+                (value * spectrum_scale).min(1.3),
+                0.02,
+                0.22,
+            );
+        }
+        self.spectrum_clock += dt * SPECTRUM_RATE;
+        if self.spectrum_clock >= 1.0 {
+            self.spectrum_clock = self.spectrum_clock.fract().min(0.999);
+            self.texels
+                .copy_within(0..(SPECTRUM_ROWS - 1) * HISTORY_WIDTH, HISTORY_WIDTH);
+            self.rows_pushed = (self.rows_pushed + 1) % 4096;
+        }
+        // Row 0 is live; the shift above moved its last state into row 1, so a
+        // ridge leaves the front exactly as it was drawn.
+        self.texels[..HISTORY_WIDTH].copy_from_slice(&self.envelope);
+
+        // Sweeps: a hysteresis trigger on a rising crossing keeps periodic
+        // signals standing still, like a real oscilloscope.
+        let peak = wave.iter().fold(0.0_f32, |p, &v| p.max(finite(v).abs()));
+        follow(&mut self.sweep_gain, peak, 0.05, 2.5);
+        let gain = (0.85 / self.sweep_gain.max(0.02)).min(40.0);
+        let sample = |i: usize| finite(wave[i]) * gain;
+        let mut armed = false;
+        let mut trigger = None;
+        let mut first_crossing = None;
+        let mut last_crossing = 0;
+        let mut crossings = 0_usize;
+        for i in 1..wave.len() {
+            if sample(i) < -0.08 {
+                armed = true;
+            } else if armed && sample(i - 1) < 0.0 && sample(i) >= 0.0 {
+                armed = false;
+                crossings += 1;
+                first_crossing.get_or_insert(i);
+                last_crossing = i;
+                if trigger.is_none() && i + HISTORY_WIDTH <= wave.len() {
+                    trigger = Some(i);
+                }
+            }
+        }
+        let start = trigger.unwrap_or(0);
+        // A quarter period turns a pure tone into a circle on the XY display;
+        // richer signals fold into their own figures.
+        if let (Some(first), true) = (first_crossing, crossings > 1) {
+            let period = (last_crossing - first) as f32 / (crossings - 1) as f32;
+            follow(
+                &mut self.delay,
+                (period * 0.25).clamp(3.0, 48.0),
+                0.15,
+                0.15,
+            );
+        }
+        self.sweep_clock += dt * SWEEP_RATE;
+        let sweeps = SPECTRUM_ROWS * HISTORY_WIDTH;
+        if self.sweep_clock >= 1.0 {
+            self.sweep_clock = self.sweep_clock.fract().min(0.999);
+            self.texels.copy_within(
+                sweeps..sweeps + (SWEEP_ROWS - 1) * HISTORY_WIDTH,
+                sweeps + HISTORY_WIDTH,
+            );
+        }
+        for i in 0..HISTORY_WIDTH {
+            self.texels[sweeps + i] = sample(start + i).clamp(-1.4, 1.4);
+        }
+        [
+            self.spectrum_clock,
+            self.sweep_clock,
+            self.delay,
+            self.rows_pushed as f32,
+        ]
+    }
+
+    fn texel_bytes(&self) -> Vec<u8> {
+        self.texels.iter().flat_map(|v| v.to_ne_bytes()).collect()
     }
 }
 
@@ -231,6 +466,88 @@ mod tests {
                 assert!(bands
                     .iter()
                     .all(|v| v.is_finite() && (0.0..=1.0).contains(v)));
+            }
+        }
+    }
+
+    #[test]
+    fn built_in_modes_are_unique_and_dispatched_by_the_bundled_shader() {
+        let mut ids: Vec<i32> = super::MODES.iter().map(|(id, _)| *id).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, (0..super::MODES.len() as i32).collect::<Vec<_>>());
+        assert!(super::MODES
+            .iter()
+            .any(|(id, _)| *id == super::DEFAULT_MODE));
+        let shader = super::DEFAULT_SHADER;
+        assert!(shader.starts_with("#version 330 core\n"));
+        assert!(
+            shader.len() < 65_536,
+            "editor reset path rejects larger sources"
+        );
+        for id in 4..super::MODES.len() as i32 {
+            assert!(
+                shader.contains(&format!("u_mode == {id}")),
+                "mode {id} has no shader branch"
+            );
+        }
+        assert!(shader.contains("if (u_mode >= 4)"));
+    }
+
+    #[test]
+    fn signal_history_triggers_sweeps_and_scrolls_rows_without_jumps() {
+        use super::{HISTORY_WIDTH, SPECTRUM_ROWS};
+        let mut history = super::SignalHistory::default();
+        // A 50-sample period: every live sweep must start on the same rising
+        // crossing regardless of where the ring buffer happened to be read.
+        let mut info = [0.0; 4];
+        for frame in 0..240 {
+            let offset = frame as f32 * 7.3;
+            let wave = std::array::from_fn(|i| {
+                0.4 * (std::f32::consts::TAU * (i as f32 + offset) / 50.0).sin()
+            });
+            let before: Vec<f32> = history.texels[..HISTORY_WIDTH].to_vec();
+            let pushed = info[3];
+            info = history.update(frame as f32 / 60.0, &wave, &super::spectrum(&wave));
+            if info[3] != pushed {
+                // A row was just pushed: it leaves the front exactly as drawn.
+                assert_eq!(
+                    &history.texels[HISTORY_WIDTH..2 * HISTORY_WIDTH],
+                    &before[..]
+                );
+            }
+            let sweep = &history.texels[SPECTRUM_ROWS * HISTORY_WIDTH..];
+            if frame > 30 {
+                assert!(
+                    sweep[0].abs() < 0.12 && sweep[3] > sweep[0],
+                    "sweep starts rising at zero"
+                );
+                assert!((sweep[50] - sweep[0]).abs() < 0.12, "next period lines up");
+            }
+        }
+        assert!(
+            (info[2] - 12.5).abs() < 1.0,
+            "XY delay is a quarter period: {}",
+            info[2]
+        );
+        assert!(info[3] >= 15.0, "spectrum rows were pushed");
+        assert!(history
+            .texels
+            .iter()
+            .all(|v| v.is_finite() && v.abs() <= 1.4));
+    }
+
+    #[test]
+    fn signal_history_stays_bounded_across_bad_inputs_and_clock_jumps() {
+        let mut history = super::SignalHistory::default();
+        for time in [0.0, 0.016, f32::NAN, -10.0, 10000.0, f32::INFINITY, 10000.5] {
+            for value in [f32::NAN, f32::INFINITY, -100.0, f32::MAX, 1.0, 0.0] {
+                let info = history.update(time, &[value; 256], &[value; 64]);
+                assert!(info.iter().all(|v| v.is_finite()));
+                assert!((0.0..1.0).contains(&info[0]) && (0.0..1.0).contains(&info[1]));
+                assert!(history
+                    .texels
+                    .iter()
+                    .all(|v| v.is_finite() && v.abs() <= 1.4));
             }
         }
     }

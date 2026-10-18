@@ -24,7 +24,8 @@ pub struct ModuleLightState {
     /// with their published lights); no signal lamps are implied by a count.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_channels: Option<u8>,
-    /// STOCK LFO's actual shared positive clock frequency, before its rate knob.
+    /// STOCK LFO's shared input Hz, before its rate knob. RHYTHM TERRAIN uses
+    /// source internal quarter-note Hz (BPM/60), and None for external clock.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clock_frequency: Option<f32>,
     /// MERGE's emitted channel count, 0..=16; initially zero, updated each frame.
@@ -33,7 +34,8 @@ pub struct ModuleLightState {
     /// MERGE's highest occupied input slot, 0..=16, independent of its override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub automatic_channels: Option<u8>,
-    /// Actual CV-influenced normalized wavetable position, for shared panels.
+    /// Actual module-specific normalized position; the catalog defines whether
+    /// this is a wavetable/frame position or the next rhythmic step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waveform_position: Option<f32>,
     pub count: u8,

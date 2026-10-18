@@ -15,6 +15,8 @@ impl OpenPatch {
                 self.file_dialog(FileMode::Open);
                 ui.close();
             }
+            self.recent_files_menu(ui);
+            ui.separator();
             if ui.button("Save     ⌘S").clicked() {
                 self.save_current();
                 ui.close();
@@ -387,6 +389,10 @@ impl OpenPatch {
             .config(egui::containers::menu::MenuConfig::new()
                 .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside))
             .ui(ui, |ui| {
+            // Establish the menu width before wrapped material swatches and
+            // sliders are measured. Pointer targets must not shift next frame.
+            let width = (ui.ctx().content_rect().width() - 24.0).clamp(240.0, 450.0);
+            ui.set_width(width);
             let max_height = (ui.ctx().content_rect().bottom() - ui.cursor().min.y - 18.0).max(80.0);
             egui::ScrollArea::vertical().id_salt("view-menu-scroll")
                 .max_height(max_height).show(ui, |ui| {
@@ -586,6 +592,21 @@ impl OpenPatch {
         if visuals.clicked() {
             self.toggle_analysis(AnalysisTab::Visuals);
         }
+        let path = icon_button(
+            ui,
+            Icon::SignalPath,
+            "Signal path · P",
+            self.rack.signal_path_mode(),
+            self.rack.navigation_idle(),
+        );
+        #[cfg(test)]
+        ui.ctx().data_mut(|data| {
+            data.insert_temp(egui::Id::new("toolbar-signal-path-rect"), path.rect)
+        });
+        if path.clicked() {
+            self.rack
+                .set_signal_path_mode(!self.rack.signal_path_mode());
+        }
     }
 
     fn toolbar_zoom(&mut self, ui: &mut egui::Ui) {
@@ -757,7 +778,7 @@ impl OpenPatch {
     }
 
     fn toolbar(&mut self, ctx: &egui::Context) {
-        let compact = ctx.content_rect().width() < 1140.0;
+        let compact = ctx.content_rect().width() < 1280.0;
         let overflow = ctx.content_rect().width() < 850.0;
         let enabled = self.library_enabled();
         // The settings trigger remains available while its dropdown blocks rack edits.
@@ -780,11 +801,15 @@ impl OpenPatch {
                     ui.label(RichText::new("OPENPATCH").strong().size(13.0).color(TEXT));
                     ui.add_space(10.0);
                     ui.add_enabled_ui(enabled, |ui| self.toolbar_menus(ui));
+                    ui.add_enabled_ui(enabled, |ui| self.patch_engine.toolbar(ui));
+                    if !compact {
+                        ui.add_enabled_ui(enabled, |ui| self.toolbar_organize(ui));
+                    }
                     ui.add_space(12.0);
                     // Reserve each action group before the project gets the remaining width.
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_enabled_ui(chrome_enabled, |ui| self.toolbar_settings_button(ui));
-                        ui.add_enabled_ui(enabled, |ui| {
+                        ui.add_enabled_ui(enabled || self.mcp_session.is_open(), |ui| {
                             let response = ui.scope(|ui| {
                                 self.mcp_session.toolbar(
                                     ui,
@@ -798,6 +823,8 @@ impl OpenPatch {
                                     response.response.rect,
                                 )
                             });
+                        });
+                        ui.add_enabled_ui(enabled, |ui| {
                             ui.add_space(8.0);
                             if !compact {
                                 self.toolbar_palette(ui);
@@ -806,7 +833,7 @@ impl OpenPatch {
                                     self.toolbar_zoom(ui)
                                 });
                                 ui.add_space(8.0);
-                                Self::toolbar_group(ui, &[30.0, 30.0, 30.0], |ui| {
+                                Self::toolbar_group(ui, &[30.0, 30.0, 30.0, 30.0], |ui| {
                                     self.toolbar_views(ui)
                                 });
                                 ui.add_space(8.0);
@@ -835,7 +862,7 @@ impl OpenPatch {
                     ui.add_enabled_ui(enabled, |ui| {
                         ui.horizontal(|ui| {
                             ui.label(RichText::new("RACK").strong().size(9.0).color(MUTED));
-                            Self::toolbar_group(ui, &[30.0, 30.0, 30.0], |ui| {
+                            Self::toolbar_group(ui, &[30.0, 30.0, 30.0, 30.0], |ui| {
                                 self.toolbar_views(ui)
                             });
                             ui.add_space(14.0);
@@ -843,6 +870,8 @@ impl OpenPatch {
                                 self.toolbar_zoom(ui)
                             });
                             ui.add_space(14.0);
+                            self.toolbar_organize(ui);
+                            ui.add_space(8.0);
                             if overflow {
                                 egui::containers::menu::MenuButton::new("More")
                                     .config(
@@ -867,5 +896,74 @@ impl OpenPatch {
                     });
                 }
             });
+    }
+    fn toolbar_organize(&mut self, ui: &mut egui::Ui) {
+        let (_response, _) = egui::containers::menu::MenuButton::new("Organize")
+            .config(
+                egui::containers::menu::MenuConfig::new()
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside),
+            )
+            .ui(ui, |ui| {
+                ui.label("Rack rows");
+                let previous = self.organize_rows;
+                ui.selectable_value(&mut self.organize_rows, None, "Auto");
+                for rows in 1..=8 {
+                    ui.selectable_value(
+                        &mut self.organize_rows,
+                        Some(rows),
+                        format!("{rows} {}", if rows == 1 { "row" } else { "rows" }),
+                    );
+                }
+                if self.organize_rows != previous {
+                    self.save_host_settings();
+                }
+                ui.separator();
+                let enabled = !self.rack.positions_locked()
+                    && self.rack.navigation_idle()
+                    && self.project.graph.nodes.len() > 1;
+                if ui
+                .add_enabled(enabled, egui::Button::new("Organize now"))
+                .on_disabled_hover_text(
+                    "Unlock module positions and finish the current gesture to organize the rack",
+                )
+                .clicked()
+            {
+                self.organize_rack();
+                ui.close();
+            }
+            });
+        #[cfg(test)]
+        ui.ctx().data_mut(|data| {
+            data.insert_temp(egui::Id::new("toolbar-organize-rect"), _response.rect)
+        });
+    }
+
+    fn organize_rack(&mut self) {
+        self.sync();
+        if let Err(error) = self.publish_current_layout() {
+            self.status = format!("Could not organize: {error}");
+            return;
+        }
+        match self
+            .rack
+            .organize(&self.patch, &self.catalog, self.organize_rows)
+        {
+            Ok(mut movement) => {
+                if movement.before == movement.after {
+                    self.status = "Rack is already organized".into();
+                    return;
+                }
+                // The planner used the patch/layout just synchronized above;
+                // its last painted revision may precede that coherent snapshot.
+                movement.revision = self.revision;
+                if self.move_modules(movement) {
+                    self.status = match self.organize_rows {
+                        Some(rows) => format!("Organized rack into {rows} rows"),
+                        None => "Organized rack automatically".into(),
+                    };
+                }
+            }
+            Err(error) => self.status = format!("Could not organize: {error}"),
+        }
     }
 }

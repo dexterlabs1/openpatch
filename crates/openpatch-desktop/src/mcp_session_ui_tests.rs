@@ -371,3 +371,50 @@ fn copy_buttons_emit_exact_clipboard_data_and_support_keyboard_focus() {
     );
     assert_eq!(before, host.shared.lock().unwrap().snapshot());
 }
+
+#[test]
+fn mcp_details_dropup_anchors_to_footer_and_dismisses_without_starting_bridge() {
+    let mut host = Host::new();
+    let before = host.shared.lock().unwrap().snapshot();
+    host.click("MCP off");
+    let output = host.frame(vec![]);
+    assert!(host.panel.is_open());
+    assert!(text_rect(&output, "MCP session").is_some());
+    let popup = host
+        .context
+        .data(|data| data.get_temp::<egui::Rect>(egui::Id::new("mcp-session-dropdown-rect")))
+        .unwrap();
+    let anchor = host.panel.anchor.unwrap().0;
+    assert!(popup.bottom() <= anchor.top());
+    assert!(
+        popup.left() >= 0.0 && popup.left() <= anchor.left() + 5.0,
+        "screen edge clamps the footer-anchored panel"
+    );
+    host.click("MCP off");
+    assert!(!host.panel.is_open());
+    host.click("MCP off");
+    host.frame(vec![egui::Event::Key {
+        key: egui::Key::Escape,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    }]);
+    assert!(!host.panel.is_open());
+    host.click("MCP off");
+    let position = egui::pos2(900.0, 150.0);
+    for pressed in [true, false] {
+        host.frame(vec![
+            egui::Event::PointerMoved(position),
+            egui::Event::PointerButton {
+                pos: position,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ]);
+    }
+    assert!(!host.panel.is_open());
+    assert!(host.panel.session_id().is_none());
+    assert_eq!(before, host.shared.lock().unwrap().snapshot());
+}

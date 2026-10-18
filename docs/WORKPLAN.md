@@ -17,10 +17,30 @@ Rust tests and 123 Python/MCP tests, plus four bundled-release CLI smoke tests.
 native-window/audio-device qualification. Keep the installed app stable; macOS
 ARM remains first, Windows/Linux and MIDI/live performance remain deferred.
 
+## Public cross-platform release candidate
+
+The user requested a combined macOS ARM, Windows x64 and Steam Deck/Linux x64
+release, including Claude's Patch Engine, followed by a product README refresh.
+`work/release-0-3-0` integrates the finished five-instrument family and
+`work/patch-engine` at `9b0dcfc`, with scoped rack organization, signal tracing,
+cable materials, footer controls and the Patch Engine. The candidate is
+**0.3.0 build 10**. Packaging includes the desktop and CLI, examples, license
+notices and matching source links. One release PR will qualify all three targets.
+The existing installed 0.2.7 build 9 remains untouched.
+
+Release hardening protects Save/Discard/Cancel when replacing a generated patch
+and fences asynchronous edits against external document changes. Portable Linux
+installation preserves user data. Release publication is pending the full gate;
+Windows audio devices and Steam Deck hardware/game mode are not yet qualified.
+Recall Random's unfinished source-kernel checkpoint is preserved separately on
+`work/recall-random` and is excluded. Experimental VCV binary hosting remains
+excluded; ecosystem parity and the remaining fifteen instruments remain open.
+
 ## User-requested rack workflow and creative expansion (2026-10-17)
 
-This focused family branch adds the three source-derived instruments below and
-their shared seated-black-screw rendering. Other rack/toolbar work and experimental
+The first creative family is merged through [PR #34](https://github.com/dexterlabs1/openpatch/pull/34)
+at `7248095`: three source-derived instruments and their shared seated-black-screw
+rendering. [Full macOS CI](https://github.com/dexterlabs1/openpatch/actions/runs/39069352032) passed **2,693 Rust tests and 127 Python/MCP tests**, strict lint/format checks, optimized ARM binaries, application packaging and browser visualizer integration. Other rack/toolbar work and experimental
 binary hosting remain preserved on `work/rack-binary-feasibility` at `71c0cba`;
 [recorded rack tools](https://github.com/dexterlabs1/openpatch/tree/71c0cba/design/reviews/rack-tools-v1)
 and [host tools](https://github.com/dexterlabs1/openpatch/tree/71c0cba/design/reviews/host-tools-v1)
@@ -29,7 +49,8 @@ are separate pending integration work. No source change is installed; keep
 
 The user's next creative-library milestone is [twenty genuinely new instruments](CREATIVE_MODULES_20.md),
 with independent contracts rather than renamed existing kinds. **Tidal Functions,
-Frame Scene and Segment Garden are implemented development candidates; seventeen remain.** Tidal
+Frame Scene and Segment Garden passed the first family gate. Event Fork and Rhythm Terrain are the
+fourth and fifth implemented development candidates; fifteen remain.** Tidal
 Functions’ native Rust generator/extractor matches 129,840 frames in 34 pinned C++ reference cases
 bit for bit, including nonzero amplitude scans, while preserving the original
 frame-zero clock failure as a negative and explicitly adapting native startup.
@@ -47,9 +68,11 @@ telemetry, seeded controls, MCP/presets/reopen and callback no-heap paths have f
 evidence; raw source qualification covers 952,896 records across 69 cases, with guarded
 endpoints and the internal zero-division boundary kept separate.
 [Contract and source bounds](SEGMENT_GARDEN.md), [shared panel review](../design/reviews/segment-garden-v1/README.md).
-The focused family cut passes local Mac validation: **2,693 Rust tests and 127 Python/MCP tests**, strict workspace Clippy, formatting and doc tests. The three normal-room panel/thumbnail captures are byte-identical to their reviewed checkpoints; all 55 module/reference files match the qualified source. Three regression issues were corrected: content schema tests now select by type, the spacer geometry test recognizes seated screws, and two example guides fit their panels without changing graph or parameter data. The family PR/macOS CI gate is next. Source fidelity, shared UI/MCP/history, Custom plus functional tags for original instruments and Mac validation remain done requirements. Binary-host
+The focused family cut passes local Mac validation: **2,693 Rust tests and 127 Python/MCP tests**, strict workspace Clippy, formatting and doc tests. The three normal-room panel/thumbnail captures are byte-identical to their reviewed checkpoints; all 55 module/reference files match the qualified source. Three regression issues were corrected: content schema tests now select by type, the spacer geometry test recognizes seated screws, and two example guides fit their panels without changing graph or parameter data. The same family-level macOS CI gate passed in PR #34. Source fidelity, shared UI/MCP/history, Custom plus functional tags for original instruments and Mac validation remain done requirements. Binary-host
 MCP save integration, active panels and actual device qualification remain open
 parallel goal requirements; no hosting-completion or new installation is claimed.
+
+**Next family, `work/creative-rhythm`:** [Event Fork](EVENT_FORK.md) adds two source-derived Bernoulli routers with physical input normaling, shared seeded RNG, toggle and latch memory. Eighteen source cases cover 12,190 exact raw scans plus the complete ADC table; 513 genuine frames also pass through the actual native Engine. Six adapter checks, four Engine contracts, callback allocation/deallocation checks at five rates, six UI checks, the 90-kind shared-renderer guard, readable factory guides, actual stdio MCP/history/preset/reopen, strict Clippy and reviewed normal/dim panels pass. Its quiet routed-duet example renders offline without clipping. Family-level CI remains pending; no install or hardware/device qualification is claimed. [Rhythm Terrain](RHYTHM_TERRAIN.md) adds the pinned Grids drum maps and Euclidean engine, accents, swing, source clock/reset and runtime tap authority. Its genuine source/audited/Rust comparison passes 49 cases / 377,402 operations; the actual Engine matches 29,400 source frames. Focused native callback/no-heap, shared UI/history, stdio MCP/presets/reopen, normal/dim panels and a quiet offline groove have evidence. Fast TAP clicks preserve ordered HIGH/LOW snapshots, and emergency release cancels stale presses. The shared default rack/browser renderer now covers 91 kinds. Continue Recall Random, then run one full Mac family gate. Retain all broader parity/host/rack-workflow requirements above.
 
 ## Execution changes
 

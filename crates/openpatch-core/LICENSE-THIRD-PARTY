@@ -1183,3 +1183,69 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 See http://creativecommons.org/licenses/MIT/ for more information.
+
+
+Branches firmware decision/ADC kernel — Event Fork
+
+Copyright 2012 Emilie Gillet.
+Author: Emilie Gillet (emilie.o.gillet@gmail.com)
+Source: https://github.com/pichenettes/eurorack/blob/f4cfa7697095a28d292bff758beb51deb49b5a86/branches/branches.cc
+License: GPL-3.0-or-later.
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later version.
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE. See LICENSE-GPL-3.0.txt for the complete license.
+
+Modifications: Rust adaptation of the original integer decision loop, fixed
+state/snapshot API and original ADC lookup table. Native host timing, voltage,
+Schmitt input, probability mapping, normaling and lifecycle are documented
+OpenPatch policies. No claim of AVR electrical or CPU timing equivalence.
+Corresponding source is included at crates/openpatch-core/src/event_fork/ and
+scripts/branches_reference/, with the source pin/hash and retrieval script.
+Combined binaries containing this component are GPL-3.0-or-later; original
+OpenPatch source retains its separate MIT notices. Source must accompany a
+binary distribution or be offered as required by the GPL; repository source
+and the pinned upstream component remain publicly available.
+
+
+Grids pattern generator, clock, resources and avrlib helpers — Rhythm Terrain
+
+Copyright 2011–2012 Emilie Gillet (Grids).
+Copyright 2009 Emilie Gillet (avrlib RNG and integer operations).
+Author: Emilie Gillet (emilie.o.gillet@gmail.com)
+License: GPL-3.0-or-later.
+
+Pinned corresponding sources:
+https://github.com/pichenettes/eurorack/tree/f4cfa7697095a28d292bff758beb51deb49b5a86/grids
+https://github.com/pichenettes/avril/tree/276b2887e4110ca913294fcbb313163dfb28a448
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later version.
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE. See LICENSE-GPL-3.0.txt for the complete license.
+
+Modifications: per-instance Rust adaptation of the original Grids integer
+PatternGenerator, Clock, 25 map nodes, Euclidean/tempo tables and explicit
+16-bit avrlib LFSR. OpenPatch supplies native fixed 8 kHz scheduling, voltage/CV
+mapping, Schmitt input, ordered fixed-capacity event capture, guarded tap actions,
+saved controls, lifecycle and shared panel/telemetry policies. Reset quirks and
+source-defined arithmetic remain declared contracts. Physical board timer,
+ADC/button/EEPROM scheduling, hardware circuitry, artwork and logos are excluded.
+No AVR electrical or CPU timing equivalence is claimed.
+
+Corresponding source is included at crates/openpatch-core/src/rhythm_terrain.rs,
+crates/openpatch-core/src/rhythm_terrain/ and scripts/grids_reference/, with pinned
+source hashes and a retrieval script. The reference host overlay selects original
+portable arithmetic and excludes only the proven-unused, uncompilable U24Sub
+fallback; original sources, hashes and the exact overlay diff are retained.
+See docs/RHYTHM_TERRAIN.md for source/native boundaries and qualification scope.
+
+Combined binaries containing this component are GPL-3.0-or-later; original
+OpenPatch source retains its separate MIT notices. Source must accompany a
+binary distribution or be offered as required by the GPL; repository source
+and the pinned upstream component remain publicly available.

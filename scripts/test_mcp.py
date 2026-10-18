@@ -3859,6 +3859,89 @@ class OpenPatchMCPTests(unittest.TestCase):
             "frequency": 0, "pulse_width": .5, "fm_amount": 0, "pwm_amount": 0, "linear_fm": 0, "soft_sync": 0})
         self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
 
+    def test_rhythm_terrain_clock_taps_grouped_history_presets_and_saved_reopen(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["rhythm_terrain"]
+        self.assertEqual(descriptor["outputs"], ["trig1", "trig2", "trig3", "aux1", "aux2", "aux3", "clock", "random"])
+        self.assertEqual(descriptor["runtime_actions"], ["tap_press", "tap_release", "release_tap", "reset"])
+        self.assertEqual(descriptor["polyphony"]["maximum_channels"], 1)
+        self.assertIn("Custom", descriptor["tags"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "terrain", "kind": "rhythm_terrain", "params": {"tempo": 0, "seed": 19}}],
+            "output": "terrain", "output_port": "clock"}})
+        before = self.patch_snapshot()
+        events = [{"frame": 0, "id": "terrain", "action": "tap_press"},
+                  {"frame": 6, "id": "terrain", "action": "tap_release"},
+                  {"frame": 24000, "id": "terrain", "action": "tap_press"},
+                  {"frame": 24006, "id": "terrain", "action": "tap_release"},
+                  {"frame": 27000, "id": "terrain", "action": "release_tap"}]
+        capture_args = {"id": "terrain", "port": "clock", "seconds": .6, "points": 512, "module_events": events}
+        trace = self.payload(self.require_tool_success("capture_signal", capture_args))
+        self.assertEqual(trace["module_event_count"], len(events))
+        self.assertEqual(max(b["max"] for b in trace["bins"] if b["max"] is not None), 5)
+        self.assertEqual(self.payload(self.require_tool_success("capture_signal", capture_args)), trace)
+        for action in descriptor["runtime_actions"]:
+            error = self.require_tool_error("trigger_module", {"id": "terrain", "action": action})
+            self.assertIn("no live audio backend", json.dumps(error))
+        self.assertEqual(self.patch_snapshot(), before, "offline events never persist tapped tempo or held state")
+        for value in [.2, .35]:
+            self.require_tool_success("set_parameter", {"id": "terrain", "parameter": "x", "value": value,
+                "history_group": "terrain-map", "expected_revision": self.patch_snapshot()["revision"]})
+        changed = self.patch_snapshot()
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], before["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], changed["patch"])
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "terrain"}))["preset"]
+        self.assertEqual(preset["params"]["seed"], 19)
+        self.assertEqual(preset["params"]["tempo"], 0)
+        before_errors = self.patch_snapshot()
+        for name, value in [("seed", 0), ("seed", 1.5), ("seed", 65536), ("tempo", 120.5),
+                            ("mode", .5), ("resolution", 3), ("gate_mode", .5), ("x", 1.01)]:
+            self.require_tool_error("apply_edits", {"expected_revision": before_errors["revision"], "edits": [
+                {"tool": "set_parameter", "arguments": {"id": "terrain", "parameter": "y", "value": .8}},
+                {"tool": "set_parameter", "arguments": {"id": "terrain", "parameter": name, "value": value}}]})
+            self.assertEqual(self.patch_snapshot(), before_errors)
+        self.require_tool_success("save_patch", {"filename": "rhythm-terrain.json"})
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": []}})
+        self.require_tool_success("load_patch", {"filename": "rhythm-terrain.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
+
+    def test_event_fork_source_routing_observation_history_presets_and_saved_reopen(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["event_fork"]
+        self.assertEqual(descriptor["inputs"], ["gate1", "gate2", "probability1_cv", "probability2_cv"])
+        self.assertEqual(descriptor["outputs"], ["a1", "b1", "a2", "b2"])
+        self.assertEqual(descriptor["polyphony"]["maximum_channels"], 1)
+        self.assertIn("Custom", descriptor["tags"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "gate", "kind": "constant", "params": {"value": 5}},
+                      {"id": "fork", "kind": "event_fork", "params": {"probability1": 0, "probability2": 1, "seed": 17, "latch2": 1}}],
+            "cables": [{"from": "gate", "output": "out", "to": "fork", "input": "gate1"}],
+            "output": "fork", "output_port": "a1"}})
+        before = self.patch_snapshot()
+        for port, high in [("a1", True), ("b1", False), ("a2", False), ("b2", True)]:
+            trace = self.payload(self.require_tool_success("capture_signal", {"id": "fork", "port": port, "seconds": .02}))
+            means = [point["mean"] for point in trace["bins"] if point["mean"] is not None]
+            self.assertTrue(means and all(math.isfinite(v) and 0 <= v <= 5 for v in means))
+            self.assertEqual(max(means), 5 if high else 0)
+        self.assertEqual(self.patch_snapshot(), before, "signal capture is observational")
+        for value in [.2, .35]:
+            self.require_tool_success("set_parameter", {"id": "fork", "parameter": "probability1", "value": value,
+                "history_group": "fork-probability", "expected_revision": self.patch_snapshot()["revision"]})
+        changed = self.patch_snapshot()
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], before["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], changed["patch"])
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "fork"}))["preset"]
+        self.assertEqual(preset["params"]["seed"], 17)
+        self.assertEqual(preset["params"]["latch2"], 1)
+        before_errors = self.patch_snapshot()
+        for name, value in [("seed", 0), ("seed", 1.5), ("toggle1", .5), ("latch2", 2), ("probability2", 1.01)]:
+            self.require_tool_error("set_parameter", {"id": "fork", "parameter": name, "value": value})
+            self.assertEqual(self.patch_snapshot(), before_errors)
+        self.require_tool_success("save_patch", {"filename": "event-fork.json"})
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": []}})
+        self.require_tool_success("load_patch", {"filename": "event-fork.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
+
     def test_segment_garden_outputs_grouped_history_presets_and_saved_reopen(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         descriptor = modules["segment_garden"]

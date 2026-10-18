@@ -960,3 +960,16 @@ Copyright notices are retained in src/* files where relevant.
 Segment Garden adapts the MIT-licensed Stages standard segment generator and
 resources with stmlib/Tides dependencies. See Stages-algorithms.txt for full
 notices and the separately declared native bridge/voltage scope.
+
+Event Fork: Branches firmware decision/ADC kernel, Copyright 2012 Emilie Gillet,
+GPL-3.0-or-later. See Branches-algorithms.txt, LICENSE-GPL-3.0.txt and the
+public corresponding source at crates/openpatch-core/src/event_fork/ and
+scripts/branches_reference/. Native electrical/CPU timing equivalence is not claimed.
+
+Rhythm Terrain: Grids pattern generator/clock/resources (Copyright 2011–2012
+Emilie Gillet), with avrlib RNG/integer helpers (Copyright 2009 Emilie Gillet),
+GPL-3.0-or-later. See Grids-algorithms.txt, LICENSE-GPL-3.0.txt and the public
+corresponding source at crates/openpatch-core/src/rhythm_terrain.rs,
+crates/openpatch-core/src/rhythm_terrain/ and scripts/grids_reference/.
+Native timing, voltage/CV, tap and edge-capture policies are documented separately;
+AVR electrical/CPU timing equivalence is not claimed.
