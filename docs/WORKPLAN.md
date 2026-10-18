@@ -17,6 +17,25 @@ Rust tests and 123 Python/MCP tests, plus four bundled-release CLI smoke tests.
 native-window/audio-device qualification. Keep the installed app stable; macOS
 ARM remains first, Windows/Linux and MIDI/live performance remain deferred.
 
+## Public cross-platform release candidate
+
+The user requested a combined macOS ARM, Windows x64 and Steam Deck/Linux x64
+release, including Claude's Patch Engine, followed by a product README refresh.
+`work/release-0-3-0` integrates the finished five-instrument family and
+`work/patch-engine` at `9b0dcfc`, with scoped rack organization, signal tracing,
+cable materials, footer controls and the Patch Engine. The candidate is
+**0.3.0 build 10**. Packaging includes the desktop and CLI, examples, license
+notices and matching source links. One release PR will qualify all three targets.
+The existing installed 0.2.7 build 9 remains untouched.
+
+Release hardening protects Save/Discard/Cancel when replacing a generated patch
+and fences asynchronous edits against external document changes. Portable Linux
+installation preserves user data. Release publication is pending the full gate;
+Windows audio devices and Steam Deck hardware/game mode are not yet qualified.
+Recall Random's unfinished source-kernel checkpoint is preserved separately on
+`work/recall-random` and is excluded. Experimental VCV binary hosting remains
+excluded; ecosystem parity and the remaining fifteen instruments remain open.
+
 ## User-requested rack workflow and creative expansion (2026-10-17)
 
 The first creative family is merged through [PR #34](https://github.com/dexterlabs1/openpatch/pull/34)

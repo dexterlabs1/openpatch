@@ -3,7 +3,11 @@ use crate::control::Session;
 
 fn empty_session() -> Session {
     let mut s = Session::new(&std::env::temp_dir()).unwrap();
-    s.execute("replace_patch", json!({"patch": {"version": 2, "sample_rate": 48000, "nodes": [], "cables": []}})).unwrap();
+    s.execute(
+        "replace_patch",
+        json!({"patch": {"version": 2, "sample_rate": 48000, "nodes": [], "cables": []}}),
+    )
+    .unwrap();
     s
 }
 
@@ -16,7 +20,10 @@ fn apply_all(edits: &[Value]) -> Result<Session, String> {
 }
 
 fn flatten(steps: &[Value]) -> Vec<Value> {
-    steps.iter().flat_map(|s| s["edits"].as_array().unwrap().clone()).collect()
+    steps
+        .iter()
+        .flat_map(|s| s["edits"].as_array().unwrap().clone())
+        .collect()
 }
 
 #[test]
@@ -34,17 +41,31 @@ fn every_word_combination_builds_in_every_mode() {
                     for (name, plan) in [("reveal", &steps), ("showtime", &show)] {
                         assert!(plan.len() <= 64, "{tag}: {name} has {} steps", plan.len());
                         for s in plan.iter() {
-                            assert!(s["edits"].as_array().unwrap().len() <= 8, "{tag}: {name} step over 8 edits");
+                            assert!(
+                                s["edits"].as_array().unwrap().len() <= 8,
+                                "{tag}: {name} step over 8 edits"
+                            );
                         }
                         assert!(flatten(plan).len() <= 256, "{tag}: {name} over 256 edits");
                     }
-                    for (name, edits) in [("instant", r.edits()), ("reveal", [mods.clone(), flatten(&steps)].concat()), ("showtime", flatten(&show))] {
-                        if let Err(e) = apply_all(&edits) { fails.push(format!("{tag} {name}: {e}")); }
+                    for (name, edits) in [
+                        ("instant", r.edits()),
+                        ("reveal", [mods.clone(), flatten(&steps)].concat()),
+                        ("showtime", flatten(&show)),
+                    ] {
+                        if let Err(e) = apply_all(&edits) {
+                            fails.push(format!("{tag} {name}: {e}"));
+                        }
                     }
                 }
             }
         }
-        assert!(fails.is_empty(), "{} failures, first: {:?}", fails.len(), &fails[..fails.len().min(5)]);
+        assert!(
+            fails.is_empty(),
+            "{} failures, first: {:?}",
+            fails.len(),
+            &fails[..fails.len().min(5)]
+        );
     }
 }
 
@@ -54,12 +75,35 @@ fn final_graph_matches_the_offline_patch() {
     let s = apply_all(&r.edits()).unwrap();
     let live = serde_json::to_value(s.patch()).unwrap();
     let want = r.patch();
-    assert_eq!(live["nodes"].as_array().unwrap().len(), want["nodes"].as_array().unwrap().len());
-    assert_eq!(live["cables"].as_array().unwrap().len(), want["cables"].as_array().unwrap().len());
-    let route = |c: &Value| (c["from"].as_str().unwrap_or("").to_string(), c["to"].as_str().unwrap_or("").to_string(), c["input"].as_str().unwrap_or("").to_string());
-    let mut a: Vec<_> = live["cables"].as_array().unwrap().iter().map(route).collect();
-    let mut b: Vec<_> = want["cables"].as_array().unwrap().iter().map(route).collect();
-    a.sort(); b.sort();
+    assert_eq!(
+        live["nodes"].as_array().unwrap().len(),
+        want["nodes"].as_array().unwrap().len()
+    );
+    assert_eq!(
+        live["cables"].as_array().unwrap().len(),
+        want["cables"].as_array().unwrap().len()
+    );
+    let route = |c: &Value| {
+        (
+            c["from"].as_str().unwrap_or("").to_string(),
+            c["to"].as_str().unwrap_or("").to_string(),
+            c["input"].as_str().unwrap_or("").to_string(),
+        )
+    };
+    let mut a: Vec<_> = live["cables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(route)
+        .collect();
+    let mut b: Vec<_> = want["cables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(route)
+        .collect();
+    a.sort();
+    b.sort();
     assert_eq!(a, b);
     // the offline patch is a valid engine patch on its own
     let patch: openpatch_core::Patch = serde_json::from_value(want).unwrap();
@@ -73,7 +117,14 @@ fn seeds_compose_different_pieces_and_are_reproducible() {
     assert_eq!(a.patch(), b.patch());
     let mut seen = std::collections::HashSet::new();
     for seed in 1..=20u64 {
-        seen.insert(serde_json::to_string(&Recipe::new("Techno", "Hypnotic", "Liquid", seed).unwrap().patch()).unwrap());
+        seen.insert(
+            serde_json::to_string(
+                &Recipe::new("Techno", "Hypnotic", "Liquid", seed)
+                    .unwrap()
+                    .patch(),
+            )
+            .unwrap(),
+        );
     }
     assert_eq!(seen.len(), 20);
 }
@@ -101,9 +152,15 @@ fn chord_voicings_never_stack_seconds_and_stay_in_range() {
 #[test]
 fn sentences_read_naturally() {
     let r = Recipe::new("Deep House", "Hypnotic", "Liquid", 1).unwrap();
-    assert_eq!(r.sentence, "A hypnotic Deep House track that flows like liquid.");
+    assert_eq!(
+        r.sentence,
+        "A hypnotic Deep House track that flows like liquid."
+    );
     let r = Recipe::new("UK Garage", "Euphoric", "Pulsing", 1).unwrap();
-    assert_eq!(r.sentence, "A euphoric UK Garage track that pulses and breathes.");
+    assert_eq!(
+        r.sentence,
+        "A euphoric UK Garage track that pulses and breathes."
+    );
 }
 
 #[test]
@@ -114,8 +171,20 @@ fn minecraft_mode_builds_quietly_and_in_key() {
             assert!(r.sentence.contains("Minecraft-style piece"));
             apply_all(&r.edits()).unwrap_or_else(|e| panic!("Minecraft|{m}|{t}: {e}"));
             let p = r.patch();
-            let drums = p["nodes"].as_array().unwrap().iter().find(|n| n["id"] == "seq_drums").unwrap();
-            assert!(drums["score"]["tracks"].as_array().unwrap().iter().all(|tr| tr["steps"].as_array().unwrap().is_empty()), "no drums");
+            let drums = p["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|n| n["id"] == "seq_drums")
+                .unwrap();
+            assert!(
+                drums["score"]["tracks"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|tr| tr["steps"].as_array().unwrap().is_empty()),
+                "no drums"
+            );
         }
     }
 }

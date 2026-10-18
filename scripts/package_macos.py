@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import tomllib
 
+from package_release import copy_notices
+
 root = pathlib.Path(__file__).resolve().parents[1]
 version = tomllib.loads((root / "crates/openpatch-desktop/Cargo.toml").read_text())["package"]["version"]
 
@@ -16,6 +18,8 @@ parser.add_argument("--cli-binary", help="MCP attachment CLI (default: openpatch
 parser.add_argument("--output", default="dist/OpenPatch.app")
 parser.add_argument("--bundle-id", default="org.openpatch.desktop", help="CFBundleIdentifier (use a distinct id for side-by-side previews)")
 parser.add_argument("--name", default="OpenPatch", help="Bundle and display name")
+parser.add_argument("--build-number", default="10", help="CFBundleVersion (default: 10)")
+parser.add_argument("--source", help="Corresponding source URL for this exact build")
 args = parser.parse_args()
 binary = pathlib.Path(args.binary)
 if not binary.is_file():
@@ -36,20 +40,13 @@ resources.mkdir(parents=True, exist_ok=True)
 icon = pathlib.Path(__file__).resolve().parents[1] / "crates/openpatch-desktop/assets/OpenPatch.icns"
 shutil.copy2(icon, resources / "OpenPatch.icns")
 licenses = resources / "Licenses"
-licenses.mkdir(parents=True, exist_ok=True)
-shutil.copy2(icon.parent / "fonts/OFL-Rajdhani.txt", licenses / "Rajdhani.txt")
-for notice in (icon.parent / "licenses").iterdir():
-    if notice.is_file():
-        shutil.copy2(notice, licenses / notice.name)
-shutil.copy2(root / "LICENSE", licenses / "OpenPatch-MIT.txt")
-shutil.copy2(root / "crates/openpatch-core/LICENSE-THIRD-PARTY", licenses / "OpenPatch-core-THIRD-PARTY.txt")
-shutil.copy2(root / "crates/openpatch-core/LICENSE-GPL-3.0.txt", licenses / "LICENSE-GPL-3.0.txt")
+copy_notices(licenses, args.source or f"https://github.com/dexterlabs1/openpatch/tree/v{version}")
 with (contents / "Info.plist").open("wb") as stream:
     plistlib.dump({
         "CFBundleName": args.name,
         "CFBundleDisplayName": args.name,
         "CFBundleIdentifier": args.bundle_id,
-        "CFBundleVersion": "9",
+        "CFBundleVersion": args.build_number,
         "CFBundleShortVersionString": version,
         "CFBundleExecutable": "openpatch-desktop",
         "CFBundleIconFile": "OpenPatch.icns",

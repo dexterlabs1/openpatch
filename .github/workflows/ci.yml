@@ -12,6 +12,10 @@ on:
         description: 'Also validate Linux and Windows and run throughput benchmarks'
         type: boolean
         default: false
+      release_validation:
+        description: 'Validate and package macOS, Windows and Steam Deck without benchmarks'
+        type: boolean
+        default: false
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -21,8 +25,8 @@ jobs:
   test:
     strategy:
       fail-fast: false
-      # Daily development targets the user's Mac. Other platforms are opt-in.
-      matrix: ${{ fromJSON(inputs.full_validation && '{"include":[{"os":"macos-14","target":"aarch64-apple-darwin","artifact":"macos-arm64","binary":"openpatch"},{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","artifact":"linux-x86_64","binary":"openpatch"},{"os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"windows-x86_64","binary":"openpatch.exe"}]}' || '{"include":[{"os":"macos-14","target":"aarch64-apple-darwin","artifact":"macos-arm64","binary":"openpatch"}]}') }}
+      # Release PRs qualify all requested platforms once; daily work targets Mac.
+      matrix: ${{ fromJSON((inputs.full_validation || inputs.release_validation || startsWith(github.head_ref, 'work/release-')) && '{"include":[{"os":"macos-14","target":"aarch64-apple-darwin","artifact":"macos-arm64","binary":"openpatch"},{"os":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","artifact":"linux-x86_64","binary":"openpatch"},{"os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"windows-x86_64","binary":"openpatch.exe"}]}' || '{"include":[{"os":"macos-14","target":"aarch64-apple-darwin","artifact":"macos-arm64","binary":"openpatch"}]}') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -58,6 +62,8 @@ jobs:
       - name: Rust correctness and allocation tests
         run: cargo test --locked --workspace
       - name: Release binary
+        env:
+          RUSTFLAGS: ${{ runner.os == 'Windows' && '-C target-feature=+crt-static' || '' }}
         run: cargo build --locked --release --target ${{ matrix.target }}
       - name: Native window and GLSL smoke test
         if: runner.os == 'Linux'
@@ -69,11 +75,38 @@ jobs:
         with:
           name: native-desktop-screenshot
           path: native-test-output/
-      - name: macOS application bundle
+      - name: Portable desktop package
+        run: python scripts/package_release.py --platform ${{ matrix.artifact }} --binary-dir target/${{ matrix.target }}/release --output dist
+      - name: Check packaged macOS signatures
         if: runner.os == 'macOS'
         run: |
-          python3 scripts/package_macos.py --binary target/${{ matrix.target }}/release/openpatch-desktop
-          ditto -c -k --sequesterRsrc --keepParent dist/OpenPatch.app dist/OpenPatch-macos-arm64.zip
+          unzip -q dist/OpenPatch-macos-arm64.zip -d native-test-output/packaged-mac
+          codesign --verify --deep --strict native-test-output/packaged-mac/OpenPatch-macos-arm64/OpenPatch.app
+          native-test-output/packaged-mac/OpenPatch-macos-arm64/OpenPatch.app/Contents/MacOS/openpatch catalog > native-test-output/packaged-mac/catalog.json
+      - name: Check packaged Windows executables
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Expand-Archive dist/OpenPatch-windows-x86_64.zip native-test-output/packaged-windows
+          & native-test-output/packaged-windows/OpenPatch-windows-x86_64/openpatch.exe catalog | Out-File native-test-output/packaged-windows/catalog.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & native-test-output/packaged-windows/OpenPatch-windows-x86_64/openpatch-desktop.exe --third-party-licenses | Out-File native-test-output/packaged-windows/licenses.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check packaged Linux executables and user-space installation
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p native-test-output/packaged-linux
+          tar -xzf dist/OpenPatch-linux-x86_64.tar.gz -C native-test-output/packaged-linux
+          native-test-output/packaged-linux/OpenPatch-linux-x86_64/openpatch catalog > native-test-output/packaged-linux/catalog.json
+          HOME="$RUNNER_TEMP/openpatch-install" sh native-test-output/packaged-linux/OpenPatch-linux-x86_64/install.sh
+          "$RUNNER_TEMP/openpatch-install/.local/share/openpatch/openpatch" patch-engine "Deep House" Dreamy Liquid --info
+          ldd native-test-output/packaged-linux/OpenPatch-linux-x86_64/openpatch-desktop
+      - name: Record package identity
+        shell: python
+        run: |
+          import hashlib, json, os, pathlib, subprocess
+          info = {"commit": os.environ["GITHUB_SHA"], "tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(), "platform": "${{ matrix.artifact }}", "archives": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in pathlib.Path("dist").glob("OpenPatch-*") if p.is_file()}}
+          pathlib.Path("dist/release-${{ matrix.artifact }}.json").write_text(json.dumps(info, indent=2) + "\n")
       - name: MCP integration tests
         env:
           OPENPATCH_BIN: target/${{ matrix.target }}/release/${{ matrix.binary }}
@@ -88,15 +121,17 @@ jobs:
             target/${{ matrix.target }}/release/${{ matrix.binary }}
             target/${{ matrix.target }}/release/openpatch-desktop
             target/${{ matrix.target }}/release/openpatch-desktop.exe
-            dist/OpenPatch-macos-arm64.zip
+            dist/OpenPatch-*.zip
+            dist/OpenPatch-*.tar.gz
+            dist/release-*.json
             Cargo.lock
             LICENSE
             README.md
       - name: Portable repository snapshot
-        if: matrix.os == 'ubuntu-latest'
+        if: runner.os == 'Linux'
         run: git bundle create openpatch.bundle --all
       - uses: actions/upload-artifact@v4
-        if: matrix.os == 'ubuntu-latest'
+        if: runner.os == 'Linux'
         with:
           name: repository-snapshot
           path: openpatch.bundle

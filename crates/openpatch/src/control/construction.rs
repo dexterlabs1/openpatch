@@ -564,6 +564,15 @@ pub(super) fn start(
     args: Value,
     authorization: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<Value, String> {
+    start_fenced(session, args, authorization, None).map(|(result, _)| result)
+}
+
+pub(super) fn start_fenced(
+    session: &SharedSession,
+    args: Value,
+    authorization: Option<&std::sync::atomic::AtomicBool>,
+    fence: Option<DocumentExecutionFence>,
+) -> Result<(Value, DocumentExecutionFence), String> {
     validate_arguments(&tools(), "start_construction", &args)?;
     let base_revision =
         expected_revision(&args)?.ok_or("expected_revision is required to start construction")?;
@@ -616,6 +625,9 @@ pub(super) fn start(
     let mut detached = {
         let mut live = session.lock().map_err(|_| "session lock poisoned")?;
         check_transport_authorization(authorization)?;
+        if let Some(fence) = fence {
+            fence.check(&live)?;
+        }
         live.check_open()?;
         live.check_revision(Some(base_revision))?;
         let (revision, closing) = (live.revision, live.closing);
@@ -643,6 +655,9 @@ pub(super) fn start(
     );
     let mut live = session.lock().map_err(|_| "session lock poisoned")?;
     check_transport_authorization(authorization)?;
+    if let Some(fence) = fence {
+        fence.check(&live)?;
+    }
     live.check_open()?;
     live.check_revision(Some(base_revision))?;
     let (revision, closing) = (live.revision, live.closing);
@@ -681,7 +696,10 @@ pub(super) fn start(
         wake,
     });
     live.construction.last_move = None;
-    Ok(live.construction_snapshot())
+    Ok((
+        live.construction_snapshot(),
+        DocumentExecutionFence::capture(&live),
+    ))
 }
 
 fn worker(session: Weak<Mutex<Session>>, id: u64, wake: Arc<Wake>) {

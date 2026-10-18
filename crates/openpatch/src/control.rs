@@ -515,6 +515,78 @@ const EDIT_TOOLS: &[&str] = &[
 /// Shared only by control threads; never acquire this mutex in an audio callback.
 pub type SharedSession = Arc<Mutex<Session>>;
 
+/// Identity of one native document at a specific authored graph and layout boundary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DocumentExecutionFence {
+    pub generation: u64,
+    pub revision: u64,
+    pub layout_generation: u64,
+    pub layout_pending: bool,
+}
+
+impl DocumentExecutionFence {
+    pub fn capture(session: &Session) -> Self {
+        Self {
+            generation: session.project_save_baseline().generation(),
+            revision: session.revision(),
+            layout_generation: session.layout_generation(),
+            layout_pending: session.layout_pending(),
+        }
+    }
+
+    pub fn matches(&self, session: &Session) -> bool {
+        *self == Self::capture(session)
+    }
+
+    fn check(&self, session: &Session) -> Result<(), String> {
+        let current = Self::capture(session);
+        // A pending native geometry checkpoint may be completed once by the
+        // host without changing document identity or authored graph revision.
+        let completed_placement = self.generation == current.generation
+            && self.revision == current.revision
+            && self.layout_pending
+            && !current.layout_pending
+            && self.layout_generation.checked_add(1) == Some(current.layout_generation);
+        if self.matches(session) || completed_placement {
+            Ok(())
+        } else {
+            Err("document changed since native build preparation".into())
+        }
+    }
+}
+
+/// Execute native build edits against their exact document boundary. The next
+/// fence is captured under the same lock as the mutation, never by rebasing to
+/// a subsequently observed live revision. Construction checks both preflight
+/// capture and final registration; ordinary bridge/stdin authority is unchanged.
+pub fn execute_shared_fenced(
+    session: &SharedSession,
+    name: &str,
+    args: Value,
+    fence: DocumentExecutionFence,
+) -> Result<(Value, DocumentExecutionFence), String> {
+    if name == "start_construction" {
+        let result = construction::start_fenced(session, args, None, Some(fence));
+        if let Ok(mut live) = session.lock() {
+            let recorded = result
+                .as_ref()
+                .map(|(value, _)| value.clone())
+                .map_err(Clone::clone);
+            live.record_operation(name, false, &recorded);
+        }
+        return result;
+    }
+    if name != "apply_edits" {
+        return Err("native build fences support only apply_edits and start_construction".into());
+    }
+    let mut live = session.lock().map_err(|_| "session lock poisoned")?;
+    fence.check(&live)?;
+    live.reconcile_midi_cc_learn()?;
+    fence.check(&live)?;
+    let result = execute_mutation_locked(session, &mut live, name, args, None)?;
+    Ok((result, DocumentExecutionFence::capture(&live)))
+}
+
 /// Compatibility name for the original offline command-line application.
 pub type Application = Session;
 
@@ -602,13 +674,21 @@ pub(crate) fn execute_shared_authorized(
             }
             result
         }
-        _ => {
-            let result = live.execute(name, args);
-            live.record_operation(name, authorization.is_some(), &result);
-            midi_cc::start_worker(session, &mut live);
-            result
-        }
+        _ => execute_mutation_locked(session, &mut live, name, args, authorization),
     }
+}
+
+fn execute_mutation_locked(
+    session: &SharedSession,
+    live: &mut Session,
+    name: &str,
+    args: Value,
+    authorization: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<Value, String> {
+    let result = live.execute(name, args);
+    live.record_operation(name, authorization.is_some(), &result);
+    midi_cc::start_worker(session, live);
+    result
 }
 
 fn check_transport_authorization(
@@ -622,6 +702,8 @@ fn check_transport_authorization(
 
 #[cfg(test)]
 mod grouped_parameter_tests;
+#[cfg(test)]
+mod native_build_fence_tests;
 #[cfg(test)]
 pub(crate) mod transport_authorization_tests;
 

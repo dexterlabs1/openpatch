@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenPatch Downloads</title>
-<meta name="description" content="Download the latest OpenPatch build with the Patch Engine for Steam Deck, Linux and macOS.">
+<meta name="description" content="Download the latest OpenPatch build with the Patch Engine for Steam Deck, Linux, Windows and macOS.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -54,11 +54,11 @@ footer a { color:inherit; }
 
   <div class="grid" id="platforms"></div>
 
-  <h2>Steam Deck: install or update in one line</h2>
+  <h2>Steam Deck: install or update</h2>
   <div class="card">
-    <div class="meta">Desktop Mode → Konsole, or SSH as <b>deck</b>. No root needed. Run it again any time to update.</div>
-    <pre id="deck-cmd"><button class="copy" data-copy="deck-cmd">Copy</button><span>…</span></pre>
-    <div class="meta" style="margin-top:10px">After installing: launch <b>OpenPatch</b> from the app menu. Next time just run <b>openpatch-update</b> or pick <b>Update OpenPatch</b> from the menu.</div>
+    <div class="meta">Desktop Mode → Konsole. Download and extract the Linux package, then run the installer below. No root needed. Run it again to update.</div>
+    <pre id="deck-cmd"><button class="copy" data-copy="deck-cmd">Copy</button><span>cd ~/Downloads/OpenPatch-linux-x86_64 &amp;&amp; ./install.sh</span></pre>
+    <div class="meta" style="margin-top:10px">After installing: launch <b>OpenPatch</b> from the app menu. Next time run <b>~/.local/bin/openpatch-update</b> or pick <b>Update OpenPatch</b> from the menu.</div>
   </div>
 
   <h2>What's new</h2>
@@ -69,8 +69,9 @@ footer a { color:inherit; }
 <script>
 const REPO = "dexterlabs1/openpatch";
 const PLATFORMS = [
-  { id: "linux", name: "Steam Deck / Linux", match: /linux-x86_64\.tar\.gz$/, note: "x86_64 · extract and run install.sh" },
-  { id: "mac", name: "macOS (Apple silicon)", match: /macos-arm64\.zip$/, note: "Right-click → Open the first time (preview signing)" },
+  { id: "linux", name: "Steam Deck / Linux", match: /^OpenPatch-linux-x86_64\.tar\.gz$/, note: "x86_64 · extract and run install.sh" },
+  { id: "windows", name: "Windows PC", match: /^OpenPatch-windows-x86_64\.zip$/, note: "x86_64 · extract and run openpatch-desktop.exe" },
+  { id: "mac", name: "macOS (Apple silicon)", match: /^OpenPatch-macos-arm64\.zip$/, note: "Apple silicon · ad-hoc signed; not notarized" },
 ];
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -78,6 +79,7 @@ const mb = n => (n / 1048576).toFixed(1) + " MB";
 function detect() {
   const ua = navigator.userAgent;
   if (/Linux|X11|SteamOS|Valve/i.test(ua) && !/Android/i.test(ua)) return "linux";
+  if (/Windows/i.test(ua)) return "windows";
   if (/Mac/i.test(ua)) return "mac";
   return null;
 }
@@ -97,8 +99,8 @@ async function load() {
   try {
     const r = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=20`, { headers: { Accept: "application/vnd.github+json" } });
     if (!r.ok) throw new Error("GitHub said " + r.status);
-    const releases = (await r.json()).filter(x => !x.draft);
-    const pick = id => { const p = PLATFORMS.find(p => p.id === id); for (const rel of releases) { const a = rel.assets.find(a => p.match.test(a.name)); if (a) return { rel, a, p }; } return null; };
+    const releases = (await r.json()).filter(x => !x.draft).sort((a, b) => Date.parse(b.published_at) - Date.parse(a.published_at));
+    const pick = id => { const p = PLATFORMS.find(p => p.id === id); if (!p) return null; for (const rel of releases) { const a = (rel.assets || []).find(a => p.match.test(a.name)); if (a) return { rel, a, p }; } return null; };
     const found = PLATFORMS.map(p => pick(p.id)).filter(Boolean);
     if (!found.length) throw new Error("no builds published yet");
     const mine = pick(detect()) || found[0];
@@ -107,9 +109,6 @@ async function load() {
     $("main-label").textContent = mine.rel.name || mine.rel.tag_name;
     $("main-meta").textContent = `${mine.rel.tag_name} · ${new Date(mine.rel.published_at).toLocaleDateString()} · ${mb(mine.a.size)}`;
     $("platforms").innerHTML = found.map(f => `<div class="card plat"><h3>${esc(f.p.name)}</h3><p>${esc(f.p.note)}<br><span class="meta">${esc(f.rel.tag_name)} · ${mb(f.a.size)}</span></p><a class="btn ghost" href="${esc(f.a.browser_download_url)}">Download ${esc(f.a.name)}</a></div>`).join("");
-    const linux = pick("linux");
-    if (linux) $("deck-cmd").querySelector("span").textContent =
-      `curl -L -o ~/openpatch.tar.gz ${linux.a.browser_download_url} && tar -xzf ~/openpatch.tar.gz -C ~ && ~/OpenPatch-PatchEngine-linux-x86_64/install.sh`;
     $("notes").innerHTML = notesHtml(mine.rel.body) || "No notes for this build.";
   } catch (e) {
     $("main-label").innerHTML = `<span class="err">Couldn't reach GitHub (${esc(e.message)}).</span> Use the releases page instead.`;
