@@ -62,18 +62,34 @@ fn run() -> Result<(), String> {
             let mut rest = args[4..].iter();
             while let Some(a) = rest.next() {
                 match a.as_str() {
-                    "--seed" => seed = rest.next().and_then(|s| s.parse().ok()).ok_or("--seed needs a number")?,
-                    "--budget" => budget = Some(rest.next().and_then(|s| s.parse().ok()).ok_or("--budget needs a number")?),
+                    "--seed" => {
+                        seed = rest
+                            .next()
+                            .and_then(|s| s.parse().ok())
+                            .ok_or("--seed needs a number")?
+                    }
+                    "--budget" => {
+                        budget = Some(
+                            rest.next()
+                                .and_then(|s| s.parse().ok())
+                                .ok_or("--budget needs a number")?,
+                        )
+                    }
                     "--info" => mode = "info",
                     "--reveal" => mode = "reveal",
                     "--showtime" => mode = "showtime",
                     _ => return Err(format!("unknown option {a}")),
                 }
             }
-            let r = openpatch::patch_engine::Recipe::with_budget(&args[1], &args[2], &args[3], seed, budget)?;
+            let r = openpatch::patch_engine::Recipe::with_budget(
+                &args[1], &args[2], &args[3], seed, budget,
+            )?;
             let out = match mode {
                 "info" => r.info(),
-                "reveal" => { let (modules, steps) = r.reveal(); serde_json::json!({"modules": modules, "steps": steps}) }
+                "reveal" => {
+                    let (modules, steps) = r.reveal();
+                    serde_json::json!({"modules": modules, "steps": steps})
+                }
                 "showtime" => serde_json::json!(r.showtime()),
                 _ => r.patch(),
             };

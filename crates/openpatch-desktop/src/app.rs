@@ -175,6 +175,7 @@ fn wavetable_filename_with_extension(filename: &str, extension: &str) -> String 
 enum PendingAction {
     NewTemplate,
     Replace(Patch, String),
+    PatchEngine(String),
     Load(String),
     Recover(String),
     Close,
@@ -404,12 +405,12 @@ pub struct OpenPatch {
     start: Instant,
     mcp_session: crate::mcp_session_ui::Panel,
     patch_engine: crate::patch_engine_ui::Panel,
-    /// Title of the fresh document a Patch Engine build is waiting for (after any unsaved-changes prompt).
-    patch_engine_wait: Option<String>,
+    /// A pending build, with a fence only after its own replacement succeeds.
+    patch_engine_wait: Option<Option<crate::patch_engine_ui::DocumentFence>>,
     /// Rack zoom to keep across a Patch Engine build (a fresh document would otherwise reset it).
     patch_engine_zoom: f32,
-    /// Title of the last document the Patch Engine generated (treated as scratch for the next build).
-    patch_engine_last: Option<String>,
+    /// Verified generated authored content; any edit, save or replacement revokes scratch status.
+    patch_engine_last: Option<crate::patch_engine_ui::GeneratedDocument>,
     construction: crate::construction_ui::Panel,
     /// A Pause/Resume/Cancel pressed in the footer's construction status, applied next frame.
     construction_footer_action: Option<crate::construction_ui::Action>,
@@ -419,8 +420,6 @@ pub struct OpenPatch {
     active_file: Option<String>,
     active_token: Option<FileToken>,
     after_save: Option<PendingAction>,
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    hosted_save: Option<HostedSave>,
     deferred_action: Option<PendingAction>,
     deferred_manual_release: Option<(u64, crate::audio::ManualReleaseTicket)>,
     autosave_needed: bool,
@@ -626,8 +625,6 @@ impl OpenPatch {
             active_file: startup.active_file,
             active_token: startup.active_token,
             after_save: None,
-            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-            hosted_save: None,
             deferred_action: None,
             deferred_manual_release: None,
             autosave_needed: false,
@@ -2083,6 +2080,7 @@ impl OpenPatch {
                 PendingAction::Replace(patch, title) => {
                     self.replace_now_guarded(patch, &title, true)
                 }
+                PendingAction::PatchEngine(title) => self.replace_patch_engine(&title, true),
                 PendingAction::Load(name) => self.load_document_guarded(&name, false, true),
                 PendingAction::Recover(name) => self.load_document_guarded(&name, true, true),
                 PendingAction::Close | PendingAction::DiscardClose => unreachable!(),
@@ -2255,6 +2253,18 @@ impl OpenPatch {
         }
     }
     fn replace_now_guarded(&mut self, patch: Patch, title: &str, require_saved: bool) {
+        self.replace_document_guarded(patch, title, require_saved, false);
+    }
+    fn replace_patch_engine(&mut self, title: &str, require_saved: bool) {
+        self.replace_document_guarded(Patch::new_v2(), title, require_saved, true);
+    }
+    fn replace_document_guarded(
+        &mut self,
+        patch: Patch,
+        title: &str,
+        require_saved: bool,
+        patch_engine: bool,
+    ) {
         // Commit and local project metadata share the same serialization
         // boundary. A later MCP replacement cannot be adopted by sync and then
         // accidentally relabeled with this bundled example's title/layout.
@@ -2266,6 +2276,19 @@ impl OpenPatch {
                 return;
             }
         };
+        if patch_engine && !require_saved && self.patch_engine_last.is_some() {
+            let unchanged = self.active_file.is_none()
+                && self
+                    .patch_engine_last
+                    .as_ref()
+                    .is_some_and(|generated| generated.matches(&live));
+            if !unchanged {
+                self.patch_engine_last = None;
+                drop(live);
+                self.request_action(PendingAction::PatchEngine(title.into()));
+                return;
+            }
+        }
         let result = (|| {
             if require_saved {
                 self.check_saved_content(&live)?;
@@ -2280,7 +2303,11 @@ impl OpenPatch {
             Err(error) => {
                 self.status = error;
                 if require_saved {
-                    self.confirm_discard = Some(PendingAction::Replace(patch, title.into()));
+                    self.confirm_discard = Some(if patch_engine {
+                        PendingAction::PatchEngine(title.into())
+                    } else {
+                        PendingAction::Replace(patch, title.into())
+                    });
                 }
                 drop(live);
                 self.sync();
@@ -2288,6 +2315,8 @@ impl OpenPatch {
                 return;
             }
         };
+        let document_generation = live.project_save_baseline().generation();
+        self.patch_engine_last = None;
         self.project = live.project_document().clone();
         self.patch = live.patch().clone();
         self.revision = document_revision;
@@ -2409,7 +2438,48 @@ impl OpenPatch {
         drop(live);
         self.sync();
         self.capture_document();
+        if patch_engine && self.patch_engine_wait.is_some() {
+            if let Ok(live) = self.shared.lock() {
+                if live.revision() == document_revision
+                    && live.project_save_baseline().generation() == document_generation
+                {
+                    self.patch_engine_wait =
+                        Some(Some(crate::patch_engine_ui::DocumentFence::capture(&live)));
+                }
+            }
+        }
     }
+    fn prepare_patch_engine(&mut self, title: &str) {
+        self.patch_engine_zoom = self.rack.zoom();
+        self.patch_engine_wait = Some(None);
+        // The scratch exception is checked again under the replacement lock.
+        let scratch = self.active_file.is_none() && self.patch_engine_last.is_some();
+        if scratch {
+            self.replace_document_guarded(Patch::new_v2(), title, false, true);
+        } else {
+            self.request_action(PendingAction::PatchEngine(title.into()));
+        }
+    }
+
+    fn service_patch_engine(&mut self) {
+        if let Some(generated) = self.patch_engine.take_generated() {
+            self.patch_engine_last = Some(generated);
+        }
+        if self.confirm_discard.is_some()
+            || self.deferred_action.is_some()
+            || self.after_save.is_some()
+        {
+            return;
+        }
+        if let Some(handoff) = self.patch_engine_wait.take() {
+            if let Some(fence) = handoff {
+                self.patch_engine.launch(&self.shared, fence);
+            } else {
+                self.patch_engine.cancel_armed();
+            }
+        }
+    }
+
     fn stock_mix_voice_layout() -> Value {
         json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
             "bass":[0,0],"fifth":[390,0],"upper":[780,0],
@@ -2616,6 +2686,7 @@ impl OpenPatch {
         match action {
             PendingAction::NewTemplate => self.new_from_template(false),
             PendingAction::Replace(patch, title) => self.replace_now(patch, &title),
+            PendingAction::PatchEngine(title) => self.replace_patch_engine(&title, false),
             PendingAction::Load(name) => self.load_document(&name, false),
             PendingAction::Recover(name) => self.load_document(&name, true),
             PendingAction::Close | PendingAction::DiscardClose => {
@@ -3509,7 +3580,12 @@ impl OpenPatch {
             .frame(
                 egui::Frame::new()
                     .fill(Color32::from_rgb(27, 31, 31))
-                    .inner_margin(egui::Margin { left: 6, right: 6, top: 3, bottom: 4 }),
+                    .inner_margin(egui::Margin {
+                        left: 6,
+                        right: 6,
+                        top: 3,
+                        bottom: 4,
+                    }),
             )
             .show(ctx, |ui| {
                 // One slim row holds the dock tabs, every visual mode and the
@@ -3678,7 +3754,7 @@ impl OpenPatch {
                 && !self.audio_performance_open
                 && !self.shader_open
                 && !self.mcp_session.is_open()
-            && !self.patch_engine.is_open()
+                && !self.patch_engine.is_open()
                 && !self.cable_palette_ui.keyboard_active()
                 && !(self.browser_open && self.library.keyboard_active())
                 && self.preset_dialog.is_none()
@@ -8328,10 +8404,18 @@ impl eframe::App for OpenPatch {
         // Home view, F11 full screen. They work with the Patch Engine open; text fields keep their keys.
         if !ctx.wants_keyboard_input() {
             let pressed = |k: egui::Key| ctx.input(|i| i.key_pressed(k) && i.modifiers.is_none());
-            if pressed(egui::Key::F1) { self.patch_engine.toggle(); }
-            if pressed(egui::Key::PageUp) { self.rack.zoom_step(true); }
-            if pressed(egui::Key::PageDown) { self.rack.zoom_step(false); }
-            if pressed(egui::Key::Home) { self.rack.reset_view(); }
+            if pressed(egui::Key::F1) {
+                self.patch_engine.toggle();
+            }
+            if pressed(egui::Key::PageUp) {
+                self.rack.zoom_step(true);
+            }
+            if pressed(egui::Key::PageDown) {
+                self.rack.zoom_step(false);
+            }
+            if pressed(egui::Key::Home) {
+                self.rack.reset_view();
+            }
             if pressed(egui::Key::F11) {
                 let full = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
@@ -8347,38 +8431,17 @@ impl eframe::App for OpenPatch {
                         }
                     }
                 }
-                crate::patch_engine_ui::Request::ShowPatch => self.rack.show_origin(self.patch_engine_zoom),
+                crate::patch_engine_ui::Request::ShowPatch => {
+                    self.rack.show_origin(self.patch_engine_zoom)
+                }
                 crate::patch_engine_ui::Request::Prepare => {
-                    // Start a fresh, empty document named after the song through the normal replace path, so
-                    // unsaved work is protected (Save / Discard / Cancel) and title, file and recovery stay consistent.
                     if let Some(title) = self.patch_engine.prepared_title() {
-                        let empty: Patch = serde_json::from_value(json!({"version": 2, "sample_rate": 48000, "nodes": [], "cables": []}))
-                            .expect("empty patch");
-                        self.patch_engine_zoom = self.rack.zoom();
-                        // A song the Patch Engine just made is a scratch document: replace it without asking (Undo
-                        // still restores it). Only the user's own unsaved work gets the Save / Discard / Cancel prompt.
-                        let scratch = self.active_file.is_none() && self.patch_engine_last.as_deref() == Some(self.title.as_str());
-                        if scratch || !self.dirty() {
-                            self.replace_now(empty, &title);
-                        } else {
-                            self.request_action(PendingAction::Replace(empty, title.clone()));
-                        }
-                        self.patch_engine_wait = Some(title);
+                        self.prepare_patch_engine(&title);
                     }
                 }
             }
         }
-        if let Some(title) = self.patch_engine_wait.clone() {
-            if self.confirm_discard.is_none() && self.deferred_action.is_none() {
-                if self.title == title && self.patch.nodes.is_empty() {
-                    self.patch_engine_last = Some(title.clone());
-                    self.patch_engine.launch(&self.shared);
-                } else {
-                    self.patch_engine.cancel_armed();
-                }
-                self.patch_engine_wait = None;
-            }
-        }
+        self.service_patch_engine();
         self.analysis_dock(ctx);
         if self.smoke_test.is_none() || self.audio.is_some() {
             self.rack.set_port_lights(
@@ -8599,6 +8662,9 @@ mod project_workflow_tests {
     mod import_app_tests {
         include!("import_app_tests.rs");
     }
+    mod patch_engine_lifecycle_tests {
+        include!("patch_engine_lifecycle_tests.rs");
+    }
     mod construction_document_tests {
         include!("construction_document_tests.rs");
     }
@@ -8739,8 +8805,6 @@ mod project_workflow_tests {
             active_file: None,
             active_token: None,
             after_save: None,
-            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-            hosted_save: None,
             deferred_action: None,
             deferred_manual_release: None,
             autosave_needed: false,
@@ -10723,7 +10787,10 @@ mod project_workflow_tests {
             for rect in &rects {
                 assert!((rect.top() - top).abs() < 0.5, "modes share one row");
                 assert!(rect.height() <= 22.0, "mode chips stay slim: {rect:?}");
-                assert!(rect.right() <= width - 6.0, "mode chip clipped at {width}: {rect:?}");
+                assert!(
+                    rect.right() <= width - 6.0,
+                    "mode chip clipped at {width}: {rect:?}"
+                );
             }
         }
     }

@@ -1,17 +1,53 @@
 //! Patch Engine: pick a genre, a mood and a texture; the engine composes a new piece and builds it in the rack.
 use eframe::egui::{self, text::LayoutJob, Color32, FontId, RichText, TextFormat};
-use openpatch::control::{execute_shared, SharedSession};
-use openpatch::patch_engine::{genre_noun, texture_phrase, texture_text, Recipe, GENRES, MOODS, TEXTURES};
+pub(crate) use openpatch::control::DocumentExecutionFence as DocumentFence;
+use openpatch::control::{execute_shared, execute_shared_fenced, Session, SharedSession};
+use openpatch::patch_engine::{
+    genre_noun, texture_phrase, texture_text, Recipe, GENRES, MOODS, TEXTURES,
+};
 use serde_json::{json, Value};
 use std::sync::mpsc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-const GENRE_KEYS: [egui::Key; 8] = [egui::Key::Num1, egui::Key::Num2, egui::Key::Num3, egui::Key::Num4, egui::Key::Num5, egui::Key::Num6, egui::Key::Num7, egui::Key::Num8];
-const MOOD_KEYS: [egui::Key; 8] = [egui::Key::Q, egui::Key::W, egui::Key::E, egui::Key::R, egui::Key::T, egui::Key::Y, egui::Key::U, egui::Key::I];
-const TEXTURE_KEYS: [egui::Key; 8] = [egui::Key::A, egui::Key::S, egui::Key::D, egui::Key::F, egui::Key::G, egui::Key::H, egui::Key::J, egui::Key::K];
+const GENRE_KEYS: [egui::Key; 8] = [
+    egui::Key::Num1,
+    egui::Key::Num2,
+    egui::Key::Num3,
+    egui::Key::Num4,
+    egui::Key::Num5,
+    egui::Key::Num6,
+    egui::Key::Num7,
+    egui::Key::Num8,
+];
+const MOOD_KEYS: [egui::Key; 8] = [
+    egui::Key::Q,
+    egui::Key::W,
+    egui::Key::E,
+    egui::Key::R,
+    egui::Key::T,
+    egui::Key::Y,
+    egui::Key::U,
+    egui::Key::I,
+];
+const TEXTURE_KEYS: [egui::Key; 8] = [
+    egui::Key::A,
+    egui::Key::S,
+    egui::Key::D,
+    egui::Key::F,
+    egui::Key::G,
+    egui::Key::H,
+    egui::Key::J,
+    egui::Key::K,
+];
 /// Genre index used for the Minecraft (C418-style) mode, after the eight genre words.
 const MINECRAFT: usize = 8;
-fn genre_name(i: usize) -> &'static str { if i == MINECRAFT { "Minecraft" } else { GENRES[i] } }
+fn genre_name(i: usize) -> &'static str {
+    if i == MINECRAFT {
+        "Minecraft"
+    } else {
+        GENRES[i]
+    }
+}
 // Palette: the app's chrome, warm ivory and a single amber accent.
 const SHEET: Color32 = Color32::from_rgb(25, 27, 27);
 const WELL: Color32 = Color32::from_rgb(15, 16, 16);
@@ -22,37 +58,93 @@ const DIM: Color32 = Color32::from_rgb(146, 149, 143);
 const AMBER: Color32 = Color32::from_rgb(229, 186, 106);
 const DARK_INK: Color32 = Color32::from_rgb(24, 24, 22);
 
-fn face(ui: &egui::Ui, size: f32) -> FontId { crate::panel_skin::heading_font(ui.ctx(), size) }
+fn face(ui: &egui::Ui, size: f32) -> FontId {
+    crate::panel_skin::heading_font(ui.ctx(), size)
+}
 
 const CELL: Color32 = Color32::from_rgb(31, 34, 34);
 const CELL_ON: Color32 = Color32::from_rgb(50, 46, 38);
 
 /// One cell of a word matrix: flat, equal width, an amber edge and amber text when chosen.
-fn cell(ui: &mut egui::Ui, rect: egui::Rect, text: &str, selected: bool, tip: Option<&str>) -> egui::Response {
+fn cell(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    text: &str,
+    selected: bool,
+    tip: Option<&str>,
+) -> egui::Response {
     let mut response = ui.interact(rect, ui.id().with(("cell", text)), egui::Sense::click());
     let p = ui.painter();
-    let fill = if selected { CELL_ON } else if response.hovered() { RAISED } else { CELL };
-    p.rect(rect, 3.0_f32, fill, egui::Stroke::new(1.0_f32, if selected { Color32::from_rgb(92, 78, 52) } else { LINE }), egui::StrokeKind::Inside);
+    let fill = if selected {
+        CELL_ON
+    } else if response.hovered() {
+        RAISED
+    } else {
+        CELL
+    };
+    p.rect(
+        rect,
+        3.0_f32,
+        fill,
+        egui::Stroke::new(
+            1.0_f32,
+            if selected {
+                Color32::from_rgb(92, 78, 52)
+            } else {
+                LINE
+            },
+        ),
+        egui::StrokeKind::Inside,
+    );
     if selected {
-        p.rect_filled(egui::Rect::from_min_size(rect.left_top() + egui::vec2(0.0, 4.0), egui::vec2(2.0, rect.height() - 8.0)), 1.0_f32, AMBER);
+        p.rect_filled(
+            egui::Rect::from_min_size(
+                rect.left_top() + egui::vec2(0.0, 4.0),
+                egui::vec2(2.0, rect.height() - 8.0),
+            ),
+            1.0_f32,
+            AMBER,
+        );
     }
-    p.text(rect.left_center() + egui::vec2(10.0, 0.0), egui::Align2::LEFT_CENTER, text, face(ui, 14.5), if selected { AMBER } else { INK });
-    if let Some(tip) = tip.filter(|t| !t.is_empty()) { response = response.on_hover_text(tip); }
+    p.text(
+        rect.left_center() + egui::vec2(10.0, 0.0),
+        egui::Align2::LEFT_CENTER,
+        text,
+        face(ui, 14.5),
+        if selected { AMBER } else { INK },
+    );
+    if let Some(tip) = tip.filter(|t| !t.is_empty()) {
+        response = response.on_hover_text(tip);
+    }
     response
 }
 
 /// Words laid out as a fixed matrix (`cols` per row); returns the clicked index.
-fn matrix(ui: &mut egui::Ui, words: &[&str], selected: Option<usize>, cols: usize, tips: Option<fn(&str) -> &'static str>) -> Option<usize> {
+fn matrix(
+    ui: &mut egui::Ui,
+    words: &[&str],
+    selected: Option<usize>,
+    cols: usize,
+    tips: Option<fn(&str) -> &'static str>,
+) -> Option<usize> {
     let gap = 4.0;
     let width = ui.available_width();
     let w = (width - gap * (cols as f32 - 1.0)) / cols as f32;
     let rows = words.len().div_ceil(cols);
-    let (area, _) = ui.allocate_exact_size(egui::vec2(width, rows as f32 * 30.0 + (rows as f32 - 1.0) * gap), egui::Sense::hover());
+    let (area, _) = ui.allocate_exact_size(
+        egui::vec2(width, rows as f32 * 30.0 + (rows as f32 - 1.0) * gap),
+        egui::Sense::hover(),
+    );
     let mut clicked = None;
     for (i, word) in words.iter().enumerate() {
         let (r, c) = (i / cols, i % cols);
-        let rect = egui::Rect::from_min_size(area.min + egui::vec2(c as f32 * (w + gap), r as f32 * (30.0 + gap)), egui::vec2(w, 30.0));
-        if cell(ui, rect, word, selected == Some(i), tips.map(|t| t(word))).clicked() { clicked = Some(i); }
+        let rect = egui::Rect::from_min_size(
+            area.min + egui::vec2(c as f32 * (w + gap), r as f32 * (30.0 + gap)),
+            egui::vec2(w, 30.0),
+        );
+        if cell(ui, rect, word, selected == Some(i), tips.map(|t| t(word))).clicked() {
+            clicked = Some(i);
+        }
     }
     clicked
 }
@@ -60,45 +152,147 @@ fn matrix(ui: &mut egui::Ui, words: &[&str], selected: Option<usize>, cols: usiz
 /// A small segmented control; returns the newly chosen index.
 fn segmented(ui: &mut egui::Ui, labels: &[&str], selected: usize, width: f32) -> Option<usize> {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 26.0), egui::Sense::hover());
-    ui.painter().rect(rect, 3.0_f32, CELL, egui::Stroke::new(1.0_f32, LINE), egui::StrokeKind::Inside);
+    ui.painter().rect(
+        rect,
+        3.0_f32,
+        CELL,
+        egui::Stroke::new(1.0_f32, LINE),
+        egui::StrokeKind::Inside,
+    );
     let w = rect.width() / labels.len() as f32;
     let mut picked = None;
     for (i, label) in labels.iter().enumerate() {
-        let r = egui::Rect::from_min_size(rect.min + egui::vec2(w * i as f32, 0.0), egui::vec2(w, rect.height())).shrink(2.0);
+        let r = egui::Rect::from_min_size(
+            rect.min + egui::vec2(w * i as f32, 0.0),
+            egui::vec2(w, rect.height()),
+        )
+        .shrink(2.0);
         let response = ui.interact(r, ui.id().with(("seg", label, i)), egui::Sense::click());
         let on = i == selected;
-        if on { ui.painter().rect_filled(r, 2.0_f32, CELL_ON); } else if response.hovered() { ui.painter().rect_filled(r, 2.0_f32, RAISED); }
-        if i > 0 && !on && i != selected + 1 {
-            ui.painter().line_segment([r.left_top() + egui::vec2(-2.0, 5.0), r.left_bottom() + egui::vec2(-2.0, -5.0)], egui::Stroke::new(1.0_f32, LINE));
+        if on {
+            ui.painter().rect_filled(r, 2.0_f32, CELL_ON);
+        } else if response.hovered() {
+            ui.painter().rect_filled(r, 2.0_f32, RAISED);
         }
-        ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, *label, face(ui, 13.5), if on { AMBER } else { DIM });
-        if response.clicked() { picked = Some(i); }
+        if i > 0 && !on && i != selected + 1 {
+            ui.painter().line_segment(
+                [
+                    r.left_top() + egui::vec2(-2.0, 5.0),
+                    r.left_bottom() + egui::vec2(-2.0, -5.0),
+                ],
+                egui::Stroke::new(1.0_f32, LINE),
+            );
+        }
+        ui.painter().text(
+            r.center(),
+            egui::Align2::CENTER_CENTER,
+            *label,
+            face(ui, 13.5),
+            if on { AMBER } else { DIM },
+        );
+        if response.clicked() {
+            picked = Some(i);
+        }
     }
     picked
 }
 
 /// A plain check box: a small square that fills amber.
 fn check(ui: &mut egui::Ui, label: &str, on: &mut bool, tip: &str) {
-    let galley = ui.painter().layout_no_wrap(label.to_string(), face(ui, 13.5), if *on { INK } else { DIM });
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(galley.size().x + 22.0, 22.0), egui::Sense::click());
+    let galley = ui.painter().layout_no_wrap(
+        label.to_string(),
+        face(ui, 13.5),
+        if *on { INK } else { DIM },
+    );
+    let (rect, response) = ui.allocate_exact_size(
+        egui::vec2(galley.size().x + 22.0, 22.0),
+        egui::Sense::click(),
+    );
     let response = response.on_hover_text(tip);
-    if response.clicked() { *on = !*on; }
-    let bx = egui::Rect::from_center_size(egui::pos2(rect.left() + 6.5, rect.center().y), egui::vec2(11.0, 11.0));
-    ui.painter().rect(bx, 2.0_f32, if *on { AMBER } else { CELL }, egui::Stroke::new(1.0_f32, if *on { AMBER } else { Color32::from_rgb(78, 82, 79) }), egui::StrokeKind::Inside);
-    ui.painter().galley(egui::pos2(rect.left() + 18.0, rect.center().y - galley.size().y / 2.0), galley, INK);
+    if response.clicked() {
+        *on = !*on;
+    }
+    let bx = egui::Rect::from_center_size(
+        egui::pos2(rect.left() + 6.5, rect.center().y),
+        egui::vec2(11.0, 11.0),
+    );
+    ui.painter().rect(
+        bx,
+        2.0_f32,
+        if *on { AMBER } else { CELL },
+        egui::Stroke::new(
+            1.0_f32,
+            if *on {
+                AMBER
+            } else {
+                Color32::from_rgb(78, 82, 79)
+            },
+        ),
+        egui::StrokeKind::Inside,
+    );
+    ui.painter().galley(
+        egui::pos2(rect.left() + 18.0, rect.center().y - galley.size().y / 2.0),
+        galley,
+        INK,
+    );
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Mode { Reveal, Showtime, Instant }
+enum Mode {
+    Reveal,
+    Showtime,
+    Instant,
+}
 
 /// Requests the app carries out after the panel draws.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Request { StartPlayback, ShowPatch, Prepare }
+pub(crate) enum Request {
+    StartPlayback,
+    ShowPatch,
+    Prepare,
+}
 
 /// CPU budget for Light mode (Patch Engine cost units ≈ % of an Apple M-series core); about 60% of a Steam Deck core.
 const LIGHT_BUDGET: f64 = 18.0;
 
-struct Built { info: Value, steps: Vec<Value>, plan: bool }
+pub(crate) struct GeneratedDocument {
+    fence: DocumentFence,
+    content: Value,
+}
+
+impl GeneratedDocument {
+    pub(crate) fn capture(session: &SharedSession, fence: DocumentFence) -> Option<Self> {
+        let live = session.lock().ok()?;
+        if !fence.matches(&live) {
+            return None;
+        }
+        Some(Self {
+            fence,
+            content: live.project_edit_content(Some(fence.revision)).ok()?,
+        })
+    }
+
+    pub(crate) fn matches(&self, session: &Session) -> bool {
+        self.fence.matches(session)
+            && session
+                .project_edit_content(Some(self.fence.revision))
+                .is_ok_and(|content| {
+                    let status = session
+                        .project_save_baseline()
+                        .status_from_content(Some(&content));
+                    content == self.content
+                        && status["target"].is_null()
+                        && status["saved_revision"].is_null()
+                })
+    }
+}
+
+struct Built {
+    info: Value,
+    steps: Vec<Value>,
+    plan: bool,
+    fence: DocumentFence,
+}
 
 pub(crate) struct Panel {
     open: bool,
@@ -133,46 +327,120 @@ pub(crate) struct Panel {
     just_launched: bool,
     face_family: egui::FontFamily,
     details: bool,
+    build_fence: Option<DocumentFence>,
+    generated: Option<GeneratedDocument>,
 }
 
 /// A build waiting for the app to start a fresh document (which asks about unsaved changes first).
-struct Armed { g: usize, m: usize, t: usize, seed: u64, mode: Mode, interval: u32, budget: Option<f64> }
+struct Armed {
+    g: usize,
+    m: usize,
+    t: usize,
+    seed: u64,
+    mode: Mode,
+    interval: u32,
+    budget: Option<f64>,
+}
 
 /// Demo/capture mode for pitches and documentation screenshots, driven by environment variables:
 /// `OPENPATCH_PATCH_ENGINE_DEMO="Genre|Mood|Texture|seed"` opens the panel and builds that piece on launch;
 /// `OPENPATCH_CAPTURE="first.png@0.9,second.png@6"` saves the window at those times (seconds after launch);
 /// `OPENPATCH_WINDOW="1280x800"` sizes the window (Steam Deck screen).
-struct Demo { start: Instant, words: Option<(usize, usize, usize, u64)>, captures: Vec<(std::path::PathBuf, f32)>, size: Option<egui::Vec2>, began: bool, waiting: Option<std::path::PathBuf> }
+struct Demo {
+    start: Instant,
+    words: Option<(usize, usize, usize, u64)>,
+    captures: Vec<(std::path::PathBuf, f32)>,
+    size: Option<egui::Vec2>,
+    began: bool,
+    waiting: Option<std::path::PathBuf>,
+}
 
 impl Demo {
     fn from_env() -> Option<Demo> {
-        let words = std::env::var("OPENPATCH_PATCH_ENGINE_DEMO").ok().and_then(|v| {
-            let p: Vec<&str> = v.split('|').collect();
-            let find = |list: &[&str], w: &str| list.iter().position(|x| x.eq_ignore_ascii_case(w));
-            let genre = if p.first()?.eq_ignore_ascii_case("minecraft") { MINECRAFT } else { find(&GENRES, p.first()?)? };
-            Some((genre, find(&MOODS, p.get(1)?)?, find(&TEXTURES, p.get(2)?)?, p.get(3).and_then(|s| s.parse().ok()).unwrap_or(1)))
-        });
-        let captures: Vec<_> = std::env::var("OPENPATCH_CAPTURE").ok().map(|v| v.split(',').filter_map(|c| {
-            let (path, t) = c.rsplit_once('@')?;
-            Some((std::path::PathBuf::from(path), t.parse().ok()?))
-        }).collect()).unwrap_or_default();
+        let words = std::env::var("OPENPATCH_PATCH_ENGINE_DEMO")
+            .ok()
+            .and_then(|v| {
+                let p: Vec<&str> = v.split('|').collect();
+                let find =
+                    |list: &[&str], w: &str| list.iter().position(|x| x.eq_ignore_ascii_case(w));
+                let genre = if p.first()?.eq_ignore_ascii_case("minecraft") {
+                    MINECRAFT
+                } else {
+                    find(&GENRES, p.first()?)?
+                };
+                Some((
+                    genre,
+                    find(&MOODS, p.get(1)?)?,
+                    find(&TEXTURES, p.get(2)?)?,
+                    p.get(3).and_then(|s| s.parse().ok()).unwrap_or(1),
+                ))
+            });
+        let captures: Vec<_> = std::env::var("OPENPATCH_CAPTURE")
+            .ok()
+            .map(|v| {
+                v.split(',')
+                    .filter_map(|c| {
+                        let (path, t) = c.rsplit_once('@')?;
+                        Some((std::path::PathBuf::from(path), t.parse().ok()?))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         let size = std::env::var("OPENPATCH_WINDOW").ok().and_then(|v| {
             let (w, h) = v.split_once('x')?;
             Some(egui::vec2(w.parse().ok()?, h.parse().ok()?))
         });
-        (words.is_some() || !captures.is_empty() || size.is_some()).then(|| Demo { start: Instant::now(), words, captures, size, began: false, waiting: None })
+        (words.is_some() || !captures.is_empty() || size.is_some()).then(|| Demo {
+            start: Instant::now(),
+            words,
+            captures,
+            size,
+            began: false,
+            waiting: None,
+        })
     }
 }
 
 impl Default for Panel {
     fn default() -> Self {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(1, |d| d.as_nanos() as u64);
         Self {
-            open: false, genre: None, mood: None, texture: None, seed: 0, keep_seed: false, mode: Mode::Reveal,
-            interval_ms: 120, autoplay: true, rng: now | 1, pending: None, started: None, elapsed: None, building: false,
-            plan_steps: vec![], done: 0, total: 0, label: String::new(), remaining: None, info: None, error: None,
-            history: vec![], last_poll: None, cursor: 0, demo: Demo::from_env(),
-            light: cfg!(target_os = "linux"), first_frame: true, armed: None, prepare_sent: false, just_launched: false, face_family: egui::FontFamily::Proportional, details: false,
+            open: false,
+            genre: None,
+            mood: None,
+            texture: None,
+            seed: 0,
+            keep_seed: false,
+            mode: Mode::Reveal,
+            interval_ms: 120,
+            autoplay: true,
+            rng: now | 1,
+            pending: None,
+            started: None,
+            elapsed: None,
+            building: false,
+            plan_steps: vec![],
+            done: 0,
+            total: 0,
+            label: String::new(),
+            remaining: None,
+            info: None,
+            error: None,
+            history: vec![],
+            last_poll: None,
+            cursor: 0,
+            demo: Demo::from_env(),
+            light: cfg!(target_os = "linux"),
+            first_frame: true,
+            armed: None,
+            prepare_sent: false,
+            just_launched: false,
+            face_family: egui::FontFamily::Proportional,
+            details: false,
+            build_fence: None,
+            generated: None,
         }
     }
 }
@@ -184,26 +452,81 @@ fn next_seed(state: &mut u64) -> u64 {
     1 + *state % 99_999
 }
 
+fn start_build_construction(
+    session: &SharedSession,
+    fence: DocumentFence,
+    interval: u32,
+    steps: &[Value],
+    title: &str,
+) -> Result<Value, String> {
+    execute_shared_fenced(
+        session,
+        "start_construction",
+        json!({"expected_revision": fence.revision, "interval_ms": interval, "steps": steps, "title": title}),
+        fence,
+    ).map(|(result, _)| result)
+}
+
+fn apply_build_edits(
+    session: &SharedSession,
+    fence: &mut DocumentFence,
+    edits: &[Value],
+) -> Result<(), String> {
+    let (_, committed) = execute_shared_fenced(
+        session,
+        "apply_edits",
+        json!({"edits": edits, "expected_revision": fence.revision}),
+        *fence,
+    )?;
+    *fence = committed;
+    Ok(())
+}
+
 fn revision(session: &SharedSession) -> Result<u64, String> {
-    Ok(execute_shared(session, "inspect_construction", json!({}))?["current_revision"].as_u64().unwrap_or(0))
+    Ok(
+        execute_shared(session, "inspect_construction", json!({}))?["current_revision"]
+            .as_u64()
+            .unwrap_or(0),
+    )
 }
 
 impl Panel {
-    pub(crate) fn is_open(&self) -> bool { self.open }
-    pub(crate) fn toggle(&mut self) { self.open = !self.open; }
+    pub(crate) fn take_generated(&mut self) -> Option<GeneratedDocument> {
+        self.generated.take()
+    }
+
+    pub(crate) fn is_open(&self) -> bool {
+        self.open
+    }
+    pub(crate) fn toggle(&mut self) {
+        self.open = !self.open;
+    }
 
     pub(crate) fn toolbar(&mut self, ui: &mut egui::Ui) {
         let button = egui::Button::new(RichText::new("Patch Engine").strong()).selected(self.open);
-        if ui.add(button).on_hover_text("Compose a new patch from three words").clicked() { self.toggle(); }
+        if ui
+            .add(button)
+            .on_hover_text("Compose a new patch from three words")
+            .clicked()
+        {
+            self.toggle();
+        }
     }
 
     fn ready(&self) -> bool {
-        self.genre.is_some() && self.mood.is_some() && self.texture.is_some() && !self.building && self.pending.is_none() && self.armed.is_none()
+        self.genre.is_some()
+            && self.mood.is_some()
+            && self.texture.is_some()
+            && !self.building
+            && self.pending.is_none()
+            && self.armed.is_none()
     }
 
     /// Document title for the next build; the app names the fresh document with it.
     pub(crate) fn prepared_title(&self) -> Option<String> {
-        self.armed.as_ref().map(|a| format!("{} {} · {}", MOODS[a.m], genre_name(a.g), TEXTURES[a.t]))
+        self.armed
+            .as_ref()
+            .map(|a| format!("{} {} · {}", MOODS[a.m], genre_name(a.g), TEXTURES[a.t]))
     }
 
     /// The user cancelled the unsaved-changes prompt: forget the armed build.
@@ -211,14 +534,24 @@ impl Panel {
         if self.armed.take().is_some() {
             self.label = "Build cancelled; your patch is unchanged".into();
             self.started = None;
-            if let Some(h) = self.history.first() { if h.4 == 0.0 { self.history.remove(0); } }
+            if let Some(h) = self.history.first() {
+                if h.4 == 0.0 {
+                    self.history.remove(0);
+                }
+            }
         }
     }
 
     fn start(&mut self, session: &SharedSession) {
-        let (Some(g), Some(m), Some(t)) = (self.genre, self.mood, self.texture) else { return };
-        if !self.ready() { return; }
-        if !self.keep_seed || self.seed == 0 { self.seed = next_seed(&mut self.rng); }
+        let (Some(g), Some(m), Some(t)) = (self.genre, self.mood, self.texture) else {
+            return;
+        };
+        if !self.ready() {
+            return;
+        }
+        if !self.keep_seed || self.seed == 0 {
+            self.seed = next_seed(&mut self.rng);
+        }
         let seed = self.seed;
         let (mode, interval) = (self.mode, self.interval_ms);
         self.started = Some(Instant::now());
@@ -232,14 +565,33 @@ impl Panel {
         self.history.truncate(8);
         let budget = self.light.then_some(LIGHT_BUDGET);
         let _ = session;
-        self.armed = Some(Armed { g, m, t, seed, mode, interval, budget });
+        self.armed = Some(Armed {
+            g,
+            m,
+            t,
+            seed,
+            mode,
+            interval,
+            budget,
+        });
         self.prepare_sent = false;
         self.label = "Starting a new document…".into();
     }
 
     /// The app has installed a fresh, empty document for this build: compose and construct it.
-    pub(crate) fn launch(&mut self, session: &SharedSession) {
-        let Some(Armed { g, m, t, seed, mode, interval, budget }) = self.armed.take() else { return };
+    pub(crate) fn launch(&mut self, session: &SharedSession, fence: DocumentFence) {
+        let Some(Armed {
+            g,
+            m,
+            t,
+            seed,
+            mode,
+            interval,
+            budget,
+        }) = self.armed.take()
+        else {
+            return;
+        };
         self.label = "Composing…".into();
         self.just_launched = true;
         let session = session.clone();
@@ -247,38 +599,60 @@ impl Panel {
         self.pending = Some(rx);
         std::thread::spawn(move || {
             let result = (|| -> Result<Built, String> {
+                let mut fence = fence;
                 let r = Recipe::with_budget(genre_name(g), MOODS[m], TEXTURES[t], seed, budget)?;
                 let title = format!("Patch Engine · {}", r.title);
                 let steps = match mode {
                     Mode::Instant => {
                         for chunk in r.edits().chunks(256) {
-                            execute_shared(&session, "apply_edits", json!({"edits": chunk, "expected_revision": revision(&session)?}))?;
+                            apply_build_edits(&session, &mut fence, chunk)?;
                         }
-                        return Ok(Built { info: r.info(), steps: vec![], plan: false });
+                        return Ok(Built {
+                            info: r.info(),
+                            steps: vec![],
+                            plan: false,
+                            fence,
+                        });
                     }
                     Mode::Reveal => {
                         let (modules, steps) = r.reveal();
                         for chunk in modules.chunks(256) {
-                            execute_shared(&session, "apply_edits", json!({"edits": chunk, "expected_revision": revision(&session)?}))?;
+                            apply_build_edits(&session, &mut fence, chunk)?;
                         }
                         steps
                     }
                     Mode::Showtime => r.showtime(),
                 };
-                execute_shared(&session, "start_construction", json!({"expected_revision": revision(&session)?, "interval_ms": interval, "steps": steps, "title": title}))?;
-                Ok(Built { info: r.info(), steps, plan: true })
+                start_build_construction(&session, fence, interval, &steps, &title)?;
+                Ok(Built {
+                    info: r.info(),
+                    steps,
+                    plan: true,
+                    fence,
+                })
             })();
             let _ = tx.send(result);
         });
     }
 
     fn resume(&mut self, session: &SharedSession) {
-        let Some(steps) = self.remaining.take() else { return };
+        let Some(steps) = self.remaining.take() else {
+            return;
+        };
         let result = revision(session).and_then(|rev| execute_shared(session, "start_construction",
             json!({"expected_revision": rev, "interval_ms": self.interval_ms, "steps": steps.clone(), "title": "Patch Engine · resume"})));
         match result {
-            Ok(_) => { self.plan_steps = steps; self.building = true; self.error = None; self.started = Some(Instant::now()); self.elapsed = None; }
-            Err(e) => { self.error = Some(e); self.remaining = Some(steps); }
+            Ok(_) => {
+                self.plan_steps = steps;
+                self.building = true;
+                self.error = None;
+                self.started = Some(Instant::now());
+                self.elapsed = None;
+            }
+            Err(e) => {
+                self.error = Some(e);
+                self.remaining = Some(steps);
+            }
         }
     }
 
@@ -289,34 +663,67 @@ impl Panel {
                 Ok(Ok(built)) => {
                     self.pending = None;
                     self.info = Some(built.info);
+                    self.build_fence = Some(built.fence);
                     if built.plan {
                         self.total = built.steps.len();
                         self.plan_steps = built.steps;
                         self.building = true;
                         self.label = "Building…".into();
                     } else {
+                        self.generated = GeneratedDocument::capture(session, built.fence);
                         self.finish("Built in one step");
                     }
                 }
-                Ok(Err(e)) => { self.pending = None; self.error = Some(e); self.label.clear(); }
-                Err(mpsc::TryRecvError::Disconnected) => { self.pending = None; }
+                Ok(Err(e)) => {
+                    self.pending = None;
+                    self.error = Some(e);
+                    self.label.clear();
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.pending = None;
+                }
                 Err(mpsc::TryRecvError::Empty) => {}
             }
         }
-        if !self.building || self.last_poll.is_some_and(|t| t.elapsed() < Duration::from_millis(60)) { return; }
+        if !self.building
+            || self
+                .last_poll
+                .is_some_and(|t| t.elapsed() < Duration::from_millis(60))
+        {
+            return;
+        }
         self.last_poll = Some(Instant::now());
-        let Ok(s) = execute_shared(session, "inspect_construction", json!({})) else { return };
+        let Ok(s) = execute_shared(session, "inspect_construction", json!({})) else {
+            return;
+        };
         self.done = s["completed_steps"].as_u64().unwrap_or(0) as usize;
         self.total = s["total_steps"].as_u64().unwrap_or(self.total as u64) as usize;
-        if let Some(l) = s["last_label"].as_str() { self.label = l.to_string(); }
+        if let Some(l) = s["last_label"].as_str() {
+            self.label = l.to_string();
+        }
         match s["status"].as_str() {
-            Some("completed") => self.finish("Built"),
+            Some("completed") => {
+                if let Some(mut fence) = self.build_fence.take() {
+                    // Never derive a baseline from a newer user revision or layout.
+                    if s["base_revision"].as_u64() == Some(fence.revision) {
+                        if let Some(revision) = s["last_revision"].as_u64() {
+                            fence.revision = revision;
+                            self.generated = GeneratedDocument::capture(session, fence);
+                        }
+                    }
+                }
+                self.finish("Built");
+            }
             Some("conflicted") => {
                 self.building = false;
-                self.remaining = Some(self.plan_steps[self.done.min(self.plan_steps.len())..].to_vec());
+                self.remaining =
+                    Some(self.plan_steps[self.done.min(self.plan_steps.len())..].to_vec());
                 self.error = Some(format!("The rack was edited during the build, so it stopped after {}/{} steps. Resume finishes the rest.", self.done, self.total));
             }
-            Some("cancelled") | Some("failed") => { self.building = false; self.label = format!("Build {}", s["status"].as_str().unwrap_or("stopped")); }
+            Some("cancelled") | Some("failed") => {
+                self.building = false;
+                self.label = format!("Build {}", s["status"].as_str().unwrap_or("stopped"));
+            }
             _ => {}
         }
     }
@@ -326,50 +733,117 @@ impl Panel {
         self.elapsed = self.started.map(|t| t.elapsed());
         self.label = label.into();
         self.done = self.total;
-        if let (Some(h), Some(e)) = (self.history.first_mut(), self.elapsed) { h.4 = e.as_secs_f32(); }
+        if let (Some(h), Some(e)) = (self.history.first_mut(), self.elapsed) {
+            h.4 = e.as_secs_f32();
+        }
     }
 
     fn sentence(&self) -> LayoutJob {
         let mut job = LayoutJob::default();
         let font = FontId::new(22.0, self.face_family.clone());
-        let plain = TextFormat { font_id: font.clone(), color: Color32::from_rgb(214, 211, 202), ..Default::default() };
-        let chosen = TextFormat { font_id: font.clone(), color: AMBER, ..Default::default() };
-        let blank = TextFormat { font_id: font, color: Color32::from_rgb(92, 95, 91), ..Default::default() };
+        let plain = TextFormat {
+            font_id: font.clone(),
+            color: Color32::from_rgb(214, 211, 202),
+            ..Default::default()
+        };
+        let chosen = TextFormat {
+            font_id: font.clone(),
+            color: AMBER,
+            ..Default::default()
+        };
+        let blank = TextFormat {
+            font_id: font,
+            color: Color32::from_rgb(92, 95, 91),
+            ..Default::default()
+        };
         job.append("A ", 0.0, plain.clone());
-        match self.mood { Some(m) => job.append(&MOODS[m].to_lowercase(), 0.0, chosen.clone()), None => job.append("mood", 0.0, blank.clone()) }
+        match self.mood {
+            Some(m) => job.append(&MOODS[m].to_lowercase(), 0.0, chosen.clone()),
+            None => job.append("mood", 0.0, blank.clone()),
+        }
         job.append(" ", 0.0, plain.clone());
-        match self.genre { Some(g) => job.append(genre_noun(genre_name(g)), 0.0, chosen.clone()), None => job.append("genre", 0.0, blank.clone()) }
+        match self.genre {
+            Some(g) => job.append(genre_noun(genre_name(g)), 0.0, chosen.clone()),
+            None => job.append("genre", 0.0, blank.clone()),
+        }
         job.append(" ", 0.0, plain.clone());
-        match self.texture { Some(t) => job.append(texture_phrase(TEXTURES[t]), 0.0, chosen), None => job.append("texture", 0.0, blank) }
+        match self.texture {
+            Some(t) => job.append(texture_phrase(TEXTURES[t]), 0.0, chosen),
+            None => job.append("texture", 0.0, blank),
+        }
         job.append(".", 0.0, plain);
         job
     }
 
     fn section(ui: &mut egui::Ui, title: &str, focused: bool) {
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 18.0), egui::Sense::hover());
+        let (rect, _) =
+            ui.allocate_exact_size(egui::vec2(ui.available_width(), 18.0), egui::Sense::hover());
         let x = if focused {
-            ui.painter().circle_filled(egui::pos2(rect.left() + 3.0, rect.center().y), 2.5, AMBER);
+            ui.painter()
+                .circle_filled(egui::pos2(rect.left() + 3.0, rect.center().y), 2.5, AMBER);
             10.0
-        } else { 0.0 };
-        ui.painter().text(rect.left_center() + egui::vec2(x, 0.0), egui::Align2::LEFT_CENTER, title, face(ui, 14.0), if focused { INK } else { DIM });
+        } else {
+            0.0
+        };
+        ui.painter().text(
+            rect.left_center() + egui::vec2(x, 0.0),
+            egui::Align2::LEFT_CENTER,
+            title,
+            face(ui, 14.0),
+            if focused { INK } else { DIM },
+        );
     }
 
     fn keyboard(&mut self, ctx: &egui::Context, session: &SharedSession) {
-        if ctx.wants_keyboard_input() { return; }
+        if ctx.wants_keyboard_input() {
+            return;
+        }
         let pressed = |k: egui::Key| ctx.input(|i| i.key_pressed(k) && i.modifiers.is_none());
-        for (i, k) in GENRE_KEYS.iter().enumerate() { if pressed(*k) { self.genre = Some(i); } }
-        for (i, k) in MOOD_KEYS.iter().enumerate() { if pressed(*k) { self.mood = Some(i); } }
-        for (i, k) in TEXTURE_KEYS.iter().enumerate() { if pressed(*k) { self.texture = Some(i); } }
-        if pressed(egui::Key::ArrowUp) { self.cursor = (self.cursor + 2) % 3; }
-        if pressed(egui::Key::ArrowDown) { self.cursor = (self.cursor + 1) % 3; }
-        let step = if pressed(egui::Key::ArrowRight) { Some(1) } else if pressed(egui::Key::ArrowLeft) { Some(7) } else { None };
+        for (i, k) in GENRE_KEYS.iter().enumerate() {
+            if pressed(*k) {
+                self.genre = Some(i);
+            }
+        }
+        for (i, k) in MOOD_KEYS.iter().enumerate() {
+            if pressed(*k) {
+                self.mood = Some(i);
+            }
+        }
+        for (i, k) in TEXTURE_KEYS.iter().enumerate() {
+            if pressed(*k) {
+                self.texture = Some(i);
+            }
+        }
+        if pressed(egui::Key::ArrowUp) {
+            self.cursor = (self.cursor + 2) % 3;
+        }
+        if pressed(egui::Key::ArrowDown) {
+            self.cursor = (self.cursor + 1) % 3;
+        }
+        let step = if pressed(egui::Key::ArrowRight) {
+            Some(1)
+        } else if pressed(egui::Key::ArrowLeft) {
+            Some(7)
+        } else {
+            None
+        };
         if let Some(step) = step {
-            let slot = match self.cursor { 0 => &mut self.genre, 1 => &mut self.mood, _ => &mut self.texture };
+            let slot = match self.cursor {
+                0 => &mut self.genre,
+                1 => &mut self.mood,
+                _ => &mut self.texture,
+            };
             *slot = Some(slot.map_or(0, |i| (i + step) % 8));
         }
-        if pressed(egui::Key::Enter) { self.start(session); }
-        if pressed(egui::Key::Slash) || pressed(egui::Key::Space) { self.surprise(session); }
-        if pressed(egui::Key::Escape) { self.open = false; }
+        if pressed(egui::Key::Enter) {
+            self.start(session);
+        }
+        if pressed(egui::Key::Slash) || pressed(egui::Key::Space) {
+            self.surprise(session);
+        }
+        if pressed(egui::Key::Escape) {
+            self.open = false;
+        }
     }
 
     fn surprise(&mut self, session: &SharedSession) {
@@ -381,15 +855,32 @@ impl Panel {
     }
 
     fn run_demo(&mut self, ctx: &egui::Context, session: &SharedSession) {
-        let Some(mut demo) = self.demo.take() else { return };
+        let Some(mut demo) = self.demo.take() else {
+            return;
+        };
         if !demo.began {
             demo.began = true;
-            if let Some(size) = demo.size { ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size)); }
+            if let Some(size) = demo.size {
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+            }
             if let Some((g, m, t, seed)) = demo.words {
-                (self.genre, self.mood, self.texture, self.seed, self.keep_seed, self.open) = (Some(g), Some(m), Some(t), seed, true, true);
+                (
+                    self.genre,
+                    self.mood,
+                    self.texture,
+                    self.seed,
+                    self.keep_seed,
+                    self.open,
+                ) = (Some(g), Some(m), Some(t), seed, true, true);
             }
         }
-        if demo.words.is_some() && demo.start.elapsed() > Duration::from_millis(1500) && self.history.is_empty() { self.start(session); demo.start = Instant::now(); }
+        if demo.words.is_some()
+            && demo.start.elapsed() > Duration::from_millis(1500)
+            && self.history.is_empty()
+        {
+            self.start(session);
+            demo.start = Instant::now();
+        }
         let t = demo.start.elapsed().as_secs_f32();
         if demo.waiting.is_none() && !self.history.is_empty() {
             if let Some(i) = demo.captures.iter().position(|c| t >= c.1) {
@@ -399,9 +890,23 @@ impl Panel {
             }
         }
         if let Some(path) = demo.waiting.clone() {
-            let shot = ctx.input(|i| i.events.iter().find_map(|e| if let egui::Event::Screenshot { image, .. } = e { Some(image.clone()) } else { None }));
+            let shot = ctx.input(|i| {
+                i.events.iter().find_map(|e| {
+                    if let egui::Event::Screenshot { image, .. } = e {
+                        Some(image.clone())
+                    } else {
+                        None
+                    }
+                })
+            });
             if let Some(image) = shot {
-                match image::save_buffer(&path, image.as_raw(), image.width() as u32, image.height() as u32, image::ColorType::Rgba8) {
+                match image::save_buffer(
+                    &path,
+                    image.as_raw(),
+                    image.width() as u32,
+                    image.height() as u32,
+                    image::ColorType::Rgba8,
+                ) {
                     Ok(()) => eprintln!("Patch Engine capture: {}", path.display()),
                     Err(e) => eprintln!("Patch Engine capture failed: {e}"),
                 }
@@ -414,13 +919,17 @@ impl Panel {
 
     pub(crate) fn show(&mut self, ctx: &egui::Context, session: &SharedSession) -> Vec<Request> {
         if std::mem::take(&mut self.first_frame) && ctx.content_rect().height() <= 900.0 {
-            self.open = true;   // small screens (Steam Deck): start with the Patch Engine open
+            self.open = true; // small screens (Steam Deck): start with the Patch Engine open
         }
         let was_idle = !self.building && self.pending.is_none();
         self.run_demo(ctx, session);
         self.poll(session);
-        if !self.open { return vec![]; }
-        if self.building || self.pending.is_some() { ctx.request_repaint_after(Duration::from_millis(50)); }
+        if !self.open {
+            return vec![];
+        }
+        if self.building || self.pending.is_some() {
+            ctx.request_repaint_after(Duration::from_millis(50));
+        }
         self.keyboard(ctx, session);
         self.face_family = crate::panel_skin::heading_font(ctx, 1.0).family;
         let narrow = ctx.content_rect().width() < 1400.0;
@@ -561,12 +1070,27 @@ impl Panel {
                     });
                 });
             });
-        if close { self.open = false; }
-        let started = std::mem::take(&mut self.just_launched) || (was_idle && (self.building || self.pending.is_some()));
+        if close {
+            self.open = false;
+        }
+        let started = std::mem::take(&mut self.just_launched)
+            || (was_idle && (self.building || self.pending.is_some()));
         let mut requests = vec![];
-        if self.armed.is_some() && !self.prepare_sent { requests.push(Request::Prepare); self.prepare_sent = true; }
-        if started && self.autoplay { requests.push(Request::StartPlayback); }
-        if started { requests.push(Request::ShowPatch); }
+        if self.armed.is_some() && !self.prepare_sent {
+            requests.push(Request::Prepare);
+            self.prepare_sent = true;
+        }
+        if started && self.autoplay {
+            requests.push(Request::StartPlayback);
+        }
+        if started {
+            requests.push(Request::ShowPatch);
+        }
         requests
     }
+}
+
+#[cfg(test)]
+mod patch_engine_build_lifecycle_tests {
+    include!("patch_engine_build_lifecycle_tests.rs");
 }
