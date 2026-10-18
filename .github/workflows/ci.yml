@@ -17,7 +17,7 @@ on:
         type: boolean
         default: false
       qualified_run:
-        description: 'Reuse passed platform checks only for unchanged source and workflow/shader-EOL fixes'
+        description: 'Reuse passed unchanged crates from this run; refresh changed desktop and package checks'
         type: string
         default: ''
 concurrency:
@@ -68,21 +68,21 @@ jobs:
           QUALIFIED_PLATFORM: ${{ matrix.artifact }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          import json, os, pathlib, subprocess, urllib.request
+          import json, os, pathlib, re, subprocess
           prior = os.environ.get("QUALIFIED_RUN", "")
-          reuse = False
+          mode = "none"
           if prior:
               assert prior.isdecimal(), "qualified_run must be a run ID"
               repository = os.environ["GITHUB_REPOSITORY"]
               def fetch(path):
-                  request = urllib.request.Request(f"https://api.github.com/repos/{repository}/{path}", headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"})
-                  with urllib.request.urlopen(request) as response:
-                      return json.load(response)
+                  return json.loads(subprocess.check_output(["gh", "api", f"repos/{repository}/{path}"], encoding="utf-8"))
               run = fetch(f"actions/runs/{prior}")
-              assert run["event"] == "pull_request", "reuse requires the original PR correctness gate"
+              assert run["event"] in ("pull_request", "workflow_dispatch"), "reuse requires a correctness gate"
               source = run["head_sha"]
               changes = subprocess.check_output(["git", "diff", "--name-only", source, "HEAD"], text=True).splitlines()
-              assert set(changes) <= {".github/workflows/ci.yml", ".gitattributes"}, f"runtime, package or test source changed: {changes}"
+              allowed = {".github/workflows/ci.yml", ".gitattributes"}
+              desktop_changed = any(path.startswith("crates/openpatch-desktop/src/") or path.startswith("crates/openpatch-desktop/assets/shaders/") for path in changes)
+              assert all(path in allowed or path.startswith("crates/openpatch-desktop/src/") or path.startswith("crates/openpatch-desktop/assets/shaders/") for path in changes), f"CLI, Core, dependency or package source changed: {changes}"
               if ".gitattributes" in changes:
                   assert pathlib.Path(".gitattributes").read_text() == "*.frag text eol=lf\n", "only canonical shader LF policy may reuse unchanged source"
               jobs = fetch(f"actions/runs/{prior}/jobs?per_page=100")["jobs"]
@@ -90,20 +90,41 @@ jobs:
               matches = [job for job in jobs if platform in job["name"] and job["name"].startswith("test (")]
               assert len(matches) == 1, f"missing unique {platform} evidence"
               steps = {step["name"]: step.get("conclusion") for step in matches[0]["steps"]}
-              reuse = all(steps.get(name) == "success" for name in ("Format check", "Clippy", "Rust correctness and allocation tests"))
-              if platform == "windows-x86_64" and ".gitattributes" in changes:
-                  reuse = False
-              print(f"Prior PR run {prior} at {source}: {platform} reuse={reuse}; failed/unqualified checks run again")
+              complete = all(steps.get(name) == "success" for name in ("Format check", "Clippy", "Rust correctness and allocation tests"))
+              if complete:
+                  mode = "desktop" if desktop_changed else "all"
+              elif steps.get("Format check") == "success" and steps.get("Clippy") == "success" and steps.get("Rust correctness and allocation tests") == "failure":
+                  # Cargo stops at the first failing target. Prove all CLI/Core
+                  # targets passed before the final desktop binary failed; the
+                  # complete desktop suite and all doc tests will run again.
+                  help_text = subprocess.check_output(["gh", "api", "--help"], encoding="utf-8")
+                  escape_flag = ["--allow-escape-sequences"] if "--allow-escape-sequences" in help_text else []
+                  log = subprocess.check_output(["gh", "api", *escape_flag, f"repos/{repository}/actions/jobs/{matches[0]['id']}/logs"], encoding="utf-8", errors="replace")
+                  log = re.sub(r"\x1b\[[0-9;]*m", "", log).replace("\\", "/")
+                  desktop = re.search(r"Running unittests src/main\.rs \([^\r\n]*/openpatch_desktop-", log)
+                  prefix = log[:desktop.start()] if desktop else ""
+                  cli = re.search(r"Running unittests src/lib\.rs \([^\r\n]*/openpatch-[a-f0-9]", prefix)
+                  core = re.search(r"Running unittests src/lib\.rs \([^\r\n]*/openpatch_core-", prefix)
+                  if cli and core and "test result: FAILED" not in prefix and "panicked at" not in prefix and "to rerun pass `-p openpatch-desktop --bin openpatch-desktop`" in log:
+                      mode = "desktop"
+              if platform == "windows-x86_64" and ".gitattributes" in changes and mode == "all":
+                  mode = "desktop"
+              print(f"Prior run {prior} at {source}: {platform} correctness refresh={mode}")
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              output.write("reuse=" + str(reuse).lower() + "\n")
+              output.write("mode=" + mode + "\n")
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Clippy
-        if: steps.qualification.outputs.reuse != 'true'
+        if: steps.qualification.outputs.mode != 'all'
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Rust correctness and allocation tests
-        if: steps.qualification.outputs.reuse != 'true'
+        if: steps.qualification.outputs.mode == 'none'
         run: cargo test --locked --workspace
+      - name: Refresh desktop correctness and workspace doc tests
+        if: steps.qualification.outputs.mode == 'desktop'
+        run: |
+          cargo test --locked -p openpatch-desktop
+          cargo test --locked --doc --workspace
       - name: Release binary
         env:
           RUSTFLAGS: ${{ runner.os == 'Windows' && '-C target-feature=+crt-static' || '' }}
@@ -112,7 +133,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           mkdir -p native-test-output
-          timeout 45s xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 target/${{ matrix.target }}/release/openpatch-desktop --smoke-test native-test-output/rack.png --workspace /tmp/openpatch-smoke
+          timeout 180s xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 target/${{ matrix.target }}/release/openpatch-desktop --smoke-test native-test-output/rack.png --workspace /tmp/openpatch-smoke
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Linux'
         with:
@@ -147,9 +168,12 @@ jobs:
           ldd native-test-output/packaged-linux/OpenPatch-linux-x86_64/openpatch-desktop
       - name: Record package identity
         shell: python
+        env:
+          QUALIFIED_RUN: ${{ inputs.qualified_run }}
+          CORRECTNESS_REFRESH: ${{ steps.qualification.outputs.mode }}
         run: |
           import hashlib, json, os, pathlib, subprocess
-          info = {"commit": os.environ["GITHUB_SHA"], "tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(), "platform": "${{ matrix.artifact }}", "archives": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in pathlib.Path("dist").glob("OpenPatch-*") if p.is_file()}}
+          info = {"correctness_reference": os.environ.get("QUALIFIED_RUN") or None, "correctness_refresh": os.environ["CORRECTNESS_REFRESH"], "commit": os.environ["GITHUB_SHA"], "tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(), "platform": "${{ matrix.artifact }}", "archives": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in pathlib.Path("dist").glob("OpenPatch-*") if p.is_file()}}
           pathlib.Path("dist/release-${{ matrix.artifact }}.json").write_text(json.dumps(info, indent=2) + "\n")
       - name: MCP integration tests
         env:

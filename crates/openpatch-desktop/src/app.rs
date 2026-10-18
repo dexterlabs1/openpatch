@@ -8315,6 +8315,20 @@ impl eframe::App for OpenPatch {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.update_frame(ctx);
+    }
+
+    fn on_exit(&mut self, gl: Option<&glow::Context>) {
+        self.cancel_wavetable_import();
+        self.mcp_session.shutdown();
+        if let (Some(v), Some(gl)) = (&self.visualizer, gl) {
+            v.destroy(gl);
+        }
+    }
+}
+
+impl OpenPatch {
+    fn update_frame(&mut self, ctx: &egui::Context) {
         self.poll_wavetable_import();
         if self.wavetable_import.is_some() {
             ctx.request_repaint_after(Duration::from_millis(16));
@@ -8440,6 +8454,12 @@ impl eframe::App for OpenPatch {
                     }
                 }
             }
+        }
+        // The existing smoke scenes own their layout. Panel::show may open the
+        // Patch Engine automatically on a small viewport's first frame; close
+        // that presentation before it can claim rack shortcuts in these scenes.
+        if self.smoke_test.is_some() && self.patch_engine.is_open() {
+            self.patch_engine.toggle();
         }
         self.service_patch_engine();
         self.analysis_dock(ctx);
@@ -8594,13 +8614,6 @@ impl eframe::App for OpenPatch {
             ctx.request_repaint();
         } else {
             ctx.request_repaint_after(Duration::from_millis(33));
-        }
-    }
-    fn on_exit(&mut self, gl: Option<&glow::Context>) {
-        self.cancel_wavetable_import();
-        self.mcp_session.shutdown();
-        if let (Some(v), Some(gl)) = (&self.visualizer, gl) {
-            v.destroy(gl);
         }
     }
 }
@@ -9549,25 +9562,33 @@ mod project_workflow_tests {
     fn parameter_smoke_fixture_opens_real_popup_without_a_pointer() {
         let dir = tempfile::tempdir().unwrap();
         let mut app = host(dir.path());
-        app.smoke_test = Some((dir.path().join("unused.png"), 605, 35));
+        app.smoke_test = Some((dir.path().join("unused.png"), 604, 35));
         let ctx = egui::Context::default();
-        app.smoke(&ctx);
-        app.sync();
         let mut output = None;
-        for frame in 0..18 {
-            app.smoke_test.as_mut().unwrap().1 = 606 + frame;
+        while app.smoke_test.as_ref().unwrap().1 < 622 {
+            let logical = app.smoke_test.as_ref().unwrap().1;
             let mut input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
                     egui::vec2(1000.0, 800.0),
                 )),
-                time: Some(frame as f64),
+                time: Some(logical as f64 / 60.0),
                 focused: false,
                 events: vec![egui::Event::WindowFocused(false)],
                 ..Default::default()
             };
             eframe::App::raw_input_hook(&mut app, &ctx, &mut input);
-            output = Some(ctx.run(input, |ctx| app.rack_workspace(ctx, None)));
+            output = Some(ctx.run(input, |ctx| {
+                app.update_frame(ctx);
+                // Include the native sizing pass across the setup606 transition.
+                if logical == 604 {
+                    ctx.request_discard("exercise editor setup sizing pass");
+                }
+            }));
+            assert!(
+                !app.patch_engine.is_open(),
+                "smoke scenes keep the small-screen startup panel from claiming rack input"
+            );
         }
         let output = output.unwrap();
         preset_text(&output, "Apply");
