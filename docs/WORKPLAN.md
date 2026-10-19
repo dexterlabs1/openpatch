@@ -18,17 +18,17 @@ versions, architectures, licenses and examples are verified. The downloaded Mac
 archive also passes strict/deep signature and bundled CLI catalog checks.
 Release checksums and build provenance identify the exact tested files.
 
-The installed Mac app remains 0.3.0 build 10; no automatic installation was
-performed. Windows audio and Deck hardware/game mode still require hands-on
+The Mac app was upgraded to 0.3.1 build 11 at the user’s explicit request
+after publication; the installed release matches the verified public archive. Windows audio and Deck hardware/game mode still require hands-on
 qualification. Existing binary-host device evidence covers only the documented
 Mac profile; general VCV plugin compatibility remains unfinished.
 
 ## Installed Mac build
 
-**OpenPatch 0.3.0 build 10 is installed at `~/Applications/OpenPatch.app`.**
+**OpenPatch 0.3.1 build 11 is installed at `~/Applications/OpenPatch.app`.**
 The user requested the upgrade after publication. The installation used the
 verified public macOS ARM archive: its SHA-256 checksum, GUI/CLI binary hashes
-and deep/strict ad-hoc signature matched. The previous installed 0.2.7 bundle
+and deep/strict ad-hoc signature matched. The previous installed 0.3.0 bundle
 was removed; user patches/settings and Claude's separate preview were preserved.
 This installation does not establish native-window/audio-device qualification.
 Keep the installed build stable until the user requests another upgrade.
@@ -59,8 +59,8 @@ performance stay last.
 
 Finished feature branches are removed after merge; historical worktrees and
 validation evidence remain available. Protected dirty checkouts and Claude's
-working branch are preserved. The installed 0.3.0 app is unchanged; the
-subsequent 0.3.1 publication is recorded above.
+working branch are preserved. The subsequent 0.3.1 publication and requested
+Mac installation are recorded above.
 
 [Branch disposition and recovery](BRANCH_STATUS.md) records the remaining work,
 protected dirty checkouts and rules for the next milestone. Earlier sections
@@ -73,8 +73,8 @@ are historical, not the current installed version.
 is published for macOS ARM, Windows x64 and Steam Deck/Linux x64. [PR #35](https://github.com/dexterlabs1/openpatch/pull/35)
 merges Claude's latest Patch Engine and visual modes, the five finished creative
 instruments, scoped rack organization, signal tracing, cable materials and footer
-tools. The Mac app was subsequently upgraded to this same release at the user’s
-request, as recorded above. Experimental VCV binary hosting is excluded.
+tools. The Mac app was upgraded to this release at the user’s request before the
+subsequent 0.3.1 upgrade recorded above. Experimental VCV binary hosting is excluded.
 
 The [final release gate](https://github.com/dexterlabs1/openpatch/actions/runs/39090065990)
 passed strict workspace lint, complete refreshed desktop suites and workspace
