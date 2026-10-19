@@ -21,14 +21,14 @@ ROOT = HERE.parents[1]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--gate", choices=("transport", "mixed-graph"), default="transport", help="production boundary to exercise; neither mode opens a device")
+    parser.add_argument("--gate", choices=("transport", "mixed-graph", "xfade"), default="transport", help="production boundary to exercise; neither mode opens a device")
     parser.add_argument("--sdk", type=Path, required=True)
     parser.add_argument("--plugin", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True, help="full module snapshot from the feasibility gate")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     sdk, plugin, seed = args.sdk.resolve(), args.plugin.resolve(), args.state.resolve()
-    parent_example = "binary_host_graph" if args.gate == "mixed-graph" else "binary_host_transport"
+    parent_example = {"mixed-graph":"binary_host_graph", "transport":"binary_host_transport", "xfade":"binary_host_xfade"}[args.gate]
     args.output.mkdir(parents=True, exist_ok=True)
     evidence = Path(tempfile.mkdtemp(prefix="transport-", dir=args.output.resolve()))
     os.chdir(ROOT)

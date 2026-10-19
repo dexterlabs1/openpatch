@@ -6,9 +6,9 @@ mod real_device {
     use serde_json::{json, Value};
     use std::time::{Duration, Instant};
 
-    fn representative_document() -> ProjectDocument {
+    fn representative_document(xfade: bool) -> ProjectDocument {
         let (_, reference) = hosted_document();
-        let module = reference
+        let mut module = reference
             .graph
             .nodes
             .iter()
@@ -20,6 +20,10 @@ mod real_device {
                 }
             })
             .unwrap();
+        if xfade {
+            let mut identity=module.identity.clone();identity.model="Bogaudio-XFade".into();
+            module=openpatch::project_document::hosted::HostedModule::xfade(identity,0.,0.5,true).unwrap();
+        }
         let native: Patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
             "nodes":[
                 {"id":"pitch","kind":"poly_constant","params":{"channels":16,"v1":-1,"v2":-0.9,"v3":-0.8,"v4":-0.7,"v5":-0.6,"v6":-0.5,"v7":-0.4,"v8":-0.3,"v9":-0.2,"v10":-0.1,"v11":0,"v12":0.1,"v13":0.2,"v14":0.3,"v15":0.4,"v16":0.5}},
@@ -45,6 +49,10 @@ mod real_device {
                 .cables
                 .push(serde_json::from_value(json!({"route":route})).unwrap());
         }
+        if xfade {
+            document.graph.cables.iter_mut().find(|c|c.route.to=="binary").unwrap().route.input="a".into();
+            document.graph.cables.push(serde_json::from_value(json!({"route":{"id":"host-b","from":"vco","output":"triangle","to":"binary","input":"b"}})).unwrap());
+        }
         for (index, node) in document.graph.nodes.iter().enumerate() {
             document
                 .layout
@@ -68,10 +76,11 @@ mod real_device {
             .unwrap_or(60)
             .clamp(30, 300);
         let selected = std::env::var("OPENPATCH_HOSTED_DEVICE_NAME").ok();
+        let xfade=match std::env::var("OPENPATCH_HOSTED_DEVICE_PROFILE").as_deref().unwrap_or("offset") {"offset"=>false,"xfade"=>true,_=>panic!("unsupported explicit device profile")};
         let workspace = tempfile::tempdir_in(&destination).unwrap();
         let mut session = Session::new(workspace.path()).unwrap();
         session
-            .replace_project_document(representative_document(), None)
+            .replace_project_document(representative_document(xfade), None)
             .unwrap();
         session
             .execute("set_hosted_execution", json!({"enabled":true}))
@@ -187,11 +196,12 @@ mod real_device {
             && deallocations == 0;
         let receipt = json!({"passed":passed,"scope":"real native macOS CPAL output stream and actual installed plugin; no paced/manual callback injection",
             "requested_seconds":seconds,"elapsed_seconds":start.elapsed().as_secs_f64(),"device":device,
-            "representative_load":"16-voice stock VCO -> stock VCF -> installed Bogaudio OFFSET -> stock VCA; two native edits and Scope rebindings",
+            "profile":if xfade {"Bogaudio-XFade"} else {"Bogaudio-Offset"},
+            "representative_load":if xfade {"16-voice native VCO sine -> VCF -> XFade A; VCO triangle -> XFade B; XFade -> VCA; two native edits and Scope rebindings"} else {"16-voice stock VCO -> stock VCF -> installed Bogaudio OFFSET -> stock VCA; two native edits and Scope rebindings"},
             "device_frames":frames,"actual_callbacks":callbacks,"activated":activated,"maximum_observed_peak":peak,
             "callback_allocations":allocations,"callback_deallocations":deallocations,"final_timing":timing,
             "final_hosted_runtime":runtime,"owners_before_stop":owners,"stream_error":stream_error,"failure":failure,"observations":observations,
-            "latency":{"graph_anchor_frames":387,"graph_anchor_source":"separate actual-binary impulse receipt; not remeasured by this sustained test",
+            "latency":{"graph_anchor_frames":(!xfade).then_some(387),"graph_anchor_source":if xfade {"not measured for XFade"} else {"separate OFFSET actual-binary impulse receipt; not remeasured by this sustained test"},
                 "transport_delay_frames":384,"cpal_predicted_playback_ahead_min_ns":(min_ahead != u64::MAX).then_some(min_ahead),
                 "cpal_predicted_playback_ahead_max_ns":max_ahead,"physical_loopback_measured":false},
             "qualification_limits":"one device/profile/load; processing budget overruns are not hardware xrun counts; CPAL timestamps predict DAC delivery, no physical input/output loopback"});

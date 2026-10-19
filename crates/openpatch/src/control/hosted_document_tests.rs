@@ -613,7 +613,7 @@ mod live_admission {
         let applied = control.snapshot().applied.unwrap();
         assert_eq!(applied.sequence, 3);
         assert_eq!(applied.authored_revision, redo_revision);
-        assert_eq!(applied.values.offset, 0.25);
+        assert_eq!(applied.values.values[0], 0.25);
         assert_eq!(control.snapshot().outstanding_commands, 0);
     }
 
@@ -659,7 +659,7 @@ mod live_admission {
         );
         assert!(reader.next_for_sample(37).unwrap().is_none());
         reader.acknowledge(1, 384).unwrap();
-        assert_eq!(control.snapshot().applied.unwrap().values.offset, 0.25);
+        assert_eq!(control.snapshot().applied.unwrap().values.values[0], 0.25);
         assert_eq!(control.snapshot().applied.unwrap().sequence, 2);
     }
 
@@ -766,4 +766,86 @@ fn public_hosted_activation_is_explicit_revision_fenced_and_never_saved_or_undo_
     assert!(session.hosted_execution_grant.is_none());
     session.execute("undo", json!({})).unwrap();
     assert!(session.hosted_execution_grant.is_none());
+}
+
+#[test]
+fn xfade_three_parameter_history_and_save_preserve_model_and_schema() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut session = Session::new(dir.path()).unwrap();
+    let document: ProjectDocument = serde_json::from_str(include_str!(
+        "../../../../examples/experimental-hosted-xfade.json"
+    ))
+    .unwrap();
+    session.replace_project_document(document, None).unwrap();
+    for (parameter, value) in [("mix", -0.5), ("curve", 0.25), ("linear", 1.)] {
+        session.execute("set_hosted_parameter",json!({"id":"binary","parameter":parameter,"value":value,"expected_revision":session.revision()})).unwrap();
+    }
+    assert_eq!(
+        hosted(session.project_document())
+            .parameter("linear")
+            .unwrap(),
+        1.
+    );
+    session.execute("undo", json!({})).unwrap();
+    assert_eq!(
+        hosted(session.project_document())
+            .parameter("linear")
+            .unwrap(),
+        0.
+    );
+    session.execute("redo", json!({})).unwrap();
+    assert_eq!(
+        hosted(session.project_document())
+            .parameter("linear")
+            .unwrap(),
+        1.
+    );
+    let revision = session.revision();
+    assert!(session
+        .set_hosted_parameter("binary", "linear", 0.5, None)
+        .is_err());
+    assert_eq!(session.revision(), revision);
+    let document = session.project_document().clone();
+    let saved = serde_json::to_string(&document).unwrap();
+    let restored: ProjectDocument = serde_json::from_str(&saved).unwrap();
+    hosted(&restored).validate_supported().unwrap();
+    assert_eq!(hosted(&restored).state, hosted(&document).state);
+}
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn xfade_all_live_parameters_keep_permission_but_model_replacement_does_not() {
+    let document: ProjectDocument = serde_json::from_str(include_str!(
+        "../../../../examples/experimental-hosted-xfade.json"
+    ))
+    .unwrap();
+    let grant = crate::binary_host::execution::HostedExecutionGrant::new(&document, 1).unwrap();
+    for (key, value) in [("mix", 0.5), ("curve", 0.25), ("linear", 1.)] {
+        let mut changed = document.clone();
+        let DocumentNode::Hosted { module, .. } = changed
+            .graph
+            .nodes
+            .iter_mut()
+            .find(|n| matches!(n, DocumentNode::Hosted { .. }))
+            .unwrap()
+        else {
+            unreachable!()
+        };
+        *module = module.with_parameter(key, value).unwrap();
+        assert!(grant.matches_document(&changed, 1).unwrap());
+    }
+    let mut changed = document;
+    let DocumentNode::Hosted { module, .. } = changed
+        .graph
+        .nodes
+        .iter_mut()
+        .find(|n| matches!(n, DocumentNode::Hosted { .. }))
+        .unwrap()
+    else {
+        unreachable!()
+    };
+    *module = offset();
+    assert!(
+        grant.matches_document(&changed, 1).is_err()
+            || !grant.matches_document(&changed, 1).unwrap()
+    );
 }

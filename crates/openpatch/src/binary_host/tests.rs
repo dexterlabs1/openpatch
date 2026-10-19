@@ -266,3 +266,43 @@ fn unsupported_configuration_and_existing_files_are_preserved() {
     assert!(Region::create(&path, fence, 4, SAMPLE_RATE).is_err());
     assert_eq!(std::fs::read(&path).unwrap(), b"keep me");
 }
+
+#[test]
+fn xfade_endpoint_uses_profile_ranges_and_primary_a_input() {
+    let dir = tempfile::tempdir().unwrap();
+    let fence = Fence {
+        incarnation: 1,
+        generation: 1,
+        revision: 1,
+    };
+    assert!(Region::create_for_capability(
+        &dir.path().join("wrong"),
+        fence,
+        4,
+        SAMPLE_RATE,
+        HostedCapability::XFade
+    )
+    .is_err());
+    let region = Region::create_for_capability(
+        &dir.path().join("valid"),
+        fence,
+        2,
+        SAMPLE_RATE,
+        HostedCapability::XFade,
+    )
+    .unwrap();
+    region.atomic(STATUS).store(1, Ordering::Release);
+    let mut endpoint = region.into_endpoint().unwrap();
+    assert_eq!(endpoint.capability(), HostedCapability::XFade);
+    let mut block = InputBlock::silence(2);
+    block.event_count = 1;
+    block.events[0] = ParamEvent {
+        sample_offset: 0,
+        parameter: 2,
+        value: 1.,
+        order: 1,
+    };
+    assert_eq!(endpoint.submit(&block), Ok(0));
+    block.events[0].value = 0.5;
+    assert_eq!(endpoint.submit(&block), Err(Fault::InvalidInput));
+}

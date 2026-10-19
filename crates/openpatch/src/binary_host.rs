@@ -20,6 +20,9 @@ pub mod graph;
 pub mod process;
 pub mod runner;
 
+pub const PROTOCOL_VERSION: u32 = 2;
+use crate::project_document::hosted::HostedCapability;
+
 pub const QUANTUM: usize = 128;
 pub const INPUTS: usize = 3;
 pub const CHANNELS: usize = 16;
@@ -108,7 +111,7 @@ impl InputBlock {
         }
     }
 
-    fn valid(&self, input_mask: u32) -> bool {
+    fn valid(&self, input_mask: u32, capability: HostedCapability) -> bool {
         if self.event_count > MAX_EVENTS {
             return false;
         }
@@ -130,9 +133,7 @@ impl InputBlock {
         for event in &self.events[..self.event_count] {
             let key = (event.sample_offset, event.order);
             if event.sample_offset as usize >= QUANTUM
-                || event.parameter > 1
-                || !event.value.is_finite()
-                || !(-1.0..=1.0).contains(&event.value)
+                || !capability.accepts_parameter(event.parameter, event.value)
                 || previous.is_some_and(|p| p >= key)
             {
                 return false;
@@ -170,6 +171,7 @@ pub struct Region {
     _file: File,
     fence: Fence,
     input_mask: u32,
+    capability: HostedCapability,
     endpoint_taken: bool,
     owner_id: u64,
 }
@@ -232,11 +234,19 @@ impl Region {
     /// Control-thread setup only. Creates a new private file; never replaces an
     /// existing file. Caller must stop/reap the child before dropping the region.
     pub fn create(path: &Path, fence: Fence, input_mask: u32, rate: u32) -> io::Result<Self> {
+        Self::create_for_capability(path, fence, input_mask, rate, HostedCapability::Offset)
+    }
+    pub fn create_for_capability(
+        path: &Path,
+        fence: Fence,
+        input_mask: u32,
+        rate: u32,
+        capability: HostedCapability,
+    ) -> io::Result<Self> {
         if fence.incarnation == 0
             || fence.generation == 0
             || fence.revision == 0
-            || input_mask & !7 != 0
-            || input_mask & 4 == 0
+            || !capability.accepts_input_mask(input_mask)
             || rate != SAMPLE_RATE
         {
             return Err(io::Error::new(
@@ -287,15 +297,16 @@ impl Region {
             _file: file,
             fence,
             input_mask,
+            capability,
             endpoint_taken: false,
             owner_id,
         };
         // SAFETY: no child has been launched; all bytes are exclusively owned.
         unsafe {
             std::ptr::write_bytes(region.base.as_ptr(), 0, BYTES);
-            std::ptr::copy_nonoverlapping(b"OPHST001".as_ptr(), region.base.as_ptr(), 8);
+            std::ptr::copy_nonoverlapping(b"OPHST002".as_ptr(), region.base.as_ptr(), 8);
             for (offset, value) in [
-                (8, 1),
+                (8, PROTOCOL_VERSION),
                 (12, BYTES as u32),
                 (16, QUANTUM as u32),
                 (20, rate),
@@ -305,6 +316,7 @@ impl Region {
                 (60, 1),
                 (64, CHANNELS as u32),
                 (84, input_mask),
+                (88, capability as u32),
             ] {
                 region.write(offset, value);
             }
@@ -442,6 +454,9 @@ pub struct TransportEndpoint<R> {
 }
 
 impl<R: AsRef<Region>> TransportEndpoint<R> {
+    pub fn capability(&self) -> HostedCapability {
+        self.region.as_ref().capability
+    }
     pub fn input_mask(&self) -> u32 {
         self.region.as_ref().input_mask
     }
@@ -499,7 +514,7 @@ impl<R: AsRef<Region>> TransportEndpoint<R> {
     /// execution failure, never permission to overwrite a child-owned slot.
     pub fn submit(&mut self, input: &InputBlock) -> Result<u64, Fault> {
         self.live()?;
-        if !input.valid(self.region.as_ref().input_mask) {
+        if !input.valid(self.region.as_ref().input_mask, self.capability()) {
             return self.fail(Fault::InvalidInput);
         }
         let sequence = self.next_submit;

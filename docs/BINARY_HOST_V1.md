@@ -1,16 +1,18 @@
 # First application-host milestone
 
-Integration candidate, 2026-10-18. The experimental host has explicit native/MCP
-activation, shared rack controls, coherent native/MCP save dispatch, and same-child
-continuity across ordinary native parameter and Scope rebuilds. Released `main`
-features and Recall Random are integrated. The final optimized physical Mac
-device gate passes on source `2e24c8e`; the public plugin workflow and separate
-native-window review also pass. Final macOS milestone CI remains pending.
-The installed OpenPatch 0.3.0 build 10 is unchanged. The full
+OpenPatch 0.3.1 build 11 ships the bounded OFFSET host described below. It was
+installed at the user's request after publication. PR #38 and its final macOS CI
+are complete; the historical evidence below retains its exact source/device scope.
+
+The next development milestone adds the separately qualified XFADE profile and
+transport v2. See [development profiles and setup](BINARY_HOST_PROFILES.md).
+This does not add general plugin/widget compatibility. The
 [compatibility obligation](COMPATIBILITY_DECISION.md#extensions-and-existing-vcv-binaries)
 and native Rust extension API remain separate.
 
-## Explicit experimental workflow
+<a id="explicit-experimental-workflow"></a>
+
+## Released 0.3.1 OFFSET workflow
 
 Open [the quiet mono example](../examples/experimental-hosted-offset.json), click
 the hosted panel to review playback, then choose **Start experimental hosted

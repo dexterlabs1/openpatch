@@ -67,7 +67,7 @@ Connecting to an already open window works on Mac and Linux. On Windows, start a
 
 OpenPatch is an early release. It does not yet match all of VCV Rack's features or module library.
 
-You can [import supported VCV patches](docs/VCV_IMPORT.md), but not every module can be converted. Existing VCV plugins do not load automatically. An experimental Mac host supports one pinned Bogaudio OFFSET build with separate setup. [Experimental hosting guide](docs/BINARY_HOST_V1.md)
+You can [import supported VCV patches](docs/VCV_IMPORT.md), but not every module can be converted. Existing VCV plugins do not load automatically. An experimental Mac host supports one pinned Bogaudio OFFSET build with separate setup. [Experimental hosting guide](docs/BINARY_HOST_V1.md) Development source also supports the pinned XFADE profile. [Development profiles](docs/BINARY_HOST_PROFILES.md)
 
 Windows audio devices and Steam Deck game mode still need hands-on testing.
 

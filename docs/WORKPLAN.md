@@ -2,6 +2,21 @@
 
 Updated 2026-10-19. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
 
+## In progress: a second genuine Rack plugin profile
+
+The Mac development host adds Bogaudio 2.6.47 XFADE alongside OFFSET, using the
+original installed plugin binary and Rack SDK 2.6.6. A bounded capability registry
+owns port order, parameter ranges/discrete values, input requirements and strict
+saved state; transport v2 binds the selected profile through launch and capture.
+The native panel and MCP share all three controls, history and coherent saves.
+[Scope, setup and evidence](BINARY_HOST_PROFILES.md).
+
+Done checklist: genuine audio/CV and fresh restore; desktop edit/history/native
+continuity/save; wrong-profile/header/state refusal; preserved OFFSET failure
+gates; callback heap checks; one final macOS CI. Device qualification is a
+separate receipt. Do not package or install this milestone automatically.
+The installed/public release remains 0.3.1 build 11.
+
 ## Latest public release: 0.3.1 build 11
 
 [OpenPatch 0.3.1](https://github.com/dexterlabs1/openpatch/releases/tag/v0.3.1)

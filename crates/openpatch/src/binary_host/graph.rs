@@ -50,9 +50,11 @@ impl HostedGraphPlan {
         for node in &document.graph.nodes {
             match node {
                 DocumentNode::Hosted { id, module, .. } => {
-                    module.validate_supported_offset()?;
+                    module.validate_supported()?;
                     if hosted.replace((id, module)).is_some() {
-                        return Err("the first hosted capability supports one OFFSET module".into());
+                        return Err(
+                            "the current hosted capability supports one plugin module".into()
+                        );
                     }
                 }
                 DocumentNode::Unresolved { .. } => {
@@ -85,8 +87,10 @@ impl HostedGraphPlan {
                 input_mask |= 1 << port.index;
             }
         }
-        if input_mask & 4 == 0 {
-            return Err("the current companion requires a connected OFFSET signal input".into());
+        if !module.capability()?.accepts_input_mask(input_mask) {
+            return Err(
+                "the current companion requires a connected capability primary signal input".into(),
+            );
         }
         Ok(Self {
             native: carrier.patch,
@@ -124,7 +128,13 @@ impl HostedGraphPlan {
     ) -> Result<(Engine, ResolvedExternalModule), String> {
         let spec = ExternalModuleSpec {
             id: self.hosted_id.clone(),
-            inputs: vec!["offset_cv".into(), "scale_cv".into(), "in".into()],
+            inputs: self
+                .module
+                .capability()?
+                .input_keys()
+                .into_iter()
+                .map(String::from)
+                .collect(),
             outputs: vec!["out".into()],
         };
         let engine = Engine::compile_with_externals(

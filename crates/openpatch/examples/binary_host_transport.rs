@@ -138,7 +138,10 @@ mod mac {
                 Ok(false)
             })?;
             let identity: Value = serde_json::from_slice(&fs::read(user.join("identity.json"))?)?;
-            assert_eq!(identity["protocol"], 1);
+            assert_eq!(
+                identity["protocol"],
+                openpatch::binary_host::PROTOCOL_VERSION
+            );
             assert_eq!(identity["rack_runtime"], "2.6.6");
             assert_eq!(
                 identity["loaded_rack_runtimes"]

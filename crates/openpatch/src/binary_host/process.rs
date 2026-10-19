@@ -4,6 +4,7 @@
 //! to processing; return it at a quiescent barrier before persistent capture.
 
 use super::{ControlView, Fence, OwnedEndpoint, Region, Status, SAMPLE_RATE};
+use crate::project_document::hosted::{validate_supported_snapshot, HostedCapability};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
@@ -60,6 +61,7 @@ pub struct HostProcess {
     workspace: TempDir,
     fence: Fence,
     state_out: PathBuf,
+    capability: HostedCapability,
     _control_thread: PhantomData<Rc<()>>,
 }
 
@@ -68,6 +70,7 @@ impl LaunchConfig {
     /// then verifies the companion's actual loaded-image receipt.
     pub fn launch(self) -> io::Result<PreparedHost> {
         self.validate()?;
+        let capability = validate_supported_snapshot(&self.snapshot).map_err(invalid)?;
         let executable = Fingerprint::read(&self.companion_executable)?;
         if fs::metadata(&executable.path)?.permissions().mode() & 0o111 == 0 {
             return Err(invalid("companion is not executable"));
@@ -84,7 +87,7 @@ impl LaunchConfig {
                 "plugin/runtime SHA-256 does not match authored identity",
             ));
         }
-        validate_manifest(&read_json(&manifest.path, MANIFEST_LIMIT)?)?;
+        validate_manifest(&read_json(&manifest.path, MANIFEST_LIMIT)?, capability)?;
         let snapshot = encode_snapshot(&self.snapshot)?;
         let workspace = tempfile::Builder::new()
             .prefix("openpatch-binary-host-")
@@ -102,7 +105,13 @@ impl LaunchConfig {
         let stdout = private_file(&workspace.path().join("child.stdout"))?;
         let stderr = private_file(&workspace.path().join("child.stderr"))?;
         let shared = workspace.path().join("transport");
-        let region = Region::create(&shared, self.fence, self.input_mask, SAMPLE_RATE)?;
+        let region = Region::create_for_capability(
+            &shared,
+            self.fence,
+            self.input_mask,
+            SAMPLE_RATE,
+            capability,
+        )?;
         let control = region.control_view()?;
         let endpoint = region
             .into_endpoint()
@@ -127,6 +136,7 @@ impl LaunchConfig {
             workspace,
             fence: self.fence,
             state_out,
+            capability,
             _control_thread: PhantomData,
         };
         let deadline = Instant::now() + self.startup_timeout;
@@ -148,6 +158,7 @@ impl LaunchConfig {
             &read_json(&user.join("identity.json"), RECEIPT_LIMIT)?,
             &plugin_image.path,
             &runtime.path,
+            capability,
         )?;
         for fingerprint in [&executable, &plugin_image, &runtime, &manifest] {
             fingerprint.recheck()?;
@@ -166,7 +177,8 @@ impl LaunchConfig {
         if self.fence.incarnation == 0 || self.fence.generation == 0 || self.fence.revision == 0 {
             return Err(invalid("host fences must be nonzero"));
         }
-        if self.input_mask & !7 != 0 || self.input_mask & 4 == 0 {
+        let capability = validate_supported_snapshot(&self.snapshot).map_err(invalid)?;
+        if !capability.accepts_input_mask(self.input_mask) {
             return Err(invalid("unsupported fixed input connection mask"));
         }
         for hash in [&self.expected_plugin_sha256, &self.expected_runtime_sha256] {
@@ -279,7 +291,11 @@ impl HostProcess {
             )));
         }
         let state = read_json(&self.state_out, STATE_LIMIT)?;
-        validate_snapshot(&state)?;
+        if validate_supported_snapshot(&state).map_err(invalid)? != self.capability {
+            return Err(invalid(
+                "captured state changed the requested hosted capability",
+            ));
+        }
         Ok(CapturedState {
             fence: self.fence,
             state,
@@ -361,15 +377,17 @@ fn encode_snapshot(state: &Value) -> io::Result<Vec<u8>> {
 }
 
 fn validate_snapshot(state: &Value) -> io::Result<()> {
-    crate::project_document::hosted::validate_offset_snapshot(state).map_err(invalid)
+    validate_supported_snapshot(state)
+        .map(|_| ())
+        .map_err(invalid)
 }
 
-fn validate_manifest(manifest: &Value) -> io::Result<()> {
+fn validate_manifest(manifest: &Value, capability: HostedCapability) -> io::Result<()> {
     if manifest["slug"] != "Bogaudio"
         || manifest["version"] != "2.6.47"
         || !manifest["modules"]
             .as_array()
-            .is_some_and(|modules| modules.iter().any(|m| m["slug"] == "Bogaudio-Offset"))
+            .is_some_and(|modules| modules.iter().any(|m| m["slug"] == capability.model()))
     {
         return Err(invalid(
             "manifest requires Bogaudio 2.6.47 with Offset model",
@@ -378,12 +396,18 @@ fn validate_manifest(manifest: &Value) -> io::Result<()> {
     Ok(())
 }
 
-fn validate_receipt(receipt: &Value, plugin: &Path, runtime: &Path) -> io::Result<()> {
-    if receipt["protocol"].as_u64() != Some(1)
+fn validate_receipt(
+    receipt: &Value,
+    plugin: &Path,
+    runtime: &Path,
+    capability: HostedCapability,
+) -> io::Result<()> {
+    if receipt["protocol"].as_u64() != Some(super::PROTOCOL_VERSION as u64)
+        || receipt["profile_id"].as_u64() != Some(capability as u64)
         || receipt["rack_runtime"] != "2.6.6"
         || receipt["plugin_slug"] != "Bogaudio"
         || receipt["plugin_version"] != "2.6.47"
-        || receipt["model_slug"] != "Bogaudio-Offset"
+        || receipt["model_slug"] != capability.model()
         || receipt["sample_rate"].as_u64() != Some(SAMPLE_RATE as u64)
         || receipt["quantum"].as_u64() != Some(super::QUANTUM as u64)
     {
@@ -554,5 +578,35 @@ mod tests {
         let fingerprint = Fingerprint::read(&path).unwrap();
         fs::write(&path, b"[]").unwrap();
         assert!(fingerprint.recheck().is_err());
+    }
+}
+
+#[cfg(test)]
+mod capability_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn loaded_receipt_is_bound_to_the_requested_model_and_wire_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugin = dir.path().join("plugin.dylib");
+        let runtime = dir.path().join("libRack.dylib");
+        fs::write(&plugin, []).unwrap();
+        fs::write(&runtime, []).unwrap();
+        let plugin = plugin.canonicalize().unwrap();
+        let runtime = runtime.canonicalize().unwrap();
+        let receipt = json!({"protocol":super::super::PROTOCOL_VERSION,"profile_id":2,"rack_runtime":"2.6.6","plugin_slug":"Bogaudio","plugin_version":"2.6.47","model_slug":"Bogaudio-XFade","sample_rate":48000,"quantum":128,"loaded_plugin":plugin,"loaded_rack_runtimes":[runtime]});
+        validate_receipt(&receipt, &plugin, &runtime, HostedCapability::XFade).unwrap();
+        assert!(validate_receipt(&receipt, &plugin, &runtime, HostedCapability::Offset).is_err());
+        for (field, bad) in [
+            ("protocol", json!(1)),
+            ("profile_id", json!(1)),
+            ("model_slug", json!("Bogaudio-Offset")),
+        ] {
+            let mut changed = receipt.clone();
+            changed[field] = bad;
+            assert!(
+                validate_receipt(&changed, &plugin, &runtime, HostedCapability::XFade).is_err()
+            );
+        }
     }
 }

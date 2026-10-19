@@ -97,7 +97,7 @@ impl OpenPatch {
                 if !hosted.is_empty() {
                     ui.separator();
                     ui.strong("Experimental binary host");
-                    ui.label("Pinned Bogaudio OFFSET only · 48 kHz · 128-frame buffers · 384 transport frames. Permission lasts for this session and graph.");
+                    ui.label("Pinned supported Bogaudio profile · 48 kHz · 128-frame buffers · 384 transport frames. Permission lasts for this session and graph.");
                     ui.label(if hosted_status["active"] == true { "Hosted audio running" }
                         else if hosted_status["status"] == "requested" { "Hosted execution requested; inspect performance for preparation or failure" }
                         else { "Hosted execution stopped" });

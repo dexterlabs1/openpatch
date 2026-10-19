@@ -1,4 +1,4 @@
-// OpenPatch actual-existing-binary companion, protocol v1. Original code, MIT.
+// OpenPatch actual-existing-binary companion, protocol v2. Original code, MIT.
 // The only plugin implementation is the explicitly supplied Bogaudio dylib.
 #include "wire.h"
 #include <rack.hpp>
@@ -64,9 +64,18 @@ bool textIs(json_t* object,const char* key,const char* expected) {
     json_t* value=json_object_get(object,key);
     return json_is_string(value) && std::string(json_string_value(value))==expected;
 }
+enum class Profile : uint32_t { Offset=1, XFade=2 };
+const char* modelSlug(Profile profile) { return profile==Profile::Offset ? "Bogaudio-Offset" : "Bogaudio-XFade"; }
+size_t parameterCount(Profile profile) { return profile==Profile::Offset ? 2 : 3; }
+bool validParameter(Profile profile,uint16_t id,float value) {
+    if(!std::isfinite(value) || id>=parameterCount(profile)) return false;
+    if(profile==Profile::Offset || id==0) return value>=-1.f && value<=1.f;
+    return value>=0.f && value<=1.f && (id!=2 || value==0.f || value==1.f);
+}
 struct Plan {
     uint64_t incarnation,generation,revision;
     uint32_t mask;
+    Profile profile;
 };
 Plan validateHeader(const uint8_t* p) {
     require(std::memcmp(p,wire::MAGIC,8)==0
@@ -81,12 +90,13 @@ Plan validateHeader(const uint8_t* p) {
             && wire::get<uint32_t>(p,64)==wire::CHANNELS,
             Fault::Header,"unsupported shared header protocol/layout/rate/ports");
     Plan plan{wire::get<uint64_t>(p,32),wire::get<uint64_t>(p,40),
-              wire::get<uint64_t>(p,48),wire::get<uint32_t>(p,wire::INPUT_MASK)};
+              wire::get<uint64_t>(p,48),wire::get<uint32_t>(p,wire::INPUT_MASK),static_cast<Profile>(wire::get<uint32_t>(p,88))};
     require(plan.incarnation && plan.generation && plan.revision,
             Fault::Header,"header fences must be nonzero");
-    require((plan.mask&4)!=0 && (plan.mask&~7u)==0,
+    require(plan.profile==Profile::Offset || plan.profile==Profile::XFade,Fault::Header,"unsupported capability ID");
+    require((plan.mask&(plan.profile==Profile::Offset ? 4u : 2u))!=0 && (plan.mask&~7u)==0,
             Fault::Header,"unsupported fixed input connection mask");
-    require(zeroBytes(p,88,wire::HEADER),Fault::Header,"nonzero reserved header bytes");
+    require(zeroBytes(p,92,wire::HEADER),Fault::Header,"nonzero reserved header bytes");
     // Mutable words are read atomically, never included in a header memcmp.
     require(wire::load(p,wire::STATUS)==wire::BOOT && wire::load(p,wire::STOP)==0
             && wire::load(p,wire::ERROR)==0 && wire::load(p,wire::PROCESSED)==0,
@@ -141,13 +151,13 @@ struct Host {
         c->id=id;c->outputModule=from;c->outputId=out;c->inputModule=to;c->inputId=in;
         engine->addCable(c.get());c.release();
     }
-    void setup(plugin::Model* model,uint32_t mask) {
+    void setup(plugin::Model* model,uint32_t mask,Profile profile) {
         auto s=std::make_unique<Source>();s->id=1;
         engine->addModule(s.get());source=s.release();
         auto m=std::unique_ptr<engine::Module>(model->createModule());
         require(bool(m),Fault::Plugin,"module factory returned null");
-        require(m->params.size()==2 && m->inputs.size()==wire::INPUTS
-                && m->outputs.size()==wire::OUTPUTS,Fault::Plugin,"unexpected Offset shape");
+        require(m->params.size()==parameterCount(profile) && m->inputs.size()==wire::INPUTS
+                && m->outputs.size()==wire::OUTPUTS,Fault::Plugin,"unexpected qualified model shape");
         m->id=2;engine->addModule(m.get());module=m.release();
         auto k=std::make_unique<Sink>();k->id=3;
         engine->addModule(k.get());sink=k.release();
@@ -157,40 +167,41 @@ struct Host {
     }
 };
 
-Json loadState(const char* path) {
+Json loadState(const char* path,Profile profile) {
     struct stat info{};
     require(stat(path,&info)==0 && S_ISREG(info.st_mode) && info.st_size>0
             && info.st_size<=off_t(MAX_STATE_BYTES),Fault::Restore,"state input missing or exceeds 1 MiB");
     json_error_t error{};
     Json saved(json_load_file(path,JSON_REJECT_DUPLICATES,&error));
-    require(json_is_object(saved.get()),Fault::Restore,"invalid state JSON object");
+    require(json_is_object(saved.get()) && json_object_size(saved.get())==6,Fault::Restore,"invalid state JSON object/fields");
     require(textIs(saved.get(),"plugin","Bogaudio")
-            && textIs(saved.get(),"model","Bogaudio-Offset")
+            && textIs(saved.get(),"model",modelSlug(profile))
             && textIs(saved.get(),"version","2.6.47"),Fault::Restore,"state identity/version mismatch");
     require(json_is_integer(json_object_get(saved.get(),"id"))
             && json_integer_value(json_object_get(saved.get(),"id"))==2,
             Fault::Restore,"state module id must be 2");
     json_t* params=json_object_get(saved.get(),"params");
-    require(json_is_array(params) && json_array_size(params)==2,
+    require(json_is_array(params) && json_array_size(params)==parameterCount(profile),
             Fault::Restore,"state requires both Offset parameters");
     uint32_t seen=0;
-    for(size_t i=0;i<2;++i) {
+    for(size_t i=0;i<parameterCount(profile);++i) {
         json_t* param=json_array_get(params,i);
         json_t* id=json_object_get(param,"id");
         json_t* value=json_object_get(param,"value");
-        require(json_is_object(param) && json_is_integer(id) && json_is_number(value),
+        require(json_is_object(param) && json_object_size(param)==2 && json_is_integer(id) && json_is_number(value),
                 Fault::Restore,"invalid state parameter");
         const json_int_t n=json_integer_value(id);
         const double v=json_number_value(value);
-        require(n>=0 && n<2 && !(seen&(1u<<n)) && std::isfinite(v) && v>=-1 && v<=1,
+        require(n>=0 && n<json_int_t(parameterCount(profile)) && !(seen&(1u<<n)) && validParameter(profile,uint16_t(n),float(v)) && double(float(v))==v,
                 Fault::Restore,"state parameter id/value out of range");
         seen|=1u<<n;
     }
     json_t* data=json_object_get(saved.get(),"data");
-    require(json_is_object(data)
-            && json_is_boolean(json_object_get(data,"offset_first"))
-            && json_is_boolean(json_object_get(data,"disableOutputLimit")),
-            Fault::Restore,"state requires explicit Offset custom flags");
+    require(json_is_object(data),Fault::Restore,"state custom data must be object");
+    if(profile==Profile::Offset) {
+        require(json_object_size(data)==2 && json_is_boolean(json_object_get(data,"offset_first"))
+                && json_is_boolean(json_object_get(data,"disableOutputLimit")),Fault::Restore,"state requires exact Offset custom flags");
+    } else require(json_object_size(data)==0,Fault::Restore,"XFade profile supports default custom state only");
     return saved;
 }
 
@@ -200,7 +211,7 @@ std::string canonicalPluginPath(const char* path) {
     return resolved.get();
 }
 
-void writeIdentity(void (*init)(plugin::Plugin*),const char* pluginDir,const char* userDir) {
+void writeIdentity(void (*init)(plugin::Plugin*),const char* pluginDir,const char* userDir,Profile profile) {
     Dl_info origin{};
     require(dladdr(reinterpret_cast<void*>(init),&origin)!=0 && origin.dli_fname,
             Fault::Plugin,"cannot identify plugin init image");
@@ -218,7 +229,8 @@ void writeIdentity(void (*init)(plugin::Plugin*),const char* pluginDir,const cha
     field("loaded_plugin",json_string(origin.dli_fname));
     field("plugin_slug",json_string("Bogaudio"));
     field("plugin_version",json_string("2.6.47"));
-    field("model_slug",json_string("Bogaudio-Offset"));
+    field("model_slug",json_string(modelSlug(profile)));
+    field("profile_id",json_integer(static_cast<uint32_t>(profile)));
     field("sample_rate",json_integer(wire::RATE));
     field("quantum",json_integer(wire::QUANTUM));
     json_t* runtimes=json_array();
@@ -272,8 +284,7 @@ void validateSlot(const uint8_t* slot,const Plan& plan,uint64_t sequence) {
         const uint16_t param=wire::get<uint16_t>(event,2);
         const float value=wire::get<float>(event,4);
         const uint32_t order=wire::get<uint32_t>(event,8);
-        require(offset<wire::QUANTUM && param<2 && std::isfinite(value)
-                && value>=-1.f && value<=1.f && wire::get<uint32_t>(event,12)==0,
+        require(offset<wire::QUANTUM && validParameter(plan.profile,param,value) && wire::get<uint32_t>(event,12)==0,
                 Fault::Slot,"invalid parameter event");
         require(i==0 || offset>previousOffset || (offset==previousOffset && order>previousOrder),
                 Fault::Slot,"parameter events must be strictly sorted by (offset, order)");
@@ -363,17 +374,17 @@ int main(int argc,char** argv) {
             init(plugin);
             plugin->modulesFromJson(json_object_get(manifest.get(),"modules"));
             plugin::plugins.push_back(plugin);
-            auto* model=plugin->getModel("Bogaudio-Offset");
+            auto* model=plugin->getModel(modelSlug(plan.profile));
             require(model!=nullptr,Fault::Plugin,"Offset model absent");
-            host.setup(model,plan.mask);
+            host.setup(model,plan.mask,plan.profile);
             stage=Fault::Restore;
-            Json saved=loadState(argv[4]);
+            Json saved=loadState(argv[4],plan.profile);
             host.engine->moduleFromJson(host.module,saved.get());
             Json restored(host.engine->moduleToJson(host.module));
             require(json_equal(saved.get(),restored.get()),Fault::Restore,
                     "restored persistent state differs from supplied full snapshot");
             stage=Fault::Plugin;
-            writeIdentity(init,argv[1],argv[2]);
+            writeIdentity(init,argv[1],argv[2],plan.profile);
             stage=Fault::Internal;
             wire::store(shared.bytes,wire::STATUS,wire::READY);
             uint64_t sequence=0;
