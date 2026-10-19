@@ -358,6 +358,41 @@ fn genre_tags(genre: &str) -> &'static [(&'static str, f64)] {
             ("keys", 1.0),
             ("evolving", 0.8),
         ],
+        "Progressive House" => &[
+            ("bright", 2.0),
+            ("pluck", 2.0),
+            ("huge", 1.5),
+            ("prog", 1.5),
+            ("analog", 1.0),
+        ],
+        "Hypnagogic" => &[
+            ("glassy", 2.0),
+            ("digital", 1.5),
+            ("evolving", 1.5),
+            ("weird", 1.2),
+            ("retro", 1.0),
+        ],
+        "Berlin School" => &[
+            ("analog", 2.0),
+            ("evolving", 2.0),
+            ("warm", 1.2),
+            ("retro", 1.0),
+            ("prog", 0.8),
+        ],
+        "IDM" => &[
+            ("digital", 2.0),
+            ("metallic", 1.5),
+            ("weird", 1.5),
+            ("glassy", 1.0),
+            ("pluck", 0.8),
+        ],
+        "Melodic Techno" => &[
+            ("huge", 2.0),
+            ("dark", 1.5),
+            ("evolving", 1.5),
+            ("prog", 1.2),
+            ("bright", 0.8),
+        ],
         _ => &[
             ("organ", 2.0),
             ("digital", 1.5),
@@ -449,6 +484,7 @@ fn rating(name: &str) -> f64 {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn choose(
     rng: &mut Rng,
+    weird: f64,
     role: Role,
     genre: &str,
     mood: &str,
@@ -468,7 +504,7 @@ pub(super) fn choose(
                     0.0
                 };
             let w = (0.5 + a).powi(2)
-                * rating(x.name)
+                * rating(x.name).powf(3.0 - 2.0 * weird)
                 * if avoid.contains(&x.name) { 0.1 } else { 1.0 };
             (x.name, w)
         })
@@ -670,7 +706,10 @@ impl Recipe {
     ) -> Option<(String, String)> {
         let row = 3;
         let b = c.bright;
-        let bold = matches!(c.genre, "Techno" | "UK Garage" | "Synthwave" | "Dub Techno");
+        let bold = matches!(
+            parent(c.genre),
+            "Techno" | "UK Garage" | "Synthwave" | "Dub Techno"
+        );
         match kind {
             "fm_bass" | "fold_bass" => {
                 let fm = kind == "fm_bass";

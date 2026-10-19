@@ -347,3 +347,49 @@ fn light_builds_fit_their_budget_and_every_plan_fits_construction() {
         }
     }
 }
+
+#[test]
+fn controls_shape_builds_and_the_centre_reproduces_every_seed() {
+    let centre = Controls::default();
+    for g in GENRES {
+        let a = Recipe::new(g, "Dark", "Liquid", 3).unwrap();
+        let b = Recipe::with_controls(g, "Dark", "Liquid", 3, None, centre).unwrap();
+        assert_eq!(
+            a.patch(),
+            b.patch(),
+            "{g}: centre controls must reproduce the seed"
+        );
+        for (lo, len) in [(0.0, 32), (1.0, 128)] {
+            let ctl = Controls {
+                energy: lo,
+                complexity: lo,
+                weirdness: lo,
+                space: lo,
+                length: len,
+            };
+            let r = Recipe::with_controls(g, "Dark", "Liquid", 3, Some(18.0), ctl).unwrap();
+            assert!(r.ops.len() <= MAX_PLAN_EDITS, "{g} {len}: plan too large");
+            for score in r.scores.values() {
+                for lane in score["lanes"].as_array().into_iter().flatten() {
+                    assert_eq!(lane["length_bars"], json!(len));
+                    for p in lane["points"].as_array().unwrap() {
+                        assert!(
+                            p["bar"].as_f64().unwrap() <= len as f64,
+                            "{g}: lane point past the form"
+                        );
+                    }
+                }
+            }
+            assert!(
+                r.drops.iter().all(|&d| d < len as f64),
+                "{g}: drops {:?}",
+                r.drops
+            );
+        }
+    }
+    let bad = Controls {
+        length: 48,
+        ..centre
+    };
+    assert!(Recipe::with_controls("Techno", "Dark", "Liquid", 1, None, bad).is_err());
+}

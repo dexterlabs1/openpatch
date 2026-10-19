@@ -58,6 +58,7 @@ fn run() -> Result<(), String> {
         Some("patch-engine") if args.len() >= 4 => {
             let mut seed = 1u64;
             let mut budget = None;
+            let mut ctl = openpatch::patch_engine::Controls::default();
             let mut mode = "patch";
             let mut rest = args[4..].iter();
             while let Some(a) = rest.next() {
@@ -75,14 +76,32 @@ fn run() -> Result<(), String> {
                                 .ok_or("--budget needs a number")?,
                         )
                     }
+                    "--energy" | "--complexity" | "--weirdness" | "--space" => {
+                        let v: f64 = rest
+                            .next()
+                            .and_then(|s| s.parse().ok())
+                            .ok_or(format!("{a} needs a number 0..1"))?;
+                        match a.as_str() {
+                            "--energy" => ctl.energy = v,
+                            "--complexity" => ctl.complexity = v,
+                            "--weirdness" => ctl.weirdness = v,
+                            _ => ctl.space = v,
+                        }
+                    }
+                    "--length" => {
+                        ctl.length = rest
+                            .next()
+                            .and_then(|s| s.parse().ok())
+                            .ok_or("--length needs 32, 64 or 128")?
+                    }
                     "--info" => mode = "info",
                     "--reveal" => mode = "reveal",
                     "--showtime" => mode = "showtime",
                     _ => return Err(format!("unknown option {a}")),
                 }
             }
-            let r = openpatch::patch_engine::Recipe::with_budget(
-                &args[1], &args[2], &args[3], seed, budget,
+            let r = openpatch::patch_engine::Recipe::with_controls(
+                &args[1], &args[2], &args[3], seed, budget, ctl,
             )?;
             let out = match mode {
                 "info" => r.info(),
@@ -112,7 +131,7 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         None | Some("--help") | Some("help") => {
-            println!("OpenPatch — modular synthesis with native MCP\n\nCommands:\n  mcp --workspace DIRECTORY\n  sessions\n  attach [--session ID | --workspace DIRECTORY]\n  demo OUTPUT.wav\n  render PATCH.json OUTPUT.wav SECONDS [--midi EVENTS.json]\n  visualizer OUTPUT.html\n  catalog\n  patch-engine GENRE MOOD TEXTURE [--seed N] [--budget PCT] [--info|--reveal|--showtime]\n  --version\n  --third-party-licenses  Print bundled algorithm notices and licenses\n\nMCP uses stdio. Attach connects to an already-open native rack on macOS/Linux; it never opens a window or starts playback. Files are never overwritten. Rendering is offline; audio_stereo exports L/R, other outputs export mono.");
+            println!("OpenPatch — modular synthesis with native MCP\n\nCommands:\n  mcp --workspace DIRECTORY\n  sessions\n  attach [--session ID | --workspace DIRECTORY]\n  demo OUTPUT.wav\n  render PATCH.json OUTPUT.wav SECONDS [--midi EVENTS.json]\n  visualizer OUTPUT.html\n  catalog\n  patch-engine GENRE MOOD TEXTURE [--seed N] [--budget PCT] [--energy|--complexity|--weirdness|--space 0..1] [--length 32|64|128] [--info|--reveal|--showtime]\n  --version\n  --third-party-licenses  Print bundled algorithm notices and licenses\n\nMCP uses stdio. Attach connects to an already-open native rack on macOS/Linux; it never opens a window or starts playback. Files are never overwritten. Rendering is offline; audio_stereo exports L/R, other outputs export mono.");
             Ok(())
         }
         _ => Err("unknown command or arguments; run openpatch --help".into()),

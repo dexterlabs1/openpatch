@@ -21,7 +21,7 @@ thread_local! {
 #[path = "patch_engine_tests.rs"]
 mod tests;
 
-pub const GENRES: [&str; 8] = [
+pub const GENRES: [&str; 13] = [
     "Deep House",
     "Dub Techno",
     "Techno",
@@ -30,7 +30,70 @@ pub const GENRES: [&str; 8] = [
     "Synthwave",
     "Downtempo",
     "UK Garage",
+    "Progressive House",
+    "Hypnagogic",
+    "Berlin School",
+    "IDM",
+    "Melodic Techno",
 ];
+
+/// Performance controls (0–1, centre 0.5 = the genre's own character; the centre reproduces every seed exactly).
+/// Energy: tempo and layer density. Complexity: ghost notes, counter-lines, variation. Weirdness: collage forms,
+/// generative arps, rarer sounds. Space: reverb and echo depth. Length: bars in the song form (32, 64 or 128).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Controls {
+    pub energy: f64,
+    pub complexity: f64,
+    pub weirdness: f64,
+    pub space: f64,
+    pub length: u32,
+}
+impl Default for Controls {
+    fn default() -> Self {
+        Self {
+            energy: 0.5,
+            complexity: 0.5,
+            weirdness: 0.5,
+            space: 0.5,
+            length: 64,
+        }
+    }
+}
+impl Controls {
+    fn validate(&self) -> Result<(), String> {
+        for (name, v) in [
+            ("energy", self.energy),
+            ("complexity", self.complexity),
+            ("weirdness", self.weirdness),
+            ("space", self.space),
+        ] {
+            if !(0.0..=1.0).contains(&v) {
+                return Err(format!("{name} must be in 0..=1"));
+            }
+        }
+        if ![32, 64, 128].contains(&self.length) {
+            return Err("length must be 32, 64 or 128 bars".into());
+        }
+        Ok(())
+    }
+    /// Weight multiplier for weird choices: 0.2 at 0, 1 at the centre, 1.8 at 1.
+    fn weird(&self) -> f64 {
+        0.2 + 1.6 * self.weirdness
+    }
+}
+
+/// The original genre whose drum sounds, chord colour and mix details a newer genre borrows; each newer genre
+/// keeps its own tempo, grooves, instruments, melodies and song forms.
+fn parent(genre: &str) -> &str {
+    match genre {
+        "Progressive House" => "Deep House",
+        "Hypnagogic" => "Ambient",
+        "Berlin School" => "Synthwave",
+        "IDM" => "Downtempo",
+        "Melodic Techno" => "Techno",
+        g => g,
+    }
+}
 pub const MOODS: [&str; 8] = [
     "Dreamy",
     "Dark",
@@ -56,6 +119,11 @@ pub fn genre_noun(genre: &str) -> &'static str {
         "Synthwave" => "Synthwave tune",
         "Downtempo" => "Downtempo groove",
         "Minecraft" => "Minecraft-style piece",
+        "Progressive House" => "Progressive House track",
+        "Hypnagogic" => "Hypnagogic piece",
+        "Berlin School" => "Berlin School sequence",
+        "IDM" => "IDM piece",
+        "Melodic Techno" => "Melodic Techno track",
         _ => "UK Garage track",
     }
 }
@@ -407,6 +475,99 @@ struct GenreDef {
 }
 fn genre_def(g: &str) -> GenreDef {
     match g {
+        // Pryda-style: rolling bass, plucks and saw pads under long filter builds
+        "Progressive House" => GenreDef {
+            bpm: (123, 126),
+            swing: (50, 52),
+            div: 1,
+            drums: "four",
+            bass: &["roll", "octave", "pulse"],
+            voices: &["pluck", "stab", "pad_saw"],
+            rhythm: &["syncop", "stabs", "pulse8"],
+            leads: &[("arp", 4.0), ("hook", 2.0), ("drift", 1.0), ("none", 1.0)],
+            counter: 0.2,
+            perc: 0.5,
+            perc2: 0.2,
+            pad: 0.6,
+            pump: true,
+            kick: (50.0, 0.42, 0.2, 0.3),
+            hats: &["16", "off8"],
+            ohat: &["off", "off", "half"],
+        },
+        // Oneohtrix Point Never-style: sparse pulse, drones, generative arps, collage cuts
+        "Hypnagogic" => GenreDef {
+            bpm: (84, 100),
+            swing: (50, 54),
+            div: 2,
+            drums: "ambient",
+            bass: &["drone", "sub"],
+            voices: &["keys", "organ", "pad_saw"],
+            rhythm: &["held", "restrike"],
+            leads: &[("drift", 5.0), ("bells", 2.0), ("hook", 1.0), ("none", 1.0)],
+            counter: 0.2,
+            perc: 0.2,
+            perc2: 0.0,
+            pad: 0.6,
+            pump: false,
+            kick: (46.0, 0.5, 0.1, 0.3),
+            hats: &["euclid"],
+            ohat: &["none"],
+        },
+        // sequencer music: a 16th ostinato bass, generative arps, analog pads, no drums
+        "Berlin School" => GenreDef {
+            bpm: (100, 116),
+            swing: (50, 50),
+            div: 1,
+            drums: "none",
+            bass: &["roll", "pulse"],
+            voices: &["pad_saw", "organ", "pad_square"],
+            rhythm: &["held"],
+            leads: &[("drift", 4.0), ("arp", 4.0), ("none", 1.0)],
+            counter: 0.3,
+            perc: 0.0,
+            perc2: 0.0,
+            pad: 0.5,
+            pump: false,
+            kick: (48.0, 0.4, 0.2, 0.3),
+            hats: &["none", "none", "euclid"],
+            ohat: &["none"],
+        },
+        "IDM" => GenreDef {
+            bpm: (100, 130),
+            swing: (50, 56),
+            div: 1,
+            drums: "broken",
+            bass: &["gen", "broken"],
+            voices: &["pluck", "keys", "stab"],
+            rhythm: &["syncop", "stabs"],
+            leads: &[("drift", 3.0), ("riff", 2.0), ("bells", 2.0), ("arp", 1.0)],
+            counter: 0.2,
+            perc: 0.7,
+            perc2: 0.5,
+            pad: 0.3,
+            pump: false,
+            kick: (52.0, 0.3, 0.4, 0.4),
+            hats: &["euclid", "shuffle"],
+            ohat: &["none", "half"],
+        },
+        "Melodic Techno" => GenreDef {
+            bpm: (120, 124),
+            swing: (50, 50),
+            div: 1,
+            drums: "techno",
+            bass: &["roll", "pulse", "gen"],
+            voices: &["pad_saw", "stab", "pluck"],
+            rhythm: &["pulse8", "syncop", "held"],
+            leads: &[("arp", 4.0), ("hook", 2.0), ("drift", 2.0)],
+            counter: 0.2,
+            perc: 0.4,
+            perc2: 0.2,
+            pad: 0.7,
+            pump: true,
+            kick: (48.0, 0.4, 0.35, 0.35),
+            hats: &["16", "off8"],
+            ohat: &["off", "half"],
+        },
         "Deep House" => GenreDef {
             bpm: (120, 124),
             swing: (54, 58),
@@ -599,7 +760,7 @@ fn genre_def(g: &str) -> GenreDef {
 /// Genre chord colour: bold genres use open triads instead of jazz extensions; dub keeps its minor-seventh stabs.
 fn colorize(genre: &str, q: &'static str) -> &'static str {
     let minor = matches!(q, "m9" | "m7" | "m11");
-    match genre {
+    match parent(genre) {
         "Techno" | "Synthwave" => {
             if minor {
                 "min_open"
@@ -651,6 +812,10 @@ fn harmonic_rhythms(genre: &str) -> &'static [[usize; 4]] {
         "Minecraft" => &[[0, 0, 1, 1], [0, 1, 2, 3]],
         "Downtempo" => &[[0, 0, 1, 1], [0, 1, 2, 3]],
         "Synthwave" => &[[0, 1, 2, 3]],
+        "Progressive House" => &[[0, 0, 1, 1], [0, 1, 2, 3]],
+        "Melodic Techno" => &[[0, 0, 1, 1], [0, 1, 0, 1]],
+        "Berlin School" => &[[0, 0, 0, 0], [0, 0, 1, 1]],
+        "Hypnagogic" | "IDM" => &[[0, 1, 2, 3], [0, 0, 1, 1]],
         _ => &[[0, 1, 2, 3]],
     }
 }
@@ -712,6 +877,11 @@ fn out_gain(genre: &str) -> f64 {
         "Synthwave" => 0.95,
         "Downtempo" => 1.25,
         "Minecraft" => 0.85,
+        "Progressive House" => 1.05,
+        "Hypnagogic" => 1.25,
+        "Berlin School" => 1.15,
+        "IDM" => 1.15,
+        "Melodic Techno" => 1.15,
         _ => 1.15,
     }
 }
@@ -836,6 +1006,7 @@ pub struct Recipe {
     kinds: BTreeMap<&'static str, String>,
     /// Bars where the song's main drops start (for listening checks and renders).
     drops: Vec<f64>,
+    pub controls: Controls,
 }
 
 struct Ctx {
@@ -867,6 +1038,7 @@ struct Ctx {
     light: bool,
     bass_design: &'static str,
     lead_design: &'static str,
+    ctl: Controls,
 }
 
 fn find(list: &[&'static str], s: &str) -> Option<&'static str> {
@@ -939,17 +1111,30 @@ impl Recipe {
         seed: u64,
         budget: Option<f64>,
     ) -> Result<Recipe, String> {
+        Self::with_controls(genre, mood, texture, seed, budget, Controls::default())
+    }
+
+    /// As `with_budget`, shaped by the performance controls.
+    pub fn with_controls(
+        genre: &str,
+        mood: &str,
+        texture: &str,
+        seed: u64,
+        budget: Option<f64>,
+        ctl: Controls,
+    ) -> Result<Recipe, String> {
+        ctl.validate()?;
         let over_cpu = |r: &Recipe| budget.is_some_and(|b| r.cpu_estimate() > b);
-        let mut r = Self::build(genre, mood, texture, seed, false, 0)?;
+        let mut r = Self::build(genre, mood, texture, seed, false, 0, ctl)?;
         let light = over_cpu(&r);
         if light {
-            r = Self::build(genre, mood, texture, seed, true, 0)?;
+            r = Self::build(genre, mood, texture, seed, true, 0, ctl)?;
         }
         for drop in 1..=DROP_ORDER.len() {
             if !over_cpu(&r) && r.ops.len() <= MAX_PLAN_EDITS {
                 break;
             }
-            r = Self::build(genre, mood, texture, seed, light, drop)?;
+            r = Self::build(genre, mood, texture, seed, light, drop, ctl)?;
             r.notes.push(format!(
                 "light mode: left out {}",
                 DROP_ORDER[..drop].join(", ")
@@ -983,6 +1168,7 @@ impl Recipe {
         seed: u64,
         light: bool,
         drop: usize,
+        ctl: Controls,
     ) -> Result<Recipe, String> {
         let genre = if genre == "Minecraft" {
             "Minecraft"
@@ -1003,7 +1189,8 @@ impl Recipe {
         // the four slots of the loop, in order (a vamp repeats chords)
         let prog: Vec<(i64, &'static str)> = rhythm.iter().map(|&i| colored[i]).collect();
         let (chords, roots) = voice_chords(&mut rng, tonic, &prog);
-        let bpm = (rng.int(g.bpm.0, g.bpm.1) + m.bpm).max(60);
+        let bpm = (rng.int(g.bpm.0, g.bpm.1) + m.bpm + ((ctl.energy - 0.5) * 10.0).round() as i64)
+            .max(60);
         let swing =
             (rng.int(g.swing.0, g.swing.1) + if texture == "Dusty" { 4 } else { 0 }).clamp(50, 70);
         let bright = (m.bright
@@ -1022,18 +1209,29 @@ impl Recipe {
                 "Minimal" | "Echoing" => 0.1,
                 _ => 0.0,
             }
-            + rng.uni(-0.1, 0.1))
-        .clamp(0.2, 1.0);
+            + rng.uni(-0.1, 0.1)
+            + (ctl.space - 0.5) * 0.6)
+            .clamp(0.2, 1.0);
         let minimal = texture == "Minimal";
         let lead = if minimal && rng.chance(0.6) {
             "none"
         } else {
-            rng.weighted(g.leads)
+            let leads: Vec<(&str, f64)> = g
+                .leads
+                .iter()
+                .map(|&(l, w)| (l, if l == "drift" { w * ctl.weird() } else { w }))
+                .collect();
+            rng.weighted(&leads)
         };
-        let counter = !minimal && lead != "counter" && rng.chance(g.counter);
+        let counter = !minimal
+            && lead != "counter"
+            && rng.chance((g.counter * 2.0 * ctl.complexity).min(0.95));
         let kinds = ["conga", "tom", "wood", "shaker", "rim"];
-        let perc = rng.chance(g.perc).then(|| rng.pick(&kinds));
-        let perc2 = (perc.is_some() && !minimal && rng.chance(g.perc2))
+        let busy = 0.4 + 1.2 * ctl.energy;
+        let perc = rng
+            .chance((g.perc * busy).min(1.0))
+            .then(|| rng.pick(&kinds));
+        let perc2 = (perc.is_some() && !minimal && rng.chance((g.perc2 * busy).min(1.0)))
             .then(|| rng.pick(&kinds))
             .filter(|k| Some(*k) != perc);
         // instrument designs: the genre's classic voices plus every catalog design, weighted by the three words
@@ -1043,6 +1241,7 @@ impl Recipe {
         } else {
             choose(
                 &mut rng,
+                ctl.weirdness,
                 Role::Chords,
                 genre,
                 mood_name,
@@ -1053,13 +1252,14 @@ impl Recipe {
             )
         };
         let voice_pad = instruments::design(voice).is_some_and(|x| x.tags.contains(&"pad"));
-        let pad = !voice_pad && !minimal && rng.chance(g.pad);
+        let pad = !voice_pad && !minimal && rng.chance((g.pad * (1.5 - ctl.energy)).min(1.0));
         let bass_style = rng.pick(g.bass);
         let bass_design = if minecraft || bass_style == "drone" {
             "sine"
         } else {
             choose(
                 &mut rng,
+                ctl.weirdness,
                 Role::Bass,
                 genre,
                 mood_name,
@@ -1076,6 +1276,7 @@ impl Recipe {
         } else {
             choose(
                 &mut rng,
+                ctl.weirdness,
                 Role::Lead,
                 genre,
                 mood_name,
@@ -1116,36 +1317,25 @@ impl Recipe {
         let song_like = matches!(genre, "Synthwave" | "Lo-fi Hip Hop" | "Downtempo");
         // song form: each seed picks a form the genre suits (the classic or 16-bar layering forms, a long
         // progressive filter build, or a collage of abrupt cuts)
-        let layered = matches!(genre, "Dub Techno" | "Techno" | "Ambient" | "Minecraft");
-        let form_kind = if genre == "Minecraft" {
-            "long"
-        } else if layered {
-            rng.weighted(&[
-                ("long", 3.0),
-                ("collage", if genre == "Techno" { 0.5 } else { 1.5 }),
-                ("progressive", if genre == "Techno" { 1.5 } else { 0.0 }),
-            ])
-        } else {
-            rng.weighted(&[
-                ("classic", 3.0),
-                (
-                    "progressive",
-                    if matches!(genre, "Deep House" | "Synthwave" | "UK Garage") {
-                        2.0
-                    } else {
-                        0.5
-                    },
-                ),
-                (
-                    "collage",
-                    if matches!(genre, "Downtempo" | "Lo-fi Hip Hop") {
-                        1.5
-                    } else {
-                        0.3
-                    },
-                ),
-            ])
+        let forms: &[(&str, f64)] = match genre {
+            "Minecraft" => &[("long", 1.0)],
+            "Techno" => &[("long", 3.0), ("collage", 0.5), ("progressive", 1.5)],
+            "Dub Techno" | "Ambient" => &[("long", 3.0), ("collage", 1.5)],
+            "Deep House" | "Synthwave" | "UK Garage" => {
+                &[("classic", 3.0), ("progressive", 2.0), ("collage", 0.3)]
+            }
+            "Progressive House" => &[("progressive", 5.0), ("classic", 1.0)],
+            "Hypnagogic" => &[("collage", 4.0), ("long", 1.0)],
+            "Berlin School" => &[("long", 3.0), ("progressive", 1.0)],
+            "IDM" => &[("collage", 2.0), ("classic", 1.5)],
+            "Melodic Techno" => &[("progressive", 3.0), ("long", 1.5)],
+            _ => &[("classic", 3.0), ("progressive", 0.5), ("collage", 1.5)],
         };
+        let forms: Vec<(&str, f64)> = forms
+            .iter()
+            .map(|&(f, w)| (f, if f == "collage" { w * ctl.weird() } else { w }))
+            .collect();
+        let form_kind = rng.weighted(&forms);
         let break_shift = if song_like {
             rng.pick(shifts)
         } else if form_kind == "collage" && rng.chance(0.6) {
@@ -1193,6 +1383,7 @@ impl Recipe {
             bass_style,
             form,
             form_kind,
+            ctl,
             g,
             m,
             ohat: !dropped("open hat"),
@@ -1238,10 +1429,36 @@ impl Recipe {
             scores: HashMap::new(),
             kinds: BTreeMap::new(),
             drops: vec![],
+            controls: ctl,
         };
         r.compose(&mut c);
+        r.stretch_form(ctl.length);
         r.assemble(&mut c);
         Ok(r)
+    }
+
+    /// Stretch the 64-bar song form (every automation lane and the drop bars) to `bars`.
+    fn stretch_form(&mut self, bars: u32) {
+        if bars == 64 {
+            return;
+        }
+        let k = bars as f64 / 64.0;
+        for score in self.scores.values_mut() {
+            let Some(lanes) = score.get_mut("lanes").and_then(|l| l.as_array_mut()) else {
+                continue;
+            };
+            for lane in lanes {
+                lane["length_bars"] = json!(bars);
+                for p in lane["points"].as_array_mut().into_iter().flatten() {
+                    let b = p["bar"].as_f64().unwrap_or(0.0);
+                    p["bar"] = json!(r3(b * k));
+                }
+            }
+        }
+        for d in &mut self.drops {
+            *d = r3(*d * k);
+        }
+        self.note(format!("song form stretched to {bars} bars"));
     }
 
     // ------------------------------------------------------------ builder helpers
@@ -1362,7 +1579,7 @@ impl Recipe {
                 "drift",
                 "recall_random",
                 5,
-                json!({"seed": h % 65_534 + 1, "deja_vu": r3(0.6 + (h % 26) as f64 / 100.0),
+                json!({"seed": h % 65_534 + 1, "deja_vu": r3((0.6 + (h % 26) as f64 / 100.0 - (c.ctl.weirdness - 0.5) * 0.4).clamp(0.2, 0.95)),
                        "length": length,
                        "t_repeat": 1, "x_repeat": 1, "t_model": 0, "t_bias": r3(0.4 + (h / 11 % 25) as f64 / 100.0),
                        "x_range": 0, "x_spread": 0.3, "x_bias": 0.5, "x_steps": 0}),
@@ -1527,7 +1744,7 @@ impl Recipe {
             }
         } else if c.g.drums != "ambient" && c.g.drums != "none" {
             // backbeat by genre: techno keeps it to a quiet rim (or nothing), house a softer clap
-            let backbeat = match c.genre {
+            let backbeat = match parent(c.genre) {
                 "Techno" => {
                     if rng.chance(0.5) {
                         0.0
@@ -1768,7 +1985,7 @@ impl Recipe {
                     pool[rng.idx(pool.len())].clone(),
                     pool[rng.idx(pool.len())].clone(),
                 );
-                let sparse = c.genre == "Techno" && rng.chance(0.3);
+                let sparse = parent(c.genre) == "Techno" && rng.chance(0.3);
                 for bar in 0..(64 / spb) {
                     if sparse && bar % 2 == 1 {
                         continue;
@@ -2422,7 +2639,7 @@ impl Recipe {
                     && !used.contains(&st_)
                     && !used.contains(&(st_ + 1))
                     && !held_into(st_)
-                    && rng.chance(0.35)
+                    && rng.chance((0.7 * c.ctl.complexity).min(0.9))
                 {
                     let up = if rng.chance(0.3) { 12 } else { 0 };
                     let mut g = st(st_, &[roots[chord_at(st_)] + up], 0.45, 0.25, 1.0, false);
@@ -2441,14 +2658,18 @@ impl Recipe {
             for x in melody_track.iter_mut() {
                 let s_ = x["step"].as_i64().unwrap_or(0);
                 if s_ % beat != 0 && x["slide"] != json!(true) && x.get("probability").is_none() {
-                    x["probability"] = json!(if c.lead == "arp" { 0.8 } else { 0.9 });
+                    x["probability"] = json!(r3(if c.lead == "arp" {
+                        1.0 - 0.4 * c.ctl.complexity
+                    } else {
+                        1.0 - 0.2 * c.ctl.complexity
+                    }));
                 }
             }
         }
         if !hats.is_empty() {
             // a roll on one 16th before a backbeat, some passes only
             for b in 0..4 {
-                if rng.chance(0.4) {
+                if rng.chance(0.8 * c.ctl.complexity) {
                     let at = b * 16 + rng.pick(&[11, 15]);
                     match hats.iter_mut().find(|x| x["step"].as_i64() == Some(at)) {
                         Some(x) => {
@@ -2472,7 +2693,7 @@ impl Recipe {
         let h = |pts: &[(f64, f64)]| -> Vec<(f64, f64, &'static str)> {
             pts.iter().map(|&(b, x)| (b, x, "hold")).collect()
         };
-        let ambient = c.genre == "Ambient";
+        let ambient = parent(c.genre) == "Ambient";
         let break_lead = matches!(c.lead, "hook" | "bells" | "counter");
         let kick_l = if ambient {
             h(&[
@@ -2947,7 +3168,8 @@ impl Recipe {
 
     // ------------------------------------------------------------ graph
     fn assemble(&mut self, c: &mut Ctx) {
-        let (genre, tex) = (c.genre, c.texture);
+        // sound details follow the parent genre (drum kit, chord voicing, mix); the genre's own gain is fitted
+        let (genre, tex) = (parent(c.genre), c.texture);
         let (sp, six) = (c.space, c.six);
         let names = self.chord_names.join(" | ");
         let voice_word = instruments::design(c.voice).map_or("chords", |x| x.words);
@@ -3030,7 +3252,7 @@ impl Recipe {
         }
         self.module("limit", "sidechain_compressor", 7, json!({"threshold_db": -5, "ratio": 20, "attack_ms": 0.1, "release_ms": 80, "detector_ms": 0.1, "knee_db": 2, "makeup_db": 0}), "Limiter");
         // Crisp builds keep brighter, sharper transients: leave them a little more headroom
-        let gain = r3(out_gain(genre) * if tex == "Crisp" { 0.9 } else { 1.0 });
+        let gain = r3(out_gain(c.genre) * if tex == "Crisp" { 0.9 } else { 1.0 });
         self.module(
             "out",
             "audio_stereo",
@@ -3578,6 +3800,7 @@ impl Recipe {
             // the held layer needs a sustaining pad design that contrasts with the chord voice
             let pad_kind = choose(
                 &mut c.rng,
+                c.ctl.weirdness,
                 Role::Chords,
                 c.genre,
                 &self.mood,
@@ -4497,7 +4720,9 @@ impl Recipe {
         json!({"title": self.title, "sentence": self.sentence, "description": self.description, "notes": self.notes,
                "genre": self.genre, "mood": self.mood, "texture": self.texture, "seed": self.seed, "bpm": self.bpm, "swing": self.swing,
                "key": self.key_name, "chords": self.chord_names, "modules": self.modules.len(), "cables": self.cid,
-               "strips": self.strips.iter().map(|s| s.name.clone()).collect::<Vec<_>>(), "kinds": self.kinds, "drops": self.drops, "cpu": self.cpu_estimate()})
+               "strips": self.strips.iter().map(|s| s.name.clone()).collect::<Vec<_>>(), "kinds": self.kinds, "drops": self.drops, "cpu": self.cpu_estimate(),
+               "controls": {"energy": self.controls.energy, "complexity": self.controls.complexity, "weirdness": self.controls.weirdness,
+                            "space": self.controls.space, "length": self.controls.length}})
     }
     pub fn cable_count(&self) -> usize {
         self.cid

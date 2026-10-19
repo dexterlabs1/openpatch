@@ -3,7 +3,7 @@ use eframe::egui::{self, text::LayoutJob, Color32, FontId, RichText, TextFormat}
 pub(crate) use openpatch::control::DocumentExecutionFence as DocumentFence;
 use openpatch::control::{execute_shared, execute_shared_fenced, Session, SharedSession};
 use openpatch::patch_engine::{
-    genre_noun, texture_phrase, texture_text, Recipe, GENRES, MOODS, TEXTURES,
+    genre_noun, texture_phrase, texture_text, Controls, Recipe, GENRES, MOODS, TEXTURES,
 };
 use serde_json::{json, Value};
 use std::sync::mpsc;
@@ -39,8 +39,8 @@ const TEXTURE_KEYS: [egui::Key; 8] = [
     egui::Key::J,
     egui::Key::K,
 ];
-/// Genre index used for the Minecraft (C418-style) mode, after the eight genre words.
-const MINECRAFT: usize = 8;
+/// Genre index used for the Minecraft (C418-style) mode, after the genre words.
+const MINECRAFT: usize = GENRES.len();
 fn genre_name(i: usize) -> &'static str {
     if i == MINECRAFT {
         "Minecraft"
@@ -321,6 +321,8 @@ pub(crate) struct Panel {
     cursor: usize,
     demo: Option<Demo>,
     light: bool,
+    /// Energy, complexity, weirdness, space and length for the next build.
+    ctl: Controls,
     first_frame: bool,
     armed: Option<Armed>,
     prepare_sent: bool,
@@ -340,6 +342,7 @@ struct Armed {
     mode: Mode,
     interval: u32,
     budget: Option<f64>,
+    ctl: Controls,
 }
 
 /// Demo/capture mode for pitches and documentation screenshots, driven by environment variables:
@@ -433,6 +436,7 @@ impl Default for Panel {
             cursor: 0,
             demo: Demo::from_env(),
             light: cfg!(target_os = "linux"),
+            ctl: Controls::default(),
             first_frame: true,
             armed: None,
             prepare_sent: false,
@@ -573,6 +577,7 @@ impl Panel {
             mode,
             interval,
             budget,
+            ctl: self.ctl,
         });
         self.prepare_sent = false;
         self.label = "Starting a new document…".into();
@@ -588,6 +593,7 @@ impl Panel {
             mode,
             interval,
             budget,
+            ctl,
         }) = self.armed.take()
         else {
             return;
@@ -600,7 +606,8 @@ impl Panel {
         std::thread::spawn(move || {
             let result = (|| -> Result<Built, String> {
                 let mut fence = fence;
-                let r = Recipe::with_budget(genre_name(g), MOODS[m], TEXTURES[t], seed, budget)?;
+                let r =
+                    Recipe::with_controls(genre_name(g), MOODS[m], TEXTURES[t], seed, budget, ctl)?;
                 let title = format!("Patch Engine · {}", r.title);
                 let steps = match mode {
                     Mode::Instant => {
@@ -833,7 +840,10 @@ impl Panel {
                 1 => &mut self.mood,
                 _ => &mut self.texture,
             };
-            *slot = Some(slot.map_or(0, |i| (i + step) % 8));
+            // genres include the C418 mode after the genre words; moods and textures have eight words
+            let n = if self.cursor == 0 { MINECRAFT + 1 } else { 8 };
+            let step = if step == 7 { n - 1 } else { step };
+            *slot = Some(slot.map_or(0, |i| (i + step) % n));
         }
         if pressed(egui::Key::Enter) {
             self.start(session);
@@ -847,7 +857,7 @@ impl Panel {
     }
 
     fn surprise(&mut self, session: &SharedSession) {
-        self.genre = Some((next_seed(&mut self.rng) % 9) as usize);
+        self.genre = Some((next_seed(&mut self.rng) % (MINECRAFT as u64 + 1)) as usize);
         self.mood = Some((next_seed(&mut self.rng) % 8) as usize);
         self.texture = Some((next_seed(&mut self.rng) % 8) as usize);
         self.keep_seed = false;
@@ -1035,6 +1045,30 @@ impl Panel {
                     ui.add_space(4.0);
                     Self::section(ui, "Texture", self.cursor == 2);
                     if let Some(i) = matrix(ui, &TEXTURES, self.texture, 3, Some(texture_text)) { self.texture = Some(i); }
+                    ui.add_space(6.0);
+                    Self::section(ui, "Controls", false);
+                    let w = ui.available_width();
+                    for (label, v, tip) in [
+                        ("Energy", &mut self.ctl.energy, "Tempo and how many layers play"),
+                        ("Complexity", &mut self.ctl.complexity, "Ghost notes, counter-lines and variation from pass to pass"),
+                        ("Weirdness", &mut self.ctl.weirdness, "Collage forms, generative arps and rarer sounds"),
+                        ("Space", &mut self.ctl.space, "Reverb and echo depth"),
+                    ] {
+                        ui.horizontal(|ui| {
+                            ui.add_sized([86.0, 20.0], egui::Label::new(RichText::new(label).font(face(ui, 13.0)).color(if (*v - 0.5).abs() > 0.01 { INK } else { DIM })));
+                            ui.spacing_mut().slider_width = (w - 100.0).max(60.0);
+                            ui.add(egui::Slider::new(v, 0.0..=1.0).show_value(false)).on_hover_text(tip);
+                        });
+                    }
+                    ui.horizontal(|ui| {
+                        ui.add_sized([86.0, 20.0], egui::Label::new(RichText::new("Length").font(face(ui, 13.0)).color(DIM)));
+                        let lengths = [32u32, 64, 128];
+                        let cur = lengths.iter().position(|&l| l == self.ctl.length).unwrap_or(1);
+                        if let Some(i) = segmented(ui, &["32 bars", "64", "128"], cur, ui.available_width()) { self.ctl.length = lengths[i]; }
+                    });
+                    if self.ctl != Controls::default() && ui.add(egui::Label::new(RichText::new("Reset controls").font(face(ui, 12.5)).color(AMBER)).sense(egui::Sense::click())).clicked() {
+                        self.ctl = Controls::default();
+                    }
                     if self.history.len() > 1 {
                         ui.add_space(6.0);
                         Self::section(ui, "Recent", false);
