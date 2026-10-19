@@ -1,7 +1,42 @@
 //! Shared history boundaries for native rack layout gestures.
 use super::*;
 
+/// Highest rack row an agent may request for a new module.
+pub(super) const MAX_LAYOUT_ROW: u32 = 63;
+
+/// Parse the optional `row` placement of an `add_module` edit.
+pub(super) fn requested_row(args: &Value) -> Result<Option<u32>, String> {
+    let Some(row) = args.get("row") else {
+        return Ok(None);
+    };
+    row.as_u64()
+        .filter(|row| *row <= u64::from(MAX_LAYOUT_ROW))
+        .map(|row| Some(row as u32))
+        .ok_or_else(|| format!("row must be an integer from 0 to {MAX_LAYOUT_ROW}"))
+}
+
 impl Session {
+    /// Session owns the graph and the desktop owns geometry, so a requested
+    /// row is only a pending presentation hint. Hints for modules that no
+    /// longer exist are dropped; a newer request for the same ID wins.
+    pub(super) fn record_layout_placements(&mut self, placements: &BTreeMap<String, u32>) {
+        let patch = &self.patch;
+        self.layout_placements
+            .retain(|id, _| patch.nodes.iter().any(|node| &node.id == id));
+        self.layout_placements.extend(
+            placements
+                .iter()
+                .filter(|(id, _)| patch.nodes.iter().any(|node| &node.id == *id))
+                .map(|(id, row)| (id.clone(), *row)),
+        );
+    }
+
+    /// Drain the rows requested by committed `add_module` edits. The host
+    /// appends each module to the end of its row the first time it observes it.
+    pub fn take_layout_placements(&mut self) -> BTreeMap<String, u32> {
+        std::mem::take(&mut self.layout_placements)
+    }
+
     /// Record one rack-layout history state without changing the graph or
     /// retiring DSP identities. The host stores geometry under the returned
     /// state_id; ordinary shared undo/redo traverses the same boundary.
@@ -233,5 +268,57 @@ mod tests {
             .iter()
             .all(|call| call.get("sync").is_some()));
         assert_eq!(live.reads.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn add_module_rows_queue_for_the_host_once_and_follow_the_final_graph() {
+        let (mut session, _) = session();
+        session
+            .execute("add_module", json!({"id":"a","kind":"constant","row":2}))
+            .unwrap();
+        session
+            .execute(
+                "apply_edits",
+                json!({"edits":[
+                    {"tool":"add_module","arguments":{"id":"b","kind":"constant","row":1}},
+                    {"tool":"add_module","arguments":{"id":"gone","kind":"constant","row":3}},
+                    {"tool":"remove_module","arguments":{"id":"gone"}},
+                    {"tool":"add_module","arguments":{"id":"plain","kind":"constant"}}]}),
+            )
+            .unwrap();
+        assert_eq!(
+            session.take_layout_placements(),
+            BTreeMap::from([("a".into(), 2), ("b".into(), 1)])
+        );
+        assert!(session.take_layout_placements().is_empty());
+
+        // A later removal drops a request the host has not observed yet.
+        session
+            .execute("add_module", json!({"id":"late","kind":"constant","row":4}))
+            .unwrap();
+        session
+            .execute("remove_module", json!({"id":"late"}))
+            .unwrap();
+        assert!(session.take_layout_placements().is_empty());
+    }
+
+    #[test]
+    fn invalid_rows_reject_the_whole_edit_and_preview_records_nothing() {
+        let (mut session, _) = session();
+        let revision = session.revision();
+        for row in [json!(-1), json!(64), json!(1.5), json!("1")] {
+            let error = session
+                .execute("add_module", json!({"id":"a","kind":"constant","row":row}))
+                .unwrap_err();
+            assert_eq!(error, "row must be an integer from 0 to 63");
+        }
+        session
+            .execute(
+                "preview_edits",
+                json!({"edits":[{"tool":"add_module","arguments":{"id":"a","kind":"constant","row":1}}]}),
+            )
+            .unwrap();
+        assert_eq!(session.revision(), revision);
+        assert!(session.take_layout_placements().is_empty());
     }
 }

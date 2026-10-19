@@ -980,6 +980,31 @@ impl Rack {
         self.layout_revision = self.layout_revision.wrapping_add(1);
     }
 
+    /// Append agent-requested modules to the end of their rack row, in graph
+    /// order so one batch keeps its add order. Absent IDs are ignored and
+    /// every other panel keeps its place.
+    pub(crate) fn place_in_rows(&mut self, patch: &Patch, rows: &BTreeMap<String, u32>) {
+        for node in &patch.nodes {
+            let Some(row) = rows.get(&node.id) else {
+                continue;
+            };
+            let y = *row as f32 * ROW;
+            let x = patch
+                .nodes
+                .iter()
+                .filter(|other| other.id != node.id)
+                .filter_map(|other| {
+                    self.positions
+                        .get(&other.id)
+                        .filter(|p| (p.y - y).abs() < 1.0)
+                        .map(|p| p.x + module_width(other))
+                })
+                .fold(0.0, f32::max);
+            self.positions.insert(node.id.clone(), pos2(x, y));
+            self.layout_revision = self.layout_revision.wrapping_add(1);
+        }
+    }
+
     /// A clipped ghost uses the actual panel dimensions and creates no widgets.
     pub(crate) fn paint_library_preview(
         &self,
@@ -17866,6 +17891,50 @@ mod tests {
         }
         assert_eq!(rack.selected.as_deref(), Some("new-two"));
     }
+    #[test]
+    fn agent_rows_append_in_graph_order_without_moving_other_panels() {
+        let mut patch = Patch::new_v2();
+        for (id, kind) in [
+            ("old", "constant"),
+            ("clock", "gate"),
+            ("lfo", "multi_lfo"),
+            ("voice", "macro_voice"),
+            ("skip", "constant"),
+        ] {
+            patch.nodes.push(Node {
+                id: id.into(),
+                kind: kind.into(),
+                params: BTreeMap::new(),
+                bypassed: false,
+                content: None,
+                score: None,
+            });
+        }
+        let mut rack = Rack::default();
+        rack.positions.insert("old".into(), pos2(0.0, ROW));
+        let revision = rack.layout_revision();
+        rack.place_in_rows(
+            &patch,
+            &BTreeMap::from([
+                ("lfo".into(), 1),
+                ("clock".into(), 1),
+                ("voice".into(), 2),
+                ("absent".into(), 0),
+            ]),
+        );
+        let width = |id: &str| module_width(patch.nodes.iter().find(|n| n.id == id).unwrap());
+        assert_eq!(rack.positions["old"], pos2(0.0, ROW));
+        assert_eq!(rack.positions["clock"], pos2(width("old"), ROW));
+        assert_eq!(
+            rack.positions["lfo"],
+            pos2(width("old") + width("clock"), ROW)
+        );
+        assert_eq!(rack.positions["voice"], pos2(0.0, 2.0 * ROW));
+        assert!(!rack.positions.contains_key("skip"));
+        assert!(!rack.positions.contains_key("absent"));
+        assert_ne!(rack.layout_revision(), revision);
+    }
+
     #[test]
     fn placement_snaps_to_rows_and_nearest_free_hp_without_overlap() {
         let settle = |point, width, others: &[(Pos2, f32)]| {

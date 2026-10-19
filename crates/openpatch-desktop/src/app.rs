@@ -1445,6 +1445,11 @@ impl OpenPatch {
         }
         if let Ok(mut s) = self.shared.try_lock() {
             let construction = s.construction_snapshot();
+            // Place agent-added panels before motion observes their arrival.
+            let placements = s.take_layout_placements();
+            if !placements.is_empty() {
+                self.rack.place_in_rows(s.patch(), &placements);
+            }
             self.can_undo = s.can_undo();
             self.can_redo = s.can_redo();
             if let Some(now) = self.smoke_motion_origin {

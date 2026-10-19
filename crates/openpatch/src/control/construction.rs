@@ -472,6 +472,7 @@ impl Session {
             host_lifecycle: host_lifecycle::Publication::at_patch(&self.patch),
             midi_learn_worker: false,
             midi_learn_committed: BTreeSet::new(),
+            layout_placements: BTreeMap::new(),
         }
     }
 
