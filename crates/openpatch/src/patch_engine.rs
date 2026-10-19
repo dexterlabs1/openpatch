@@ -3,9 +3,13 @@
 //! The words set the style; the seed composes a new piece inside it (key, progression, voicing, drum,
 //! bass, chord and melody patterns, optional layers, sound design, song form). Output is the same edit
 //! vocabulary `apply_edits` and `start_construction` accept, so a build reuses preflight, pacing, undo
-//! and construction motion. Voices are clean subtractive designs (filtered saw/square/triangle/sine).
+//! and construction motion. Voices come from the instrument designs in `instruments`: macro-synthesis engines,
+//! modal resonators, wavetables and analog models next to the original subtractive voices.
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, HashMap};
+
+mod instruments;
+use instruments::{choose, light_of, Role};
 
 #[cfg(test)]
 #[path = "patch_engine_tests.rs"]
@@ -673,13 +677,31 @@ fn out_gain(genre: &str) -> f64 {
 
 /// Offline DSP cost per module (% of one Apple M-series core at 48 kHz; mono, 4-voice), measured with every
 /// instance live. A Steam Deck core is roughly 3–3.5× slower, so a budget of ~18 keeps builds under ~65% there.
-fn module_cost(kind: &str, poly: bool) -> f64 {
+fn module_cost(kind: &str, params: &Value, poly: bool) -> f64 {
     let (mono, four) = match kind {
+        // macro voice cost depends on the engine: Analog, Wavefold, FM, Harmonic, Wavetable, Chord, Swarm, Metallic
+        "macro_voice" => match params["engine"].as_i64().unwrap_or(0) {
+            1 => (1.58, 5.19),
+            2 => (2.41, 8.56),
+            3 => (0.84, 2.17),
+            4 => (0.83, 2.16),
+            6 => (0.86, 2.42),
+            5 => (0.61, 1.44),
+            7 => (0.59, 1.47),
+            _ => (0.58, 1.34),
+        },
+        "modal_resonator" => (0.5, 1.26),
+        "wavetable_vco" => (0.49, 0.79),
+        "rack264_vco" => (0.6, 0.67),
+        "rack264_vcf" => (1.32, 1.32),
+        "stock_delay" => (0.57, 0.63),
+        "tidal_functions" => (0.31, 0.32),
+        "mid_side" => (0.34, 0.4),
         "multi_vco" => (0.21, 0.78),
         "analog_vco" => (0.03, 0.23),
         "stock_vcf" => (1.46, 1.59),
         "svf_filter" => (1.35, 4.6),
-        "ladder_vcf" => (7.5, 11.0),
+        "ladder_vcf" => (7.5, 22.3),
         "stock_vca" => (0.05, 0.2),
         "analog_vca" => (3.2, 5.4),
         "adsr" => (0.07, 0.07),
@@ -700,7 +722,7 @@ fn module_cost(kind: &str, poly: bool) -> f64 {
         "quantizer" => (0.18, 0.18),
         "multi_lfo" => (0.13, 0.13),
         "colored_noise" => (0.49, 0.49),
-        "wavetable_lfo" => (0.1, 0.1),
+        "wavetable_lfo" => (0.44, 0.44),
         "audio_stereo" => (0.05, 0.05),
         _ => (0.0, 0.0),
     };
@@ -710,6 +732,9 @@ fn module_cost(kind: &str, poly: bool) -> f64 {
         mono
     }
 }
+
+/// `start_construction` accepts at most this many edits per plan (showtime sends every edit as a step).
+const MAX_PLAN_EDITS: usize = 256;
 
 /// Optional layers dropped, in order, when a build exceeds its CPU budget.
 const DROP_ORDER: [&str; 6] = [
@@ -795,6 +820,9 @@ struct Ctx {
     drop2_shift: i64,
     quals: Vec<&'static str>,
     glue: bool,
+    light: bool,
+    bass_design: &'static str,
+    lead_design: &'static str,
 }
 
 fn find(list: &[&'static str], s: &str) -> Option<&'static str> {
@@ -853,11 +881,13 @@ fn voice_chords(
 
 impl Recipe {
     pub fn new(genre: &str, mood: &str, texture: &str, seed: u64) -> Result<Recipe, String> {
-        Self::build(genre, mood, texture, seed, 0)
+        Self::with_budget(genre, mood, texture, seed, None)
     }
 
-    /// Compose within a CPU budget (see `module_cost`): optional layers are dropped in `DROP_ORDER` until the
-    /// estimate fits. `None` means no limit. Deterministic for a given seed and budget.
+    /// Compose within a CPU budget (see `module_cost`): expensive instrument designs first swap to their light
+    /// stand-ins, then optional layers are dropped in `DROP_ORDER` until the estimate fits. `None` means no CPU
+    /// limit. Every build also stays inside one construction plan (`MAX_PLAN_EDITS`). Deterministic for a given
+    /// seed and budget: each attempt recomposes the same piece from scratch.
     pub fn with_budget(
         genre: &str,
         mood: &str,
@@ -865,13 +895,17 @@ impl Recipe {
         seed: u64,
         budget: Option<f64>,
     ) -> Result<Recipe, String> {
-        let mut r = Self::build(genre, mood, texture, seed, 0)?;
-        let Some(budget) = budget else { return Ok(r) };
+        let over_cpu = |r: &Recipe| budget.is_some_and(|b| r.cpu_estimate() > b);
+        let mut r = Self::build(genre, mood, texture, seed, false, 0)?;
+        let light = over_cpu(&r);
+        if light {
+            r = Self::build(genre, mood, texture, seed, true, 0)?;
+        }
         for drop in 1..=DROP_ORDER.len() {
-            if r.cpu_estimate() <= budget {
+            if !over_cpu(&r) && r.ops.len() <= MAX_PLAN_EDITS {
                 break;
             }
-            r = Self::build(genre, mood, texture, seed, drop)?;
+            r = Self::build(genre, mood, texture, seed, light, drop)?;
             r.notes.push(format!(
                 "light mode: left out {}",
                 DROP_ORDER[..drop].join(", ")
@@ -893,7 +927,7 @@ impl Recipe {
         let modules: f64 = self
             .modules
             .iter()
-            .map(|(id, m)| module_cost(m.kind, poly(id)))
+            .map(|(id, m)| module_cost(m.kind, &m.params, poly(id)))
             .sum();
         r3(1.2 * (1.0 + modules + 0.01 * self.cid as f64))
     }
@@ -903,6 +937,7 @@ impl Recipe {
         mood: &str,
         texture: &str,
         seed: u64,
+        light: bool,
         drop: usize,
     ) -> Result<Recipe, String> {
         let genre = if genre == "Minecraft" {
@@ -957,9 +992,64 @@ impl Recipe {
         let perc2 = (perc.is_some() && !minimal && rng.chance(g.perc2))
             .then(|| rng.pick(&kinds))
             .filter(|k| Some(*k) != perc);
-        let voice = rng.pick(g.voices);
-        let pad = !voice.starts_with("pad") && !minimal && rng.chance(g.pad);
+        // instrument designs: the genre's classic voices plus every catalog design, weighted by the three words
+        let minecraft = genre == "Minecraft";
+        let voice = if minecraft {
+            rng.pick(g.voices)
+        } else {
+            choose(
+                &mut rng,
+                Role::Chords,
+                genre,
+                mood_name,
+                texture,
+                g.voices,
+                &[],
+                |_| true,
+            )
+        };
+        let voice_pad = instruments::design(voice).is_some_and(|x| x.tags.contains(&"pad"));
+        let pad = !voice_pad && !minimal && rng.chance(g.pad);
         let bass_style = rng.pick(g.bass);
+        let bass_design = if minecraft || bass_style == "drone" {
+            "sine"
+        } else {
+            choose(
+                &mut rng,
+                Role::Bass,
+                genre,
+                mood_name,
+                texture,
+                &["ladder_saw", "ladder_saw", "square"],
+                &[],
+                |_| true,
+            )
+        };
+        // percussive designs (low-pass gates, struck resonators) suit arps, riffs and bells; hooks need a held note
+        let sustained_lead = matches!(lead, "hook" | "counter");
+        let lead_design = if minecraft || lead == "none" {
+            "classic"
+        } else {
+            choose(
+                &mut rng,
+                Role::Lead,
+                genre,
+                mood_name,
+                texture,
+                &["classic"],
+                &[],
+                |x| x.sustain || !sustained_lead,
+            )
+        };
+        let (voice, bass_design, lead_design) = if light {
+            (
+                light_of(voice),
+                light_of(bass_design),
+                light_of(lead_design),
+            )
+        } else {
+            (voice, bass_design, lead_design)
+        };
         // song form: the breakdown (and maybe the second drop) moves to a related key
         let shifts: &[i64] = match m.mode {
             "major" | "lydian" | "mixolydian" => &[5, -3, 0],
@@ -1013,6 +1103,9 @@ impl Recipe {
             drop2_shift,
             quals: prog.iter().map(|x| x.1).collect(),
             glue: !dropped("glue compressor"),
+            light,
+            bass_design,
+            lead_design,
         };
         let key_name = format!("{} {}", NOTE[tonic as usize], c.m.mode);
         let mut chord_names: Vec<String> = Vec::new();
@@ -2266,22 +2359,23 @@ impl Recipe {
         let (genre, tex) = (c.genre, c.texture);
         let (sp, six) = (c.space, c.six);
         let names = self.chord_names.join(" | ");
-        let voice_word = match c.voice {
-            "keys" => "soft electric-piano chords (triangle + sine)",
-            "piano" => "soft piano broken chords",
-            "pluck" => "plucked saw chords",
-            "organ" => "organ chords (stacked sines)",
-            "pad_saw" => "a detuned saw pad",
-            "pad_square" => "a soft square pad",
-            _ => "dub chord stabs (saw + square)",
-        };
-        let lead_word = match c.lead {
+        let voice_word = instruments::design(c.voice).map_or("chords", |x| x.words);
+        let lead_shape = match c.lead {
             "hook" => "a sung hook",
             "arp" => "an arpeggio",
             "bells" => "sparse bell tones",
             "riff" => "a looping riff",
             "counter" => "a slow counter-melody",
             _ => "",
+        };
+        let lead_word = &match instruments::design(c.lead_design) {
+            Some(x) if c.lead_design != "classic" && !lead_shape.is_empty() => {
+                format!(
+                    "{lead_shape} on {}",
+                    x.words.trim_start_matches("a ").trim_start_matches("an ")
+                )
+            }
+            _ => lead_shape.to_string(),
         };
         let mut extras = vec![];
         if c.pad {
@@ -2650,25 +2744,12 @@ impl Recipe {
         // row 3 · bass
         let bstyle = c.bass_style;
         let drone = bstyle == "drone";
-        let bass_kind = if drone {
-            "sine"
-        } else {
-            c.rng
-                .pick(&["ladder_saw", "ladder_saw", "square", "round", "pwm", "sub"])
-        };
+        let bass_kind = if drone { "sine" } else { c.bass_design };
         self.label(
             3,
             format!(
                 "ROW 3 · BASS\n\n{} · {}{}",
-                match bass_kind {
-                    "sine" => "sine drone on the roots",
-                    "ladder_saw" =>
-                        "saw through a ladder low-pass (envelope + sweep) over a sine sub",
-                    "square" => "square through a ladder low-pass over a sine sub",
-                    "round" => "round triangle bass over a sine sub",
-                    "pwm" => "slowly pulse-width-modulated square, low-passed",
-                    _ => "pure sine sub",
-                },
+                instruments::design(bass_kind).map_or("sine drone on the roots", |x| x.words),
                 self.notes
                     .iter()
                     .find(|n| n.contains("bass") || n.contains("drone"))
@@ -2705,8 +2786,9 @@ impl Recipe {
         let bl = self.lane_out("bass");
         self.con("lanes", &bl, "bass_gate", "cv");
         self.kinds.insert("bass", bass_kind.into());
-        let filtered = !matches!(bass_kind, "sine" | "sub");
-        if filtered {
+        let main = self.bass_design(c, bass_kind, &(bp.clone(), bo.clone()));
+        let filtered = main.is_some() || !matches!(bass_kind, "sine" | "sub");
+        if filtered && main.is_none() {
             let wave = match bass_kind {
                 "square" | "pwm" => "square",
                 "round" => "triangle",
@@ -2752,25 +2834,37 @@ impl Recipe {
         self.module("sub_vca", "stock_vca", 3, json!({"level": 1.0}), "Sub VCA");
         self.con("bass_osc", "sine", "sub_vca", "signal");
         self.con("bass_gate", "out", "sub_vca", "cv");
+        let main = main.unwrap_or_else(|| {
+            (
+                if filtered { "bass_vca" } else { "sub_vca" }.into(),
+                "out".into(),
+            )
+        });
         let (bass_src, sub_src) = if c.g.pump {
             self.module("low_pump", "sidechain_compressor", 3, json!({"threshold_db": -26, "ratio": 5, "attack_ms": 0.5, "release_ms": 120, "detector_ms": 2, "knee_db": 4, "makeup_db": 0}), "Kick ducks the bass");
-            self.con(
-                if filtered { "bass_vca" } else { "sub_vca" },
-                "out",
-                "low_pump",
-                "left",
-            );
+            self.con(&main.0, &main.1, "low_pump", "left");
             self.con("sub_vca", "out", "low_pump", "right");
             self.con("kick_vca", "out", "low_pump", "sidechain");
-            (("low_pump", "left"), ("low_pump", "right"))
+            (
+                ("low_pump".to_string(), "left".to_string()),
+                ("low_pump", "right"),
+            )
         } else {
-            (("bass_vca", "out"), ("sub_vca", "out"))
+            (main, ("sub_vca", "out"))
         };
         if filtered {
             let level = if bstyle == "octave" { 1.2 } else { 1.3 }
                 * 10f64.powf(trim_db(&format!("bass:{bass_kind}")) / 20.0);
             self.strip(
-                "bass", bass_src.0, bass_src.1, level, 0.0, 40.0, 0.0, 0.0, -2.0,
+                "bass",
+                &bass_src.0,
+                &bass_src.1,
+                level,
+                0.0,
+                40.0,
+                0.0,
+                0.0,
+                -2.0,
             );
         }
         let sub_level = match (drone, bass_kind) {
@@ -2850,7 +2944,23 @@ impl Recipe {
                 json!({"value": 10.0}),
                 "Pad hold (always on)",
             );
-            let pad_kind = c.rng.pick(&["pad_saw", "pad_square"]);
+            // the held layer needs a sustaining pad design that contrasts with the chord voice
+            let pad_kind = choose(
+                &mut c.rng,
+                Role::Chords,
+                c.genre,
+                &self.mood,
+                c.texture,
+                &["pad_saw", "pad_square"],
+                &[c.voice],
+                |x| x.sustain && x.tags.contains(&"pad"),
+            );
+            let pad_kind = if c.light {
+                light_of(pad_kind)
+            } else {
+                pad_kind
+            };
+            self.kinds.insert("pad", pad_kind.into());
             let p = self.chord_voice(c, "pad", pad_kind, &pitch, ("pad_hold", "out"), &fcv);
             self.module(
                 "pad_sum",
@@ -2880,12 +2990,14 @@ impl Recipe {
             (chord_src, ("pad_sum".to_string(), "out".to_string()))
         };
         let dub = genre == "Dub Techno" || tex == "Minimal" || tex == "Echoing";
+        let voice_pad = instruments::design(c.voice).is_some_and(|x| x.tags.contains(&"pad"));
         let lvl = match c.voice {
             "pad_saw" | "pad_square" => 0.6,
             "keys" | "piano" => 0.9,
             "organ" => 0.7,
             "pluck" => 0.8,
-            _ => 0.9,
+            "stab" => 0.9,
+            _ => 0.8,
         } * 10f64.powf(trim_db(c.voice) / 20.0);
         self.strip(
             "chords",
@@ -2896,7 +3008,7 @@ impl Recipe {
             150.0,
             if dub {
                 0.6
-            } else if c.voice.starts_with("pad") {
+            } else if voice_pad {
                 0.1
             } else {
                 0.35
@@ -2905,11 +3017,12 @@ impl Recipe {
             -3.0,
         );
         if c.pad {
+            let pad_trim = trim_db(&format!("pad:{}", self.kinds["pad"]));
             self.strip(
                 "pad",
                 &psrc.0,
                 &psrc.1,
-                0.22,
+                r3(0.22 * 10f64.powf(pad_trim / 20.0)),
                 0.0,
                 150.0,
                 0.05,
@@ -2988,19 +3101,33 @@ impl Recipe {
                 } else {
                     env
                 };
+                self.kinds.insert("lead_design", c.lead_design.into());
+                let trim_key = if c.lead_design == "classic" {
+                    format!("lead:{}", c.lead)
+                } else {
+                    format!("lead:{}", c.lead_design)
+                };
                 let level = level
                     * 10f64.powf(
-                        (trim_db(&format!("lead:{}", c.lead))
-                            + if genre == "Ambient" { 9.0 } else { 0.0 })
-                            / 20.0,
+                        (trim_db(&trim_key) + if genre == "Ambient" { 9.0 } else { 0.0 }) / 20.0,
                     );
-                self.mono_voice(c, "lead", "pitch3", "gate3", osc_wave, base, env, &ll);
+                let design = self.lead_design(c, c.lead_design, &env, &ll);
+                let classic = design.is_none();
+                let (lead_node, lead_port) = design.unwrap_or_else(|| {
+                    self.mono_voice(c, "lead", "pitch3", "gate3", osc_wave, base, env, &ll);
+                    ("lead_vca".into(), "out".into())
+                });
                 let pan = c.rng.pick(&[-0.1, 0.1]);
                 self.strip(
                     "lead",
-                    "lead_vca",
-                    "out",
-                    level * if osc_wave == "square" { 0.85 } else { 1.0 },
+                    &lead_node,
+                    &lead_port,
+                    level
+                        * if classic && osc_wave == "square" {
+                            0.85
+                        } else {
+                            1.0
+                        },
                     pan,
                     200.0,
                     0.45,
@@ -3217,6 +3344,9 @@ impl Recipe {
         gate: (&str, &str),
         fcv: &(String, String),
     ) -> (String, String) {
+        if let Some(out) = self.chord_design(c, id, kind, pitch, gate, fcv) {
+            return out;
+        }
         let row = 4;
         let detune = |cents: f64| r3(261.62558 * 2f64.powf(cents / 1200.0));
         let osc = format!("{id}_osc");
