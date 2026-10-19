@@ -352,3 +352,38 @@ fn recall_capture_expired_or_initialize_cancelled_commands_publish_rejection_ins
         );
     }
 }
+
+#[test]
+fn recall_capture_seed_edit_before_callback_rejects_old_begin_and_accepts_fresh_revision() {
+    let mut patch = recall_audio_patch();
+    let (mut callback, mut updates, _retired) = sequence_callback(&patch);
+    let backend = callback.performance.clone();
+    backend
+        .recall_random_capture("recall", "begin", 2, 1)
+        .unwrap();
+    patch.nodes[1].params.insert("seed".into(), 17.);
+    backend.sync_patch(&patch, 2);
+    assert!(updates.push(sequence_graph(&callback, &patch, 2)).is_ok());
+    without_heap_activity(|| callback.render(&mut [0.0_f32; 2048], 1));
+    let status = backend.snapshot();
+    assert_eq!(
+        status["applied"], 0,
+        "a queued old Begin cannot restart the freshly seeded source recorder"
+    );
+    assert_eq!(status["rejected"], 1);
+    assert_eq!(status["pending"], 0);
+    assert!(backend
+        .recall_random_capture("recall", "inspect", 0, 2)
+        .is_err());
+    backend
+        .recall_random_capture("recall", "begin", 4, 2)
+        .unwrap();
+    without_heap_activity(|| callback.render(&mut [0.0_f32; 128], 1));
+    let fresh = backend
+        .recall_random_capture("recall", "inspect", 0, 2)
+        .unwrap();
+    assert_eq!(fresh["capture"]["status"], "recording");
+    assert_eq!(fresh["capture"]["revision"], 2);
+    assert_eq!(fresh["capture"]["slot"], 4);
+    assert_eq!(backend.snapshot()["applied"], 1);
+}
