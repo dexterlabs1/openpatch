@@ -2,7 +2,7 @@
   "schema": 1,
   "date": "2026-10-18",
   "platform": "macOS ARM64",
-  "status": "public experimental workflow and focused regressions pass; actual-device qualification in progress",
+  "status": "public experimental application workflow and sustained Mac output-device gate pass; native-window/final milestone CI pending",
   "source_commit": "5a4687100dcae10832d811a7e327d85839f94f9b",
   "runtime_commit": "d58cfb4edfb9a67b754794e3c6e23883809cd8b2",
   "fingerprints": {
@@ -48,8 +48,76 @@
     }
   },
   "actual_device": {
-    "status": "pending",
-    "device_qualified": false
+    "status": "passed",
+    "device_qualified": true,
+    "qualified_scope": "one MacBook Pro Speakers output, 48000 Hz / fixed 128 frames, 60-second 16-voice representative native/actual OFFSET chain with native and Scope edits",
+    "receipt": "native-test-output/host-completion/device/actual-macos-device-result.json",
+    "receipt_sha256": "55d3580a26edfa512532938ae6b18a9bb5c16dd95eceef10cf1873c6d9d09674",
+    "log": "native-test-output/host-completion/actual-device.log",
+    "test_binary": "target/release/deps/openpatch_desktop-f84ca3f3391f1508",
+    "test_binary_sha256": "ad5f9bc8a73c9ceaf45acf52698f2ef1e3d410267077c03d9a2d2064e4d1c438",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1",
+    "source_manifest_unchanged": true,
+    "metrics": {
+      "requested_seconds": 60,
+      "elapsed_seconds": 60.319643125,
+      "device": {
+        "channels": 2,
+        "name": "MacBook Pro Speakers",
+        "requested_buffer_frames": 128,
+        "sample_rate": 48000
+      },
+      "device_frames": 2879872,
+      "actual_callbacks": 22503,
+      "callback_allocations": 0,
+      "callback_deallocations": 0,
+      "maximum_observed_peak": 0.004108506720513105,
+      "final_timing": {
+        "adopted_graph": false,
+        "available": true,
+        "callback_sequence": 22499,
+        "callbacks": 22499,
+        "channels": 2,
+        "closed": false,
+        "coherent": true,
+        "crossfade": false,
+        "duration_ns": 248584,
+        "epoch": 0,
+        "frames": 128,
+        "invalid_callbacks": 0,
+        "max_duration_ns": 486000,
+        "overruns": 0,
+        "peak_utilization": 0.18225,
+        "requested_epoch": 0,
+        "reset_pending": false,
+        "revision": 4,
+        "sample_rate": 48000,
+        "total_duration_ns": 5679924897,
+        "total_frames": 2879872,
+        "transition_callbacks": 8,
+        "utilization": 0.093219
+      },
+      "final_hosted_runtime": {
+        "fault_code": null,
+        "reason": null,
+        "status": "running"
+      },
+      "stream_error": false,
+      "failure": null,
+      "latency": {
+        "cpal_predicted_playback_ahead_max_ns": 2666666,
+        "cpal_predicted_playback_ahead_min_ns": 2666666,
+        "graph_anchor_frames": 387,
+        "graph_anchor_source": "separate actual-binary impulse receipt; not remeasured by this sustained test",
+        "physical_loopback_measured": false,
+        "transport_delay_frames": 384
+      },
+      "qualification_limits": "one device/profile/load; processing budget overruns are not hardware xrun counts; CPAL timestamps predict DAC delivery, no physical input/output loopback"
+    },
+    "timing_scope": "final timing publication contains 22,499 callbacks / 2,879,872 frames; actual_callbacks 22,503 and heap counts cover stream lifetime including additional shutdown callbacks",
+    "physical_loopback_measured": false,
+    "native_window_qualified": false,
+    "source_manifest_check_scope": "checked after this device run on the frozen 5a46871 source candidate, runtime d58cfb4; later integration commits are separate"
   },
   "native_window": {
     "status": "pending"

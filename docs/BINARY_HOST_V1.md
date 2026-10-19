@@ -4,8 +4,9 @@ Integration candidate, 2026-10-18. The experimental host now has explicit
 native/MCP activation, shared rack controls, coherent native/MCP save dispatch,
 and same-child continuity across ordinary native parameter and Scope rebuilds.
 The current branch includes released `main` features. Focused Core/control and
-shared-panel tests plus the actual-plugin public workflow pass. Device and native
-window qualification remain in progress; the paced workflow is not a device receipt.
+shared-panel tests, the actual-plugin public workflow and the sustained physical
+Mac output-device gate pass. Native-window/final milestone CI remain pending.
+The paced workflow alone is not a device receipt.
 The installed OpenPatch 0.3.0 build 10 is unchanged. The full
 [compatibility obligation](COMPATIBILITY_DECISION.md#extensions-and-existing-vcv-binaries)
 and native Rust extension API remain separate.
@@ -60,7 +61,7 @@ actual callback counts/rate/frames, timing overruns, allocation/deallocation
 observations, signal peak, transport/device failure, and CPAL predicted DAC
 playback timestamps. Numerical graph latency and predicted delivery are distinct
 from physical loopback latency; this gate does not measure a physical input/output
-loop. The device receipt must pass before this candidate is merged. Earlier
+loop. The device receipt now passes for the declared device/load below. Earlier
 paced/headless evidence below cannot substitute for it.
 
 ## Current candidate evidence
@@ -75,7 +76,26 @@ undo/redo, coherent MCP save/export, and resumed playback. All rendered callback
 invocations retain the allocation/deallocation guard. The saved document retains
 both OFFSET options and the effective native controls/state. That workflow used
 5 ms callback pacing and no native window/device; it is not sustained realtime
-qualification. Actual-device and native-window receipts are pending separately.
+qualification.
+
+The optimized real-device run now passes **60 seconds** on **MacBook Pro
+Speakers**, stereo **48 kHz / 128 frames**, using the declared **16-voice**
+VCO → VCF → actual OFFSET → VCA load and two native/Scope changes. Its final
+coherent timing publication contains **22,499 callbacks / 2,879,872 frames**, zero
+invalid callbacks and zero processing-budget overruns. Maximum processing time
+was **0.486 ms**, or **18.225%** of the **2.667 ms** buffer budget. The Rust heap
+tracker covered **22,503 actual CPAL callback invocations**, including additional
+shutdown callbacks, with **zero allocations and deallocations**. The final runtime
+remained running with no transport fault or stream error. Maximum observed
+output peak was 0.00411 full scale. This is a bounded device/load result, not a
+performance advantage or a hardware-xrun count.
+
+CPAL reported **2.667 ms predicted callback-to-DAC delivery**. The separately
+validated graph impulse anchor remains **387 frames / 8.0625 ms** before device
+buffering; this sustained test did not remeasure that anchor. Neither number is
+a physical input/output loopback measurement. Native-window and final milestone
+CI receipts remain pending. Full raw receipts, hashes, compiler, exact test binary
+and timing scope are retained in the application qualification record.
 
 ## Prior implementation checkpoints
 

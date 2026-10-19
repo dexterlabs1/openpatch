@@ -30,8 +30,10 @@ Only two unfinished product lines need integration:
   rack tools and licenses. Explicit experimental activation/shared controls,
   coherent MCP save dispatch and ordinary graph/Scope continuity are implemented;
   four focused Core/control regressions, 20 desktop hosted checks and the genuine
-  plugin public activation/history/Scope/MCP-save workflow pass. Real Mac device
-  and native-window qualification remain in progress.
+  plugin public activation/history/Scope/MCP-save workflow pass. The optimized
+  60-second MacBook Pro Speakers / 48 kHz / 128-frame / 16-voice device gate passes with
+  zero processing overruns and callback heap activity (max 0.486 ms / 18.225% budget).
+  Native-window and final milestone CI qualification remain in progress.
   General binary/GUI compatibility and redistribution remain separate. It is
   excluded from the installed 0.3.0. [Current contract](BINARY_HOST_V1.md).
 
