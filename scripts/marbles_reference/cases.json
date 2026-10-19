@@ -1,0 +1,4827 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "id": "t_model_0",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": false,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.5,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.25,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 16
+      },
+      "clock_source": 0,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 600,
+          "t": {
+            "deja": 0.5,
+            "length": 5
+          }
+        },
+        {
+          "block": 1200,
+          "t": {
+            "deja": 1,
+            "length": 16
+          }
+        },
+        {
+          "block": 1800,
+          "t": {
+            "deja": 0.2,
+            "bias": 0.85,
+            "jitter": 0.7,
+            "pwstd": 0.8
+          },
+          "reset_t": true
+        }
+      ]
+    },
+    {
+      "id": "t_model_1",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": false,
+      "t": {
+        "model": 1,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.5,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.25,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 16
+      },
+      "clock_source": 0,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 600,
+          "t": {
+            "deja": 0.5,
+            "length": 5
+          }
+        },
+        {
+          "block": 1200,
+          "t": {
+            "deja": 1,
+            "length": 16
+          }
+        },
+        {
+          "block": 1800,
+          "t": {
+            "deja": 0.2,
+            "bias": 0.85,
+            "jitter": 0.7,
+            "pwstd": 0.8
+          },
+          "reset_t": true
+        }
+      ]
+    },
+    {
+      "id": "t_model_2",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": false,
+      "t": {
+        "model": 2,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.5,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.25,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 16
+      },
+      "clock_source": 0,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 600,
+          "t": {
+            "deja": 0.5,
+            "length": 5
+          }
+        },
+        {
+          "block": 1200,
+          "t": {
+            "deja": 1,
+            "length": 16
+          }
+        },
+        {
+          "block": 1800,
+          "t": {
+            "deja": 0.2,
+            "bias": 0.85,
+            "jitter": 0.7,
+            "pwstd": 0.8
+          },
+          "reset_t": true
+        }
+      ]
+    },
+    {
+      "id": "t_model_3",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": false,
+      "t": {
+        "model": 3,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.5,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.25,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 16
+      },
+      "clock_source": 0,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 600,
+          "t": {
+            "deja": 0.5,
+            "length": 5
+          }
+        },
+        {
+          "block": 1200,
+          "t": {
+            "deja": 1,
+            "length": 16
+          }
+        },
+        {
+          "block": 1800,
+          "t": {
+            "deja": 0.2,
+            "bias": 0.85,
+            "jitter": 0.7,
+            "pwstd": 0.8
+          },
+          "reset_t": true
+        }
+      ]
+    },
+    {
+      "id": "t_model_4",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": false,
+      "t": {
+        "model": 4,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.5,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.25,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 16
+      },
+      "clock_source": 0,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 600,
+          "t": {
+            "deja": 0.5,
+            "length": 5
+          }
+        },
+        {
+          "block": 1200,
+          "t": {
+            "deja": 1,
+            "length": 16
+          }
+        },
+        {
+          "block": 1800,
+          "t": {
+            "deja": 0.2,
+            "bias": 0.85,
+            "jitter": 0.7,
+            "pwstd": 0.8
+          },
+          "reset_t": true
+        }
+      ]
+    },
+    {
+      "id": "t_model_5",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": false,
+      "t": {
+        "model": 5,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.5,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.25,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 16
+      },
+      "clock_source": 0,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 600,
+          "t": {
+            "deja": 0.5,
+            "length": 5
+          }
+        },
+        {
+          "block": 1200,
+          "t": {
+            "deja": 1,
+            "length": 16
+          }
+        },
+        {
+          "block": 1800,
+          "t": {
+            "deja": 0.2,
+            "bias": 0.85,
+            "jitter": 0.7,
+            "pwstd": 0.8
+          },
+          "reset_t": true
+        }
+      ]
+    },
+    {
+      "id": "t_model_6",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": false,
+      "t": {
+        "model": 6,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.5,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.25,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 16
+      },
+      "clock_source": 0,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 600,
+          "t": {
+            "deja": 0.5,
+            "length": 5
+          }
+        },
+        {
+          "block": 1200,
+          "t": {
+            "deja": 1,
+            "length": 16
+          }
+        },
+        {
+          "block": 1800,
+          "t": {
+            "deja": 0.2,
+            "bias": 0.85,
+            "jitter": 0.7,
+            "pwstd": 0.8
+          },
+          "reset_t": true
+        }
+      ]
+    },
+    {
+      "id": "xy_clock_0",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": true,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": true
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.9,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.9,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 2
+      },
+      "clock_source": 0,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 500,
+          "x": {
+            "deja": 0.5,
+            "length": 7
+          },
+          "t": {
+            "range": 0,
+            "rate": -24
+          }
+        },
+        {
+          "block": 1000,
+          "x": {
+            "deja": 1,
+            "steps": 0.05,
+            "control": 1
+          },
+          "y": {
+            "steps": 0.05
+          }
+        },
+        {
+          "block": 1500,
+          "x": {
+            "control": 2,
+            "range": 0,
+            "bias": 0.9
+          },
+          "reset_x": true
+        },
+        {
+          "block": 1900,
+          "t": {
+            "external": false,
+            "range": 2,
+            "rate": 48
+          },
+          "clock_source": 0
+        }
+      ]
+    },
+    {
+      "id": "xy_clock_1",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": true,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.9,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.9,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 2
+      },
+      "clock_source": 1,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 500,
+          "x": {
+            "deja": 0.5,
+            "length": 7
+          },
+          "t": {
+            "range": 0,
+            "rate": -24
+          }
+        },
+        {
+          "block": 1000,
+          "x": {
+            "deja": 1,
+            "steps": 0.05,
+            "control": 1
+          },
+          "y": {
+            "steps": 0.05
+          }
+        },
+        {
+          "block": 1500,
+          "x": {
+            "control": 2,
+            "range": 0,
+            "bias": 0.9
+          },
+          "reset_x": true
+        },
+        {
+          "block": 1900,
+          "t": {
+            "external": false,
+            "range": 2,
+            "rate": 48
+          },
+          "clock_source": 0
+        }
+      ]
+    },
+    {
+      "id": "xy_clock_2",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": true,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": true
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.9,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.9,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 2
+      },
+      "clock_source": 2,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 500,
+          "x": {
+            "deja": 0.5,
+            "length": 7
+          },
+          "t": {
+            "range": 0,
+            "rate": -24
+          }
+        },
+        {
+          "block": 1000,
+          "x": {
+            "deja": 1,
+            "steps": 0.05,
+            "control": 1
+          },
+          "y": {
+            "steps": 0.05
+          }
+        },
+        {
+          "block": 1500,
+          "x": {
+            "control": 2,
+            "range": 0,
+            "bias": 0.9
+          },
+          "reset_x": true
+        },
+        {
+          "block": 1900,
+          "t": {
+            "external": false,
+            "range": 2,
+            "rate": 48
+          },
+          "clock_source": 0
+        }
+      ]
+    },
+    {
+      "id": "xy_clock_3",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": true,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.9,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.9,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 2
+      },
+      "clock_source": 3,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 500,
+          "x": {
+            "deja": 0.5,
+            "length": 7
+          },
+          "t": {
+            "range": 0,
+            "rate": -24
+          }
+        },
+        {
+          "block": 1000,
+          "x": {
+            "deja": 1,
+            "steps": 0.05,
+            "control": 1
+          },
+          "y": {
+            "steps": 0.05
+          }
+        },
+        {
+          "block": 1500,
+          "x": {
+            "control": 2,
+            "range": 0,
+            "bias": 0.9
+          },
+          "reset_x": true
+        },
+        {
+          "block": 1900,
+          "t": {
+            "external": false,
+            "range": 2,
+            "rate": 48
+          },
+          "clock_source": 0
+        }
+      ]
+    },
+    {
+      "id": "xy_clock_4",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": true,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": true
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.9,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.9,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 2
+      },
+      "clock_source": 4,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 500,
+          "x": {
+            "deja": 0.5,
+            "length": 7
+          },
+          "t": {
+            "range": 0,
+            "rate": -24
+          }
+        },
+        {
+          "block": 1000,
+          "x": {
+            "deja": 1,
+            "steps": 0.05,
+            "control": 1
+          },
+          "y": {
+            "steps": 0.05
+          }
+        },
+        {
+          "block": 1500,
+          "x": {
+            "control": 2,
+            "range": 0,
+            "bias": 0.9
+          },
+          "reset_x": true
+        },
+        {
+          "block": 1900,
+          "t": {
+            "external": false,
+            "range": 2,
+            "rate": 48
+          },
+          "clock_source": 0
+        }
+      ]
+    },
+    {
+      "id": "weighted_scale_0",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": true,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.8,
+        "bias": 0.5,
+        "steps": 1,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 1,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 1
+      },
+      "clock_source": 2,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 600,
+          "x": {
+            "steps": 0.6
+          }
+        },
+        {
+          "block": 1200,
+          "x": {
+            "steps": 0.85,
+            "range": 1
+          }
+        },
+        {
+          "block": 1800,
+          "x": {
+            "steps": 1,
+            "bias": 0.8,
+            "range": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "weighted_scale_1",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": true,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.8,
+        "bias": 0.5,
+        "steps": 1,
+        "deja": 0,
+        "scale": 1,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 1,
+        "deja": 0,
+        "scale": 1,
+        "length": 1,
+        "p": 1,
+        "q": 1
+      },
+      "clock_source": 2,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 600,
+          "x": {
+            "steps": 0.6
+          }
+        },
+        {
+          "block": 1200,
+          "x": {
+            "steps": 0.85,
+            "range": 1
+          }
+        },
+        {
+          "block": 1800,
+          "x": {
+            "steps": 1,
+            "bias": 0.8,
+            "range": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "weighted_scale_2",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": true,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.8,
+        "bias": 0.5,
+        "steps": 1,
+        "deja": 0,
+        "scale": 2,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 1,
+        "deja": 0,
+        "scale": 2,
+        "length": 1,
+        "p": 1,
+        "q": 1
+      },
+      "clock_source": 2,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 600,
+          "x": {
+            "steps": 0.6
+          }
+        },
+        {
+          "block": 1200,
+          "x": {
+            "steps": 0.85,
+            "range": 1
+          }
+        },
+        {
+          "block": 1800,
+          "x": {
+            "steps": 1,
+            "bias": 0.8,
+            "range": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "weighted_scale_3",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": true,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.8,
+        "bias": 0.5,
+        "steps": 1,
+        "deja": 0,
+        "scale": 3,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 1,
+        "deja": 0,
+        "scale": 3,
+        "length": 1,
+        "p": 1,
+        "q": 1
+      },
+      "clock_source": 2,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 600,
+          "x": {
+            "steps": 0.6
+          }
+        },
+        {
+          "block": 1200,
+          "x": {
+            "steps": 0.85,
+            "range": 1
+          }
+        },
+        {
+          "block": 1800,
+          "x": {
+            "steps": 1,
+            "bias": 0.8,
+            "range": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "weighted_scale_4",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": true,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.8,
+        "bias": 0.5,
+        "steps": 1,
+        "deja": 0,
+        "scale": 4,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 1,
+        "deja": 0,
+        "scale": 4,
+        "length": 1,
+        "p": 1,
+        "q": 1
+      },
+      "clock_source": 2,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 600,
+          "x": {
+            "steps": 0.6
+          }
+        },
+        {
+          "block": 1200,
+          "x": {
+            "steps": 0.85,
+            "range": 1
+          }
+        },
+        {
+          "block": 1800,
+          "x": {
+            "steps": 1,
+            "bias": 0.8,
+            "range": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "weighted_scale_5",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": true,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.8,
+        "bias": 0.5,
+        "steps": 1,
+        "deja": 0,
+        "scale": 5,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 1,
+        "deja": 0,
+        "scale": 5,
+        "length": 1,
+        "p": 1,
+        "q": 1
+      },
+      "clock_source": 2,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 600,
+          "x": {
+            "steps": 0.6
+          }
+        },
+        {
+          "block": 1200,
+          "x": {
+            "steps": 0.85,
+            "range": 1
+          }
+        },
+        {
+          "block": 1800,
+          "x": {
+            "steps": 1,
+            "bias": 0.8,
+            "range": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "register_reacquisition_0",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": true,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": true,
+        "value": 0.17,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.75,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.25,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 16
+      },
+      "clock_source": 4,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 240,
+          "x": {
+            "value": 0.72
+          }
+        },
+        {
+          "block": 241,
+          "x": {
+            "value": 0.86
+          }
+        },
+        {
+          "block": 242,
+          "x": {
+            "value": 0.91
+          }
+        },
+        {
+          "block": 700,
+          "clock_source": 0
+        },
+        {
+          "block": 1100,
+          "clock_source": 2
+        },
+        {
+          "block": 1500,
+          "x": {
+            "register": false,
+            "deja": 0.5
+          }
+        },
+        {
+          "block": 1800,
+          "x": {
+            "register": true,
+            "value": 0.3
+          },
+          "clock_source": 4
+        }
+      ]
+    },
+    {
+      "id": "register_reacquisition_1",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": true,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 1,
+        "range": 2,
+        "register": true,
+        "value": 0.17,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.75,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.25,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 16
+      },
+      "clock_source": 4,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 240,
+          "x": {
+            "value": 0.72
+          }
+        },
+        {
+          "block": 241,
+          "x": {
+            "value": 0.86
+          }
+        },
+        {
+          "block": 242,
+          "x": {
+            "value": 0.91
+          }
+        },
+        {
+          "block": 700,
+          "clock_source": 0
+        },
+        {
+          "block": 1100,
+          "clock_source": 2
+        },
+        {
+          "block": 1500,
+          "x": {
+            "register": false,
+            "deja": 0.5
+          }
+        },
+        {
+          "block": 1800,
+          "x": {
+            "register": true,
+            "value": 0.3
+          },
+          "clock_source": 4
+        }
+      ]
+    },
+    {
+      "id": "register_reacquisition_2",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": true,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 2,
+        "range": 2,
+        "register": true,
+        "value": 0.17,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.75,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.25,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 16
+      },
+      "clock_source": 4,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 240,
+          "x": {
+            "value": 0.72
+          }
+        },
+        {
+          "block": 241,
+          "x": {
+            "value": 0.86
+          }
+        },
+        {
+          "block": 242,
+          "x": {
+            "value": 0.91
+          }
+        },
+        {
+          "block": 700,
+          "clock_source": 0
+        },
+        {
+          "block": 1100,
+          "clock_source": 2
+        },
+        {
+          "block": 1500,
+          "x": {
+            "register": false,
+            "deja": 0.5
+          }
+        },
+        {
+          "block": 1800,
+          "x": {
+            "register": true,
+            "value": 0.3
+          },
+          "clock_source": 4
+        }
+      ]
+    },
+    {
+      "id": "parameter_endpoints_and_reset",
+      "mode": 0,
+      "seed": 1,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": true,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.5,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.25,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 16
+      },
+      "clock_source": 0,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": [
+        {
+          "block": 400,
+          "t": {
+            "bias": 0,
+            "jitter": 0,
+            "pw": 0,
+            "pwstd": 0
+          },
+          "x": {
+            "spread": 0,
+            "bias": 0,
+            "steps": 0
+          }
+        },
+        {
+          "block": 800,
+          "t": {
+            "bias": 1,
+            "jitter": 1,
+            "pw": 1,
+            "pwstd": 1
+          },
+          "x": {
+            "spread": 1,
+            "bias": 1,
+            "steps": 1
+          }
+        },
+        {
+          "block": 1200,
+          "t": {
+            "model": 1,
+            "rate": -48,
+            "range": 0
+          },
+          "reset_t": true
+        },
+        {
+          "block": 1600,
+          "t": {
+            "model": 6,
+            "rate": 48,
+            "range": 2,
+            "deja": 0.5
+          },
+          "x": {
+            "spread": 0.5,
+            "bias": 0.5,
+            "steps": 0.5
+          },
+          "reset_x": true
+        }
+      ]
+    },
+    {
+      "id": "seed_zero_defined",
+      "mode": 0,
+      "seed": 0,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": false,
+      "t": {
+        "model": 0,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0.5,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.5,
+        "deja": 0.5,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.25,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 16
+      },
+      "clock_source": 0,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": []
+    },
+    {
+      "id": "seed_high_defined",
+      "mode": 0,
+      "seed": 3735928559,
+      "sample_rate": 32000,
+      "blocks": 2400,
+      "load_y": false,
+      "t": {
+        "model": 6,
+        "range": 2,
+        "rate": 48,
+        "bias": 0.5,
+        "jitter": 0.2,
+        "pw": 0.35,
+        "pwstd": 0.2,
+        "deja": 0,
+        "length": 8,
+        "external": false
+      },
+      "x": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0.5,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.5,
+        "deja": 0,
+        "scale": 0,
+        "length": 8,
+        "p": 1,
+        "q": 1
+      },
+      "y": {
+        "control": 0,
+        "range": 2,
+        "register": false,
+        "value": 0,
+        "spread": 0.5,
+        "bias": 0.5,
+        "steps": 0.25,
+        "deja": 0,
+        "scale": 0,
+        "length": 1,
+        "p": 1,
+        "q": 16
+      },
+      "clock_source": 0,
+      "t_clock": {
+        "period": 128,
+        "high": 40,
+        "start": 25
+      },
+      "x_clock": {
+        "period": 96,
+        "high": 32,
+        "start": 35
+      },
+      "events": []
+    },
+    {
+      "id": "sequence_rewrite_clone_replay",
+      "mode": 3,
+      "seed": 37,
+      "operations": [
+        [
+          0,
+          1,
+          0,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          1,
+          0,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          4,
+          3,
+          0.5,
+          0.25,
+          3200931301
+        ],
+        [
+          6,
+          3,
+          0.5,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0.5,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0.5,
+          0.5,
+          3200931301
+        ],
+        [
+          7,
+          3,
+          0.5,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0.5,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0.5,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0.5,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0.5,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0.5,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          6,
+          3,
+          0.5,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          7,
+          3,
+          0.5,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0.5,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0.5,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0.5,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          3,
+          0.5,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.75,
+          3200931301
+        ],
+        [
+          7,
+          5,
+          0.5,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          6,
+          5,
+          0.5,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          7,
+          5,
+          0.5,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          6,
+          5,
+          0.5,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          7,
+          5,
+          0.5,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.5,
+          3200931301
+        ],
+        [
+          6,
+          5,
+          0.5,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          7,
+          5,
+          0.5,
+          0.75,
+          3200931301
+        ],
+        [
+          5,
+          5,
+          0.5,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          6,
+          5,
+          0.5,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.0,
+          3200931301
+        ],
+        [
+          7,
+          5,
+          0.5,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          6,
+          5,
+          0.5,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          7,
+          5,
+          0.5,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          5,
+          0.5,
+          0.0,
+          3200931301
+        ],
+        [
+          6,
+          7,
+          0.5,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          0.5,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          0.5,
+          0.25,
+          3200931301
+        ],
+        [
+          7,
+          7,
+          0.5,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          0.5,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          0.5,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          0.5,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          0.5,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          0.5,
+          0.75,
+          3200931301
+        ],
+        [
+          6,
+          7,
+          0.5,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          7,
+          7,
+          0.5,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          0.5,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          0.5,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          0.5,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          0.5,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          0.5,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          3,
+          7,
+          1,
+          0.5,
+          3200931301
+        ],
+        [
+          7,
+          7,
+          1,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          6,
+          7,
+          1,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          7,
+          7,
+          1,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          6,
+          7,
+          1,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.75,
+          3200931301
+        ],
+        [
+          7,
+          7,
+          1,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.25,
+          3200931301
+        ],
+        [
+          6,
+          7,
+          1,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          7,
+          7,
+          1,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          6,
+          7,
+          1,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          7,
+          1,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          7,
+          16,
+          1,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          6,
+          16,
+          1,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          2,
+          16,
+          1,
+          0.16666666666666666,
+          1
+        ],
+        [
+          0,
+          16,
+          1,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          7,
+          16,
+          1,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          6,
+          16,
+          1,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.0,
+          3200931301
+        ],
+        [
+          7,
+          16,
+          1,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.5,
+          3200931301
+        ],
+        [
+          6,
+          16,
+          1,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          7,
+          16,
+          1,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.25,
+          3200931301
+        ],
+        [
+          7,
+          16,
+          1,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          6,
+          16,
+          1,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.5,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.6666666666666666,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.75,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.8333333333333334,
+          3200931301
+        ],
+        [
+          7,
+          16,
+          1,
+          0.0,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.08333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.16666666666666666,
+          3200931301
+        ],
+        [
+          6,
+          16,
+          1,
+          0.25,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.3333333333333333,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.4166666666666667,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.5,
+          3200931301
+        ],
+        [
+          7,
+          16,
+          1,
+          0.5833333333333334,
+          3200931301
+        ],
+        [
+          0,
+          16,
+          1,
+          0.6666666666666666,
+          3200931301
+        ]
+      ]
+    },
+    {
+      "id": "note_filter_and_weighted_recorder",
+      "mode": 4,
+      "seed": 1,
+      "operations": [
+        [
+          0,
+          -1.006
+        ],
+        [
+          1,
+          -1.004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.0833
+        ],
+        [
+          1,
+          0.0853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.3333
+        ],
+        [
+          1,
+          1.3353
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.41669999999999996
+        ],
+        [
+          1,
+          -0.41469999999999996
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.9167
+        ],
+        [
+          1,
+          0.9187
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.994
+        ],
+        [
+          1,
+          0.996
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.9167
+        ],
+        [
+          1,
+          -0.9147
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.3333
+        ],
+        [
+          1,
+          0.3353
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.5833
+        ],
+        [
+          1,
+          1.5853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.08330000000000004
+        ],
+        [
+          1,
+          -0.08130000000000004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.006
+        ],
+        [
+          1,
+          -0.004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.0833
+        ],
+        [
+          1,
+          1.0853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.6667000000000001
+        ],
+        [
+          1,
+          -0.6647000000000001
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.5833
+        ],
+        [
+          1,
+          0.5853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.9167
+        ],
+        [
+          1,
+          1.9187
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -1.006
+        ],
+        [
+          1,
+          -1.004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.0833
+        ],
+        [
+          1,
+          0.0853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.3333
+        ],
+        [
+          1,
+          1.3353
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.41669999999999996
+        ],
+        [
+          1,
+          -0.41469999999999996
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.9167
+        ],
+        [
+          1,
+          0.9187
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.994
+        ],
+        [
+          1,
+          0.996
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.9167
+        ],
+        [
+          1,
+          -0.9147
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.3333
+        ],
+        [
+          1,
+          0.3353
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.5833
+        ],
+        [
+          1,
+          1.5853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.08330000000000004
+        ],
+        [
+          1,
+          -0.08130000000000004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.006
+        ],
+        [
+          1,
+          -0.004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.0833
+        ],
+        [
+          1,
+          1.0853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.6667000000000001
+        ],
+        [
+          1,
+          -0.6647000000000001
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.5833
+        ],
+        [
+          1,
+          0.5853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.9167
+        ],
+        [
+          1,
+          1.9187
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -1.006
+        ],
+        [
+          1,
+          -1.004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.0833
+        ],
+        [
+          1,
+          0.0853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.3333
+        ],
+        [
+          1,
+          1.3353
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.41669999999999996
+        ],
+        [
+          1,
+          -0.41469999999999996
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.9167
+        ],
+        [
+          1,
+          0.9187
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.994
+        ],
+        [
+          1,
+          0.996
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.9167
+        ],
+        [
+          1,
+          -0.9147
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.3333
+        ],
+        [
+          1,
+          0.3353
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.5833
+        ],
+        [
+          1,
+          1.5853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.08330000000000004
+        ],
+        [
+          1,
+          -0.08130000000000004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.006
+        ],
+        [
+          1,
+          -0.004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.0833
+        ],
+        [
+          1,
+          1.0853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.6667000000000001
+        ],
+        [
+          1,
+          -0.6647000000000001
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.5833
+        ],
+        [
+          1,
+          0.5853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.9167
+        ],
+        [
+          1,
+          1.9187
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -1.006
+        ],
+        [
+          1,
+          -1.004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.0833
+        ],
+        [
+          1,
+          0.0853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.3333
+        ],
+        [
+          1,
+          1.3353
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.41669999999999996
+        ],
+        [
+          1,
+          -0.41469999999999996
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.9167
+        ],
+        [
+          1,
+          0.9187
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.994
+        ],
+        [
+          1,
+          0.996
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.9167
+        ],
+        [
+          1,
+          -0.9147
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.3333
+        ],
+        [
+          1,
+          0.3353
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.5833
+        ],
+        [
+          1,
+          1.5853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.08330000000000004
+        ],
+        [
+          1,
+          -0.08130000000000004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.006
+        ],
+        [
+          1,
+          -0.004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.0833
+        ],
+        [
+          1,
+          1.0853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.6667000000000001
+        ],
+        [
+          1,
+          -0.6647000000000001
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.5833
+        ],
+        [
+          1,
+          0.5853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.9167
+        ],
+        [
+          1,
+          1.9187
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -1.006
+        ],
+        [
+          1,
+          -1.004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.0833
+        ],
+        [
+          1,
+          0.0853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.3333
+        ],
+        [
+          1,
+          1.3353
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.41669999999999996
+        ],
+        [
+          1,
+          -0.41469999999999996
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.9167
+        ],
+        [
+          1,
+          0.9187
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.994
+        ],
+        [
+          1,
+          0.996
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.9167
+        ],
+        [
+          1,
+          -0.9147
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.3333
+        ],
+        [
+          1,
+          0.3353
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.5833
+        ],
+        [
+          1,
+          1.5853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.08330000000000004
+        ],
+        [
+          1,
+          -0.08130000000000004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.006
+        ],
+        [
+          1,
+          -0.004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.0833
+        ],
+        [
+          1,
+          1.0853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.6667000000000001
+        ],
+        [
+          1,
+          -0.6647000000000001
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.5833
+        ],
+        [
+          1,
+          0.5853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.9167
+        ],
+        [
+          1,
+          1.9187
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -1.006
+        ],
+        [
+          1,
+          -1.004
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.0833
+        ],
+        [
+          1,
+          0.0853
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          1.3333
+        ],
+        [
+          1,
+          1.3353
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          -0.41669999999999996
+        ],
+        [
+          1,
+          -0.41469999999999996
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.9167
+        ],
+        [
+          1,
+          0.9187
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          0,
+          0.5
+        ],
+        [
+          2,
+          0
+        ]
+      ]
+    }
+  ],
+  "negative_cases": [
+    {
+      "id": "undefined_float_word_endpoint",
+      "mode": 1,
+      "seed": 1
+    },
+    {
+      "id": "undefined_y_unloaded_scale",
+      "mode": 2,
+      "seed": 1
+    },
+    {
+      "id": "undefined_terminal_interpolation",
+      "mode": 5,
+      "seed": 1
+    }
+  ]
+}

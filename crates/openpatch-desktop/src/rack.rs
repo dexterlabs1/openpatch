@@ -68,6 +68,7 @@ include!("frame_scene_panel.rs");
 include!("segment_garden_panel.rs");
 include!("event_fork_panel.rs");
 include!("rhythm_terrain_panel.rs");
+include!("recall_random_panel.rs");
 include!("atlas_svf_panel.rs");
 include!("atlas_multi_panels.rs");
 include!("atlas_wavetable_panel.rs");
@@ -198,7 +199,7 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("stock_vcf" | "rack264_vcf", _, false) => Above(21.0),
         ("lfo" | "lowpass" | "gain" | "analog_vca", _, false) => Above(25.0),
         ("adsr" | "svf_filter", _, false) => Above(21.0),
-        ("event_fork" | "rhythm_terrain", _, _) => Above(25.0),
+        ("event_fork" | "rhythm_terrain" | "recall_random", _, _) => Above(25.0),
         ("frame_scene", _, _) => Above(25.0),
         ("segment_garden", _, _) => Above(24.0),
         ("tidal_functions", _, false) => Above(21.0),
@@ -348,7 +349,11 @@ fn generic_parameter_hardware(
         || matches!(kind, "tidal_functions" | "segment_garden")
         || matches!(
             kind,
-            "tidal_functions" | "segment_garden" | "event_fork" | "rhythm_terrain"
+            "tidal_functions"
+                | "segment_garden"
+                | "event_fork"
+                | "rhythm_terrain"
+                | "recall_random"
         )
         || matches!(
             kind,
@@ -759,6 +764,7 @@ pub struct Rack {
     rackmcp_ui: RackMcpUi,
     listen_ui: ListenUi,
     frame_scene_ui: FrameSceneUi,
+    recall_ui: RecallRandomUi,
     unresolved_panels: Vec<UnresolvedPanel>,
     source_routes: Vec<Cable>,
     dependency_focus: Option<String>,
@@ -839,6 +845,7 @@ impl Default for Rack {
             rackmcp_ui: RackMcpUi::default(),
             listen_ui: ListenUi::default(),
             frame_scene_ui: FrameSceneUi::default(),
+            recall_ui: RecallRandomUi::default(),
             unresolved_panels: Vec::new(),
             source_routes: Vec::new(),
             dependency_focus: None,
@@ -3985,6 +3992,13 @@ impl Rack {
                     &self.lighting,
                 );
             }
+            if node.kind == "recall_random" {
+                if let Some(edit) =
+                    self.recall_random_panel(ui, node, module, rect, revision, interactive)
+                {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "rhythm_terrain" {
                 if let Some(edit) =
                     self.rhythm_terrain_panel(ui, node, module, rect, revision, interactive)
@@ -4012,7 +4026,8 @@ impl Rack {
                 }
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
-                if (node.kind == "rhythm_terrain" && !RHYTHM_TERRAIN_KNOBS.contains(name))
+                if (node.kind == "recall_random" && !RECALL_RANDOM_KNOBS.contains(name))
+                    || (node.kind == "rhythm_terrain" && !RHYTHM_TERRAIN_KNOBS.contains(name))
                     || (node.kind == "event_fork" && !name.starts_with("probability"))
                     || (node.kind == "segment_garden"
                         && !name.starts_with("level")
@@ -4462,7 +4477,9 @@ impl Rack {
                     "macro_voice" => 8.0,
                     _ => 13.0,
                 };
-                let (knob_position, radius) = if node.kind == "rhythm_terrain" {
+                let (knob_position, radius) = if node.kind == "recall_random" {
+                    recall_random_control(name)
+                } else if node.kind == "rhythm_terrain" {
                     rhythm_terrain_control(name)
                 } else if node.kind == "event_fork" {
                     event_fork_control(name)
@@ -4572,7 +4589,11 @@ impl Rack {
                     || ((atlas_voice(&node.kind)
                         || matches!(
                             node.kind.as_str(),
-                            "tidal_functions" | "segment_garden" | "event_fork" | "rhythm_terrain"
+                            "tidal_functions"
+                                | "segment_garden"
+                                | "event_fork"
+                                | "rhythm_terrain"
+                                | "recall_random"
                         ))
                         && logarithmic
                         && min > 0.0);
@@ -4788,7 +4809,10 @@ impl Rack {
                 } else {
                     15.0
                 };
-                let value_center = if node.kind == "rhythm_terrain" {
+                let value_center = if node.kind == "recall_random" {
+                    let local = recall_random_value_center(name);
+                    point(local.x, local.y)
+                } else if node.kind == "rhythm_terrain" {
                     let local = rhythm_terrain_value_center(name);
                     point(local.x, local.y)
                 } else if node.kind == "event_fork" {
@@ -4874,7 +4898,9 @@ impl Rack {
                 } else {
                     center + vec2(0.0, (radius + value_offset) * self.zoom)
                 };
-                let readout_width = if node.kind == "rhythm_terrain" {
+                let readout_width = if node.kind == "recall_random" {
+                    78.0
+                } else if node.kind == "rhythm_terrain" {
                     84.0
                 } else if node.kind == "event_fork" {
                     100.0
@@ -5246,7 +5272,11 @@ impl Rack {
                         || matches!(node.kind.as_str(), "tidal_functions" | "segment_garden")
                         || matches!(
                             node.kind.as_str(),
-                            "tidal_functions" | "segment_garden" | "event_fork" | "rhythm_terrain"
+                            "tidal_functions"
+                                | "segment_garden"
+                                | "event_fork"
+                                | "rhythm_terrain"
+                                | "recall_random"
                         )
                         || matches!(
                             node.kind.as_str(),
@@ -5340,6 +5370,8 @@ impl Rack {
                     );
                 } else if node.kind == "svf_filter" {
                     paint_atlas_svf_print(&painter, rect, name, self.zoom);
+                } else if node.kind == "recall_random" {
+                    paint_recall_random_control_print(&painter, rect, name, self.zoom);
                 } else if node.kind == "rhythm_terrain" {
                     paint_rhythm_terrain_control_print(&painter, rect, node, name, self.zoom);
                 } else if node.kind == "event_fork" {
@@ -5432,7 +5464,11 @@ impl Rack {
                     || matches!(node.kind.as_str(), "tidal_functions" | "segment_garden")
                     || matches!(
                         node.kind.as_str(),
-                        "tidal_functions" | "segment_garden" | "event_fork" | "rhythm_terrain"
+                        "tidal_functions"
+                            | "segment_garden"
+                            | "event_fork"
+                            | "rhythm_terrain"
+                            | "recall_random"
                     )
                     || matches!(
                         node.kind.as_str(),
@@ -6096,7 +6132,10 @@ impl Rack {
         port_index: usize,
         output_point: Pos2,
     ) {
-        if matches!(node.kind.as_str(), "event_fork" | "rhythm_terrain") {
+        if matches!(
+            node.kind.as_str(),
+            "event_fork" | "rhythm_terrain" | "recall_random"
+        ) {
             let strength = event_fork_lamp(self.module_lights.get(&node.id), port_index);
             let center = output_point + vec2(24.0, -1.0) * self.zoom;
             painter.circle_filled(center, 3.0 * self.zoom, Color32::from_gray(78));
@@ -9070,6 +9109,7 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
                 if input { 341.0 } else { 382.0 },
             );
         }
+        "recall_random" => return recall_random_port(input, index),
         "rhythm_terrain" => return rhythm_terrain_port(input, index),
         "event_fork" => return event_fork_port(input, index),
         "frame_scene" => return frame_scene_port(input, index),
@@ -10076,6 +10116,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "studio_mixer" => 804.0,
         "modal_resonator" => HP * 32.0,
         "macro_voice" => HP * 20.0,
+        "recall_random" => HP * 54.0,
         "rhythm_terrain" => HP * 48.0,
         "event_fork" => HP * 20.0,
         "frame_scene" => HP * 36.0,
@@ -10132,6 +10173,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "blank" => "BLANK",
         "modal_resonator" => "MODAL RESONATOR",
         "macro_voice" => "MACRO VOICE",
+        "recall_random" => "RECALL RANDOM",
         "rhythm_terrain" => "RHYTHM TERRAIN",
         "event_fork" => "EVENT FORK",
         "frame_scene" => "FRAME SCENE",
@@ -12424,7 +12466,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            91,
+            92,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -19361,6 +19403,9 @@ mod tests {
         include!("frame_scene_ui_tests.rs");
     }
 
+    mod recall_random_ui_tests {
+        include!("recall_random_ui_tests.rs");
+    }
     mod rhythm_terrain_ui_tests {
         include!("rhythm_terrain_ui_tests.rs");
     }

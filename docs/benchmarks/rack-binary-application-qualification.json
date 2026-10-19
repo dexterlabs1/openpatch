@@ -126,5 +126,21 @@
   "retained_initial_failures": [
     "obsolete inactive panel captions",
     "negative admission test assumed missing environment; deterministic missing companion now verifies silence/no native fallback"
-  ]
+  ],
+  "recall_integration": {
+    "recall_commit": "323f98176c79adf03fbd46f64286069d0df32097",
+    "host_parent_commit": "e3cfa15361500a864e98b8c5abe6f740383eae98",
+    "frozen_manifest_files": 23,
+    "changed_files": [
+      "crates/openpatch-core/src/poly.rs",
+      "crates/openpatch/src/control.rs",
+      "crates/openpatch-desktop/src/app.rs",
+      "crates/openpatch-desktop/src/audio.rs",
+      "crates/openpatch-desktop/src/performance.rs"
+    ],
+    "unchanged_files": 18,
+    "host_transport_external_continuation_and_device_harness_unchanged": true,
+    "integrated_device_qualification": "pending: Recall changes shared PolyEngine and Performance event/telemetry callback paths; retain earlier receipt for its original tested executable, rerun the existing optimized device test for the integrated executable",
+    "source_audit": "native-test-output/host-completion/recall-integration-source-audit.json"
+  }
 }

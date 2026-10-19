@@ -3,7 +3,9 @@
 Integration candidate, 2026-10-18. The experimental host now has explicit
 native/MCP activation, shared rack controls, coherent native/MCP save dispatch,
 and same-child continuity across ordinary native parameter and Scope rebuilds.
-The current branch includes released `main` features. Focused Core/control and
+The current branch includes released `main` features and the completed Recall
+Random candidate `323f981`. The evidence below remains pinned to its tested
+source and binary; integrated validation is pending. Focused Core/control and
 shared-panel tests, the actual-plugin public workflow and the sustained physical
 Mac output-device gate pass. Native-window/final milestone CI remain pending.
 The paced workflow alone is not a device receipt.
@@ -96,6 +98,13 @@ buffering; this sustained test did not remeasure that anchor. Neither number is
 a physical input/output loopback measurement. Native-window and final milestone
 CI receipts remain pending. Full raw receipts, hashes, compiler, exact test binary
 and timing scope are retained in the application qualification record.
+
+The Recall merge changes five of the 23 frozen manifest files: PolyEngine,
+Session control, app commands, Performance, and an audio test include. The host
+transport, external-continuation implementation and device harness are unchanged.
+Recall adds shared callback event/telemetry paths, so the earlier receipt remains
+evidence for its original executable. Run the existing optimized device gate on
+the integrated executable before claiming integrated device qualification.
 
 ## Prior implementation checkpoints
 

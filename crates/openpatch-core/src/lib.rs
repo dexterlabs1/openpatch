@@ -14,11 +14,17 @@ pub const THIRD_PARTY_LICENSES: &str = include_str!("../LICENSE-THIRD-PARTY");
 use serde::{Deserialize, Serialize};
 mod cable_order;
 mod frame_scene_data;
+mod recall_random_data;
 pub use cable_order::{
     assign_new_cable_orders, cable_endpoint_order, promote_cable_endpoints, CableEndpoint,
 };
 pub use frame_scene_data::{
     FrameSceneData, FrameSceneEdit, FrameSceneKeyframe, MAX_FRAME_SCENE_KEYFRAMES,
+};
+pub use recall_random_data::{
+    RecallRandomCaptureState, RecallRandomCaptureStatus, RecallRandomCapturedScale,
+    RecallRandomData, RecallRandomDegree, RecallRandomScale, MAX_RECALL_RANDOM_DEGREES,
+    RECALL_RANDOM_SCALE_SLOTS,
 };
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -95,6 +101,7 @@ pub use stock_seq3::initial_stock_seq3_state;
 pub use stock_seq3::{StockSeq3Probe, StockSeq3Snapshot};
 mod event_fork;
 mod frame_scene;
+mod recall_random;
 mod rhythm_terrain;
 mod segment_garden;
 mod stock_lfo;
@@ -490,6 +497,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(rhythm_terrain::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(recall_random::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
@@ -2080,6 +2091,50 @@ impl Engine {
         match &mut self.inner {
             EngineKind::Poly(engine) => engine.handle_module_event(handle.node, action),
             _ => false,
+        }
+    }
+    /// Begin a bounded runtime recorder. Compile/resolve off callback; the handle
+    /// validates engine identity. Host fences receipt revision/incarnation at commit.
+    pub fn begin_recall_random_capture(
+        &mut self,
+        handle: ModuleHandle,
+        slot: u8,
+        revision: u64,
+    ) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(e) => e.begin_recall_random_capture(handle.node, slot, revision),
+            _ => false,
+        }
+    }
+    pub fn stop_recall_random_capture(&mut self, handle: ModuleHandle) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(e) => e.stop_recall_random_capture(handle.node),
+            _ => false,
+        }
+    }
+    pub fn cancel_recall_random_capture(&mut self, handle: ModuleHandle) -> bool {
+        if handle.generation != self.identity {
+            return false;
+        }
+        match &mut self.inner {
+            EngineKind::Poly(e) => e.cancel_recall_random_capture(handle.node),
+            _ => false,
+        }
+    }
+    /// Fixed-copy recorder status/result. No authored content changes here.
+    pub fn recall_random_capture(&self, handle: ModuleHandle) -> Option<RecallRandomCaptureState> {
+        if handle.generation != self.identity {
+            return None;
+        }
+        match &self.inner {
+            EngineKind::Poly(e) => e.recall_random_capture(handle.node),
+            _ => None,
         }
     }
     pub fn module_telemetry(&self, handle: ModuleHandle) -> Option<ModuleTelemetry> {

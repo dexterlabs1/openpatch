@@ -1205,6 +1205,25 @@ impl OpenPatch {
         self.files.sort();
     }
     fn command(&mut self, name: &str, mut args: Value) -> bool {
+        if name == "capture_recall_random_scale" && args["action"] != "commit" {
+            let id = args["id"].as_str().unwrap_or("").to_owned();
+            match execute_shared(&self.shared, name, args) {
+                Ok(_) => {
+                    self.rack.recall_capture_feedback(
+                        &id,
+                        "Command queued. Audio must be running; stop before applying capture."
+                            .into(),
+                    );
+                    return true;
+                }
+                Err(error) => {
+                    self.rack.recall_capture_feedback(&id, error.clone());
+                    self.status = error;
+                    return false;
+                }
+            }
+        }
+
         if matches!(
             name,
             "start_listen_capture"

@@ -1,0 +1,231 @@
+{
+  "schema": 1,
+  "repositories": {
+    "eurorack": {
+      "url": "https://github.com/pichenettes/eurorack",
+      "commit": "f4cfa7697095a28d292bff758beb51deb49b5a86"
+    },
+    "stmlib": {
+      "url": "https://github.com/pichenettes/stmlib",
+      "commit": "e3bd7c9cc00e4364166f9905c0509b6ffd0535ec",
+      "parent_gitlink": {
+        "repository": "eurorack",
+        "path": "stmlib",
+        "commit": "f4cfa7697095a28d292bff758beb51deb49b5a86"
+      }
+    }
+  },
+  "compiled_sources": [
+    "marbles/random/t_generator.cc",
+    "marbles/random/x_y_generator.cc",
+    "marbles/random/output_channel.cc",
+    "marbles/random/lag_processor.cc",
+    "marbles/random/quantizer.cc",
+    "marbles/random/discrete_distribution_quantizer.cc",
+    "marbles/ramp/ramp_extractor.cc",
+    "marbles/resources.cc",
+    "stmlib/dsp/units.cc"
+  ],
+  "context_only": [
+    "marbles/io_buffer.h",
+    "marbles/marbles.cc",
+    "marbles/settings.cc"
+  ],
+  "files": {
+    "marbles/io_buffer.h": {
+      "repository": "eurorack",
+      "path": "marbles/io_buffer.h",
+      "sha256": "b2aad8dfb470c6e092af3afae474c9c9a6d176344317e4834418402c15bd0441"
+    },
+    "marbles/marbles.cc": {
+      "repository": "eurorack",
+      "path": "marbles/marbles.cc",
+      "sha256": "46e642420fd8d60707f1445a8f75cdb640ffd78bd72b4bf902d194459348e8a1"
+    },
+    "marbles/note_filter.h": {
+      "repository": "eurorack",
+      "path": "marbles/note_filter.h",
+      "sha256": "764994b5da31f71c291f9bfcd99f1690a0ddd62bd9573677710275866c8b40c1"
+    },
+    "marbles/ramp/ramp.h": {
+      "repository": "eurorack",
+      "path": "marbles/ramp/ramp.h",
+      "sha256": "14649b9eeed75f9a51f6832a3cb73dd483ab8610f4397159e3aa9836d4db1105"
+    },
+    "marbles/ramp/ramp_divider.h": {
+      "repository": "eurorack",
+      "path": "marbles/ramp/ramp_divider.h",
+      "sha256": "adb2e739813434d9a3e575b802bb517369410fa4399f86706701a3b1f842b7e1"
+    },
+    "marbles/ramp/ramp_extractor.cc": {
+      "repository": "eurorack",
+      "path": "marbles/ramp/ramp_extractor.cc",
+      "sha256": "641e3e73201ff1e4082bafc41bdfcf94abb30eda7fef01c958cc93a7e60454b7"
+    },
+    "marbles/ramp/ramp_extractor.h": {
+      "repository": "eurorack",
+      "path": "marbles/ramp/ramp_extractor.h",
+      "sha256": "84eb158bdb83e789a80edb7366687e26d55b83296a5f6cd65ebc7db858dd2c53"
+    },
+    "marbles/ramp/ramp_generator.h": {
+      "repository": "eurorack",
+      "path": "marbles/ramp/ramp_generator.h",
+      "sha256": "b25bfe0743fcd422fd14aa5fe5756fec6e173e1c04e9c7000d89afa7b6dc4a55"
+    },
+    "marbles/ramp/slave_ramp.h": {
+      "repository": "eurorack",
+      "path": "marbles/ramp/slave_ramp.h",
+      "sha256": "e8975a367bbeaaf3fd3e644d428c8337aa09e62eba8224cde4cc14d4c4c10ddd"
+    },
+    "marbles/random/discrete_distribution_quantizer.cc": {
+      "repository": "eurorack",
+      "path": "marbles/random/discrete_distribution_quantizer.cc",
+      "sha256": "385dc124c8e7999c9e911bf312bdd1a1dcd89cbb5d787f3d14a169c7eeeda9e8"
+    },
+    "marbles/random/discrete_distribution_quantizer.h": {
+      "repository": "eurorack",
+      "path": "marbles/random/discrete_distribution_quantizer.h",
+      "sha256": "311df9d8e01ea4c5abd537a17a85420b994d3e091f49e271fe55f3123e310657"
+    },
+    "marbles/random/distributions.h": {
+      "repository": "eurorack",
+      "path": "marbles/random/distributions.h",
+      "sha256": "b2bc8da3d507c584076363872d56c53bac40fdbbb4ac729e418912acc1bd1173"
+    },
+    "marbles/random/lag_processor.cc": {
+      "repository": "eurorack",
+      "path": "marbles/random/lag_processor.cc",
+      "sha256": "b4f0facdf2a76f1097b7141c67f3d10bf12091c4e11a61ca12ecb2e1b0c33177"
+    },
+    "marbles/random/lag_processor.h": {
+      "repository": "eurorack",
+      "path": "marbles/random/lag_processor.h",
+      "sha256": "7afd708761f67a6258fdec5b9564a0f0770c3c8e49c807767c72a56b4e51ef96"
+    },
+    "marbles/random/output_channel.cc": {
+      "repository": "eurorack",
+      "path": "marbles/random/output_channel.cc",
+      "sha256": "9de92f55030d59da41f3591645d1f9307e6c1ec0fda7e31a2177f8e2cce535a4"
+    },
+    "marbles/random/output_channel.h": {
+      "repository": "eurorack",
+      "path": "marbles/random/output_channel.h",
+      "sha256": "d007cd150c451a26e1efcd53f807d50c6e234c155e79827edc0a7586db1f40be"
+    },
+    "marbles/random/quantizer.cc": {
+      "repository": "eurorack",
+      "path": "marbles/random/quantizer.cc",
+      "sha256": "8bd64efb272706184f55823fc8b27ca05940c2b484eeb31e1c0e843dde4e1e76"
+    },
+    "marbles/random/quantizer.h": {
+      "repository": "eurorack",
+      "path": "marbles/random/quantizer.h",
+      "sha256": "cb4f9adfd0ff5da7723a82673b1cba488b63fdc3b57856d51ba5b4d261ef912b"
+    },
+    "marbles/random/random_generator.h": {
+      "repository": "eurorack",
+      "path": "marbles/random/random_generator.h",
+      "sha256": "5f6c3977fdaaef5aefb11dd644b621829014ac4cd5eeda35a7b677175e4a543d"
+    },
+    "marbles/random/random_sequence.h": {
+      "repository": "eurorack",
+      "path": "marbles/random/random_sequence.h",
+      "sha256": "3fbf59649d3cd8ebad3bfa4120d29afffd8ca5f7c13e4ce05bafadfb7c49d55c"
+    },
+    "marbles/random/random_stream.h": {
+      "repository": "eurorack",
+      "path": "marbles/random/random_stream.h",
+      "sha256": "9b30ef41d9b5877c1fb3eaa46ef53cca904291eeb133ae05f6ef13d5b35e3f61"
+    },
+    "marbles/random/t_generator.cc": {
+      "repository": "eurorack",
+      "path": "marbles/random/t_generator.cc",
+      "sha256": "997e3a6872601f8894b0995cb282c692dd637f83f7cef360f342158d52e8d60a"
+    },
+    "marbles/random/t_generator.h": {
+      "repository": "eurorack",
+      "path": "marbles/random/t_generator.h",
+      "sha256": "f0351107105e565c6891725b349644178eae5cf663b66f7eb94817ef3a170a49"
+    },
+    "marbles/random/x_y_generator.cc": {
+      "repository": "eurorack",
+      "path": "marbles/random/x_y_generator.cc",
+      "sha256": "92b81a1cc2792a869b61548fea6575eeba374885d7abd3bfce04812966348924"
+    },
+    "marbles/random/x_y_generator.h": {
+      "repository": "eurorack",
+      "path": "marbles/random/x_y_generator.h",
+      "sha256": "ff8025e808023e80ec55d88a69ada48f974d06626083b37063d16d10f7647974"
+    },
+    "marbles/resources.cc": {
+      "repository": "eurorack",
+      "path": "marbles/resources.cc",
+      "sha256": "a0505384886dccc07bdd03c929fb80464278a306da45074425b120e71438b759"
+    },
+    "marbles/resources.h": {
+      "repository": "eurorack",
+      "path": "marbles/resources.h",
+      "sha256": "114f6d0be1b1860105d36ad3d21e205a1966482d8172c6ea84c899f46592e225"
+    },
+    "marbles/scale_recorder.h": {
+      "repository": "eurorack",
+      "path": "marbles/scale_recorder.h",
+      "sha256": "61c2810c49877bc3cab7af63ffe28aa60f0a9a4fdaee953b14ef9f9a307b399e"
+    },
+    "marbles/settings.cc": {
+      "repository": "eurorack",
+      "path": "marbles/settings.cc",
+      "sha256": "6cf5c7387cb40f9436a0f9776054a5713e3d80006e707e8776926dc7acd15f57"
+    },
+    "stmlib/dsp/delay_line.h": {
+      "repository": "stmlib",
+      "path": "dsp/delay_line.h",
+      "sha256": "d6d1bb8e33dedf80bfca976ca1d544fc6ef01bcb1d71a45f3946a0682fd68dcb"
+    },
+    "stmlib/dsp/dsp.h": {
+      "repository": "stmlib",
+      "path": "dsp/dsp.h",
+      "sha256": "98b42900c4accbe9fbb2cfe2ec6fada024b57ec9a1becff008b0f35bd4fd8ddb"
+    },
+    "stmlib/dsp/hysteresis_quantizer.h": {
+      "repository": "stmlib",
+      "path": "dsp/hysteresis_quantizer.h",
+      "sha256": "06032c1ec2e21cb7e904544f839a2a59b4c4a9f3f391918e6adfac7f68ecc243"
+    },
+    "stmlib/dsp/parameter_interpolator.h": {
+      "repository": "stmlib",
+      "path": "dsp/parameter_interpolator.h",
+      "sha256": "4b05028c320e6946418a36e9662a4e5a142e5bfab0423835a77d074d9c7fc217"
+    },
+    "stmlib/dsp/units.cc": {
+      "repository": "stmlib",
+      "path": "dsp/units.cc",
+      "sha256": "0acbe230ffaa2d181ba285fce54f2fd0b2339b3ec163a1dd00c946e6bf82ea4a"
+    },
+    "stmlib/dsp/units.h": {
+      "repository": "stmlib",
+      "path": "dsp/units.h",
+      "sha256": "70cf104c06f0e34ada90416f121417a13d17b6736116f0fc07063c1cd2084877"
+    },
+    "stmlib/stmlib.h": {
+      "repository": "stmlib",
+      "path": "stmlib.h",
+      "sha256": "3afc8589a951e882d9eea16b3eda8623dd6fb0079dd11dfbce817e65be6cfba9"
+    },
+    "stmlib/utils/gate_flags.h": {
+      "repository": "stmlib",
+      "path": "utils/gate_flags.h",
+      "sha256": "548608ba37ee125903db4ba36507a678d1cdcdecddad30b11998b19d6ad00ca3"
+    },
+    "stmlib/utils/random.h": {
+      "repository": "stmlib",
+      "path": "utils/random.h",
+      "sha256": "423f01e905fa279864878f34e42136ad1eb37a33dad58739affaaab06b793e5d"
+    },
+    "stmlib/utils/ring_buffer.h": {
+      "repository": "stmlib",
+      "path": "utils/ring_buffer.h",
+      "sha256": "77f43d8f61ca3235e2f47577e224e489aafa20403f3c7640f868652429236e1f"
+    }
+  }
+}

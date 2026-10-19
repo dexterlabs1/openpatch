@@ -21,21 +21,21 @@ branches have been removed after a verified recovery backup. Historical archived
 checkouts retain their source and ignored validation evidence. Dirty checkouts
 and Claude's working branch are preserved.
 
-Only two unfinished product lines need integration:
-- [Recall Random — draft PR #37](https://github.com/dexterlabs1/openpatch/pull/37):
-  synchronized with current `main`; native Engine/state/capture/UI/MCP integration
-  and focused macOS qualification remain.
-- [Rack binary hosting — draft PR #38](https://github.com/dexterlabs1/openpatch/pull/38):
-  integrated with current `main`, preserving released instruments, Patch Engine,
-  rack tools and licenses. Explicit experimental activation/shared controls,
-  coherent MCP save dispatch and ordinary graph/Scope continuity are implemented;
-  four focused Core/control regressions, 20 desktop hosted checks and the genuine
-  plugin public activation/history/Scope/MCP-save workflow pass. The optimized
-  60-second MacBook Pro Speakers / 48 kHz / 128-frame / 16-voice device gate passes with
-  zero processing overruns and callback heap activity (max 0.486 ms / 18.225% budget).
-  Native-window and final milestone CI qualification remain in progress.
-  General binary/GUI compatibility and redistribution remain separate. It is
-  excluded from the installed 0.3.0. [Current contract](BINARY_HOST_V1.md).
+Two product candidates are now implemented and in final macOS review:
+- [Recall Random — PR #37](https://github.com/dexterlabs1/openpatch/pull/37):
+  native source-derived rhythms/CV, six weighted scales, revision-fenced recording,
+  shared panel/browser, MCP/history/presets and a quiet example. Source-reference,
+  focused Engine/callback/no-heap and workflow checks pass. [Guide](RECALL_RANDOM.md).
+- [Experimental Rack binary hosting — PR #38](https://github.com/dexterlabs1/openpatch/pull/38):
+  current main and Recall candidate integrated, explicit activation, shared controls, coherent MCP save
+  and ordinary graph/Scope continuity. Actual public binary workflow and a
+  60-second physical Mac output-device gate pass for one pinned Bogaudio OFFSET.
+  Prior device evidence retains its exact source/binary pins; integrated device,
+  native-window and milestone checks are pending. [Evidence](BINARY_HOST_V1.md).
+  This is a bounded experimental capability, not general Rack binary compatibility.
+
+Final milestone CI remains the merge gate. Neither candidate changes the
+installed 0.3.0 app or its published downloads.
 
 [Branch disposition and recovery](BRANCH_STATUS.md) records the remaining work,
 protected dirty checkouts and rules for the next milestone. Earlier sections
@@ -72,10 +72,9 @@ the small-screen startup panel so it cannot steal editor input. Normal startup
 behavior is unchanged. Portable Linux installation preserves user patches and
 settings. The new installer also installs the updated release-asset updater.
 
-Recall Random's source checkpoint remains separately preserved on
-`work/recall-random`; it is not a sixth catalog instrument. Continue its native
-state/capture/UI integration and the remaining fifteen creative instruments,
-while retaining all broader parity, compatibility and device requirements.
+Recall Random is the sixth creative instrument in the development candidate;
+five ship in 0.3.0 and fourteen remain after it. Broader parity, compatibility and
+device requirements remain open.
 
 ## User-requested rack workflow and creative expansion (2026-10-17)
 

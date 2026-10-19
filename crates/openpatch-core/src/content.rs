@@ -9,10 +9,11 @@ pub const MIN_BLANK_WIDTH_HP: u16 = 3;
 pub const MAX_BLANK_WIDTH_HP: u16 = 96;
 pub const DEFAULT_BLANK_WIDTH_HP: u16 = 10;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ModuleContent {
     FrameScene(crate::FrameSceneData),
+    RecallRandom(Box<crate::RecallRandomData>),
     Notes {
         text: String,
     },
@@ -57,6 +58,7 @@ pub fn validate_content(node: &Node) -> Result<(), String> {
     match (&node.content, node.kind.as_str()) {
         (None, _) => Ok(()),
         (Some(ModuleContent::FrameScene(data)), "frame_scene") => data.validate(),
+        (Some(ModuleContent::RecallRandom(data)), "recall_random") => data.validate(),
         (Some(ModuleContent::Notes { text }), "notes") => {
             if text.len() > MAX_NOTES_BYTES {
                 Err(format!(
