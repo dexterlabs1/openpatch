@@ -12,12 +12,12 @@ mod instruments;
 use instruments::{choose, light_of, Role};
 
 #[cfg(test)]
-#[cfg(test)]
 thread_local! {
     /// Designs a test pins (one per role), so rarely chosen designs still get built and validated.
     static PINNED: std::cell::RefCell<Vec<&'static str>> = const { std::cell::RefCell::new(vec![]) };
 }
 
+#[cfg(test)]
 #[path = "patch_engine_tests.rs"]
 mod tests;
 
