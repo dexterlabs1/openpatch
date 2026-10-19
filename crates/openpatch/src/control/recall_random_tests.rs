@@ -381,3 +381,45 @@ fn recall_random_identical_scale_commit_consumes_receipt_even_when_shared_conten
     );
     assert_eq!(session.snapshot(), before);
 }
+
+#[test]
+fn recall_random_noop_commit_distinguishes_backend_replacement_from_same_backend_reattachment() {
+    let (mut session, first) = recall_setup();
+    let mut data = RecallRandomData::default();
+    data.scales[2] = recorded_scale().to_scale();
+    session
+        .execute(
+            "set_module_content",
+            json!({"id":"r","content":openpatch_core::ModuleContent::RecallRandom(data)}),
+        )
+        .unwrap();
+    let revision = session.revision();
+    capture(&mut session, "begin").unwrap();
+    first.record_notes();
+    capture(&mut session, "stop").unwrap();
+    capture(&mut session, "commit").unwrap();
+    let unchanged = session.snapshot();
+    session.set_live_module_events(Some(first.clone())).unwrap();
+    assert!(
+        capture(&mut session, "commit").is_err(),
+        "reattaching the same backend cannot reopen its consumed receipt"
+    );
+    session.set_live_module_events(None).unwrap();
+    let replacement = Arc::new(RecallProbe::default());
+    session
+        .set_live_module_events(Some(replacement.clone()))
+        .unwrap();
+    capture(&mut session, "begin").unwrap();
+    replacement.record_notes();
+    capture(&mut session, "stop").unwrap();
+    let fresh = capture(&mut session, "inspect").unwrap();
+    assert_eq!(fresh["capture"]["capture_id"], 1);
+    assert_eq!(fresh["capture"]["revision"], revision);
+    assert_eq!(
+        fresh["instance"], 91,
+        "mock deliberately reuses its per-backend instance token"
+    );
+    capture(&mut session, "commit").unwrap();
+    assert_eq!(session.snapshot(), unchanged);
+    assert!(capture(&mut session, "commit").is_err());
+}

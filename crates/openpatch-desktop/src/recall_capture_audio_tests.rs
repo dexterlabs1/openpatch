@@ -301,3 +301,54 @@ fn recall_capture_session_commit_cannot_use_previous_complete_while_restart_is_p
         .is_err());
     assert_eq!(session.snapshot(), committed);
 }
+
+#[test]
+fn recall_capture_expired_or_initialize_cancelled_commands_publish_rejection_instead_of_waiting_forever(
+) {
+    for cause in ["expired", "initialize"] {
+        let patch = recall_audio_patch();
+        let (mut callback, mut updates, _retired) = sequence_callback(&patch);
+        let completed = recall_audio_complete(&mut callback);
+        let backend = callback.performance.clone();
+        backend
+            .recall_random_capture("recall", "stop", 0, 1)
+            .unwrap();
+        if cause == "expired" {
+            callback.frame_clock += 96001;
+        } else {
+            backend.initialize_modules(&["recall".into()]);
+        }
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 128], 1));
+        let error = recall_audio_inspect(&callback).unwrap_err();
+        assert!(
+            error.contains("rejected"),
+            "{cause} must acknowledge the discarded command, not leave it pending: {error}"
+        );
+        assert_eq!(
+            backend.snapshot()[if cause == "expired" {
+                "expired"
+            } else {
+                "rejected"
+            }],
+            1
+        );
+        if cause == "initialize" {
+            assert!(updates.push(sequence_graph(&callback, &patch, 1)).is_ok());
+            without_heap_activity(|| callback.render(&mut [0.0_f32; 2048], 1));
+            assert!(
+                recall_audio_inspect(&callback).is_err(),
+                "Initialize clears the old completed recorder receipt"
+            );
+        }
+        backend
+            .recall_random_capture("recall", "begin", 3, 1)
+            .unwrap();
+        without_heap_activity(|| callback.render(&mut [0.0_f32; 128], 1));
+        let restarted = recall_audio_inspect(&callback).unwrap();
+        assert_eq!(restarted["capture"]["status"], "recording");
+        assert!(
+            restarted["capture"]["capture_id"].as_u64().unwrap()
+                > completed["capture"]["capture_id"].as_u64().unwrap()
+        );
+    }
+}
