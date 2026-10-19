@@ -154,6 +154,9 @@ impl Session {
             .ok_or("layout generation exhausted")?;
         self.document.layout = layout;
         self.layout_generation = generation;
+        if intent == LayoutIntent::Camera {
+            self.camera_moves += 1;
+        }
         if intent == LayoutIntent::Placement {
             self.layout_pending = false;
             self.layout_origin = None;

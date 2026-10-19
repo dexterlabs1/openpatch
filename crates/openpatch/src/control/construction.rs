@@ -473,6 +473,7 @@ impl Session {
             layout_host_attached: false,
             layout_generation: self.layout_generation,
             layout_pending: false,
+            camera_moves: self.camera_moves,
             layout_origin: self.layout_origin,
             workspace: self.workspace.clone(),
             undo: VecDeque::new(),
