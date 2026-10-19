@@ -1,14 +1,11 @@
 # First application-host milestone
 
-Integration candidate, 2026-10-18. The experimental host now has explicit
-native/MCP activation, shared rack controls, coherent native/MCP save dispatch,
-and same-child continuity across ordinary native parameter and Scope rebuilds.
-The current branch includes released `main` features and the completed Recall
-Random candidate `323f981`. The evidence below remains pinned to its tested
-source and binary; integrated validation is pending. Focused Core/control and
-shared-panel tests, the actual-plugin public workflow and the sustained physical
-Mac output-device gate pass. Native-window/final milestone CI remain pending.
-The paced workflow alone is not a device receipt.
+Integration candidate, 2026-10-18. The experimental host has explicit native/MCP
+activation, shared rack controls, coherent native/MCP save dispatch, and same-child
+continuity across ordinary native parameter and Scope rebuilds. Released `main`
+features and Recall Random are integrated. The final optimized physical Mac
+device gate passes on source `2e24c8e`; the public plugin workflow and separate
+native-window review also pass. Final macOS milestone CI remains pending.
 The installed OpenPatch 0.3.0 build 10 is unchanged. The full
 [compatibility obligation](COMPATIBILITY_DECISION.md#extensions-and-existing-vcv-binaries)
 and native Rust extension API remain separate.
@@ -69,42 +66,49 @@ paced/headless evidence below cannot substitute for it.
 ## Current candidate evidence
 
 [The application qualification record](benchmarks/rack-binary-application-qualification.json)
-pins the tested source/runtime commits, source manifest and actual companion,
-plugin and SDK runtime fingerprints. Four focused Core/control regressions and
-20 desktop hosted checks pass. The genuine installed-plugin public workflow
-passes shared activation, two ordinary native edits, Scope rebinding without
-child/transport restart, native held-state continuity, grouped hosted edits and
-undo/redo, coherent MCP save/export, and resumed playback. All rendered callback
-invocations retain the allocation/deallocation guard. The saved document retains
-both OFFSET options and the effective native controls/state. That workflow used
-5 ms callback pacing and no native window/device; it is not sustained realtime
-qualification.
+pins each tested source, manifest, binary and receipt separately, together with
+actual companion, plugin and SDK runtime fingerprints. The earlier four focused
+Core/control regressions and 20 desktop hosted checks pass. After integration,
+the actual-plugin public workflow, three hosted panel/layout/gesture checks and
+nine Recall callback checks pass. The prior constructor stack failure is fixed;
+the affected smoke test and strict Clippy pass on the final source.
 
-The optimized real-device run now passes **60 seconds** on **MacBook Pro
-Speakers**, stereo **48 kHz / 128 frames**, using the declared **16-voice**
-VCO → VCF → actual OFFSET → VCA load and two native/Scope changes. Its final
-coherent timing publication contains **22,499 callbacks / 2,879,872 frames**, zero
-invalid callbacks and zero processing-budget overruns. Maximum processing time
-was **0.486 ms**, or **18.225%** of the **2.667 ms** buffer budget. The Rust heap
-tracker covered **22,503 actual CPAL callback invocations**, including additional
-shutdown callbacks, with **zero allocations and deallocations**. The final runtime
-remained running with no transport fault or stream error. Maximum observed
-output peak was 0.00411 full scale. This is a bounded device/load result, not a
-performance advantage or a hardware-xrun count.
+The public workflow covers explicit activation, ordinary native edits, Scope
+rebinding without child/transport restart, native held-state continuity, grouped
+hosted edits and undo/redo, coherent MCP save/export, and resumed playback, with
+callback allocation/deallocation guards. Its 5 ms pacing is separate from the
+physical-device gate.
 
-CPAL reported **2.667 ms predicted callback-to-DAC delivery**. The separately
+The final optimized device run on **`2e24c8e`** passes **60 seconds** on
+**MacBook Pro Speakers**, stereo **48 kHz / 128 frames**, with the declared
+**16-voice** VCO → VCF → actual OFFSET → VCA load and two native/Scope changes.
+Its coherent timing publication contains **22,498 callbacks / 2,879,744 frames**,
+zero invalid callbacks and zero processing-budget overruns. Maximum processing
+time was **0.41275 ms**, or **15.478125%** of the **2.667 ms** buffer budget.
+Heap tracking covers **22,503 actual CPAL callbacks**, including additional
+shutdown callbacks, with **zero allocations and deallocations**. The runtime
+remained running without transport fault or stream error; the maximum observed
+output peak was 0.00411 full scale. This result covers one device/profile/load;
+it is not a performance advantage or a hardware-xrun count.
+
+The separate native-window review used GUI source **`5573f34`** and corrected
+example fixture **`640378b`** in an isolated app. It verified stopped permission
+on open, explicit activation, a SCALE keyboard adjustment saved as approximately
+0.260, native Save As/Save, persistent offset-first=false revoking permission,
+explicit restart, and a source sine Scope waveform while hosting remained
+running. Continuous drag behavior is covered by headless gesture checks, not
+that native automation. Later changes repair only Recall control-thread heap
+construction; they do not alter the reviewed UI or hosted callback path.
+
+CPAL reports **2.667 ms predicted callback-to-DAC delivery**. The separately
 validated graph impulse anchor remains **387 frames / 8.0625 ms** before device
-buffering; this sustained test did not remeasure that anchor. Neither number is
-a physical input/output loopback measurement. Native-window and final milestone
-CI receipts remain pending. Full raw receipts, hashes, compiler, exact test binary
-and timing scope are retained in the application qualification record.
-
-The Recall merge changes five of the 23 frozen manifest files: PolyEngine,
-Session control, app commands, Performance, and an audio test include. The host
-transport, external-continuation implementation and device harness are unchanged.
-Recall adds shared callback event/telemetry paths, so the earlier receipt remains
-evidence for its original executable. Run the existing optimized device gate on
-the integrated executable before claiming integrated device qualification.
+buffering; the sustained test did not remeasure it. Neither is a physical
+input/output loopback measurement. Original pre-Recall and earlier integrated
+device receipts retain their exact source/binary scope; the final run above
+requalifies the integrated executable after the constructor repair.
+[Final macOS milestone CI](https://github.com/dexterlabs1/openpatch/actions/runs/39191932183)
+is pending. The installed app remains unchanged; general binary/widget
+compatibility and broader device qualification remain separate.
 
 ## Prior implementation checkpoints
 

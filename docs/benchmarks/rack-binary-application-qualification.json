@@ -2,7 +2,7 @@
   "schema": 1,
   "date": "2026-10-18",
   "platform": "macOS ARM64",
-  "status": "public experimental application workflow and sustained Mac output-device gate pass; native-window/final milestone CI pending",
+  "status": "final integrated optimized Mac output-device gate, public application workflow and native-window review pass; final macOS milestone CI pending",
   "source_commit": "5a4687100dcae10832d811a7e327d85839f94f9b",
   "runtime_commit": "d58cfb4edfb9a67b754794e3c6e23883809cd8b2",
   "fingerprints": {
@@ -45,6 +45,45 @@
         "scope": "actual installed binary with public Session activation, native/Scope graph continuity, grouped hosted edit/history and MCP save dispatch; paced/no device/window",
         "scope_generation": 4
       }
+    },
+    "integrated_public_workflow": {
+      "status": "passed",
+      "receipt": "native-test-output/host-completion/integrated-capture/public-hosted-workflow-result.json",
+      "receipt_sha256": "2cce818d88cd8101902d3ad00a72bd2923e88b2ec0ce07b44d102e7c633978cd",
+      "result": {
+        "callback_heap_operations": 0,
+        "device_qualified": false,
+        "mcp_save_state_source": "live_hosted_barrier",
+        "passed": true,
+        "same_child_across_native_edits_and_scope": true,
+        "scope": "actual installed binary with public Session activation, native/Scope graph continuity, grouped hosted edit/history and MCP save dispatch; paced/no device/window",
+        "scope_generation": 4
+      },
+      "log": "native-test-output/host-completion/integrated-public-workflow.log"
+    },
+    "final_hosted_panels": {
+      "passed": 3,
+      "log": "native-test-output/host-completion/final-hosted-panels.log",
+      "scope": "actual example layout/nonoverlap, grouped gesture and revision fence, persistent option and disabled controls"
+    },
+    "integrated_recall_callback": {
+      "passed": 9,
+      "log": "native-test-output/host-completion/integrated-recall-tests.log"
+    },
+    "final_stack_regression": {
+      "passed": 1,
+      "source_commit": "2e24c8e193ac24a46fdd066f5b1735df44bdde1c",
+      "log": "native-test-output/host-completion/final-stack-regression.log",
+      "scope": "previously overflowing appended-scene smoke test after boxed control-thread constructor repair"
+    },
+    "final_strict_clippy": {
+      "status": "passed",
+      "log": "native-test-output/host-completion/final-clippy.log"
+    },
+    "milestone_ci": {
+      "status": "pending",
+      "run_id": 39191932183,
+      "url": "https://github.com/dexterlabs1/openpatch/actions/runs/39191932183"
     }
   },
   "actual_device": {
@@ -120,7 +159,34 @@
     "source_manifest_check_scope": "checked after this device run on the frozen 5a46871 source candidate, runtime d58cfb4; later integration commits are separate"
   },
   "native_window": {
-    "status": "pending"
+    "status": "passed",
+    "receipt": "native-test-output/host-completion/native-window-result.json",
+    "receipt_sha256": "25defb86b358ddb7435d67ef32c1c1a40c6c48165967d28acdca893db14b3605",
+    "result": {
+      "date": "2026-10-19T02:51:03.329536+00:00",
+      "passed": true,
+      "observed_by": "root via native computer-use accessibility and screenshot",
+      "app": "isolated OpenPatch Host Review.app",
+      "gui_source": "5573f34958ac65062d73fefef741ecd6c18af392",
+      "fixture_source": "640378b",
+      "workspace": "native-test-output/host-completion/native-workspace",
+      "checks": [
+        "initial stopped permission; opening does not activate",
+        "explicit Start grants hosted execution and Play begins playback",
+        "SCALE keyboard nudge changes .250 to .260",
+        "native Save As writes complete hosted state and shows Saved",
+        "offset-first click persists false and revokes execution grant",
+        "explicit restart resumes actual plugin",
+        "source sine Scope selection shows waveform while hosting remains running",
+        "native Save updates .openpatch and resumes playback",
+        "review session saved and quit; installed app unchanged"
+      ],
+      "saved_file_sha256": "be6233ed0eb0f5cba0a96e8265397cfe837a84211e8343ec49f157ff21ff0956",
+      "saved_hosted_scale": 0.25999999046325684,
+      "saved_offset_first": false,
+      "limits": "one pinned OFFSET; native drag automation did not establish a continuous drag, which remains covered by focused headless gesture tests; no general widget compatibility or physical loopback"
+    },
+    "reuse_scope": "later changes only repair Recall control-thread heap construction; no UI or hosted callback-path change after the reviewed GUI, with corrected example fixture 640378b"
   },
   "installation_changed": false,
   "retained_initial_failures": [
@@ -140,7 +206,123 @@
     ],
     "unchanged_files": 18,
     "host_transport_external_continuation_and_device_harness_unchanged": true,
-    "integrated_device_qualification": "pending: Recall changes shared PolyEngine and Performance event/telemetry callback paths; retain earlier receipt for its original tested executable, rerun the existing optimized device test for the integrated executable",
+    "integrated_device_qualification": "passed on final integrated source 2e24c8e; see final_device for exact executable, manifest and receipt hashes; original proof and source audit retained",
     "source_audit": "native-test-output/host-completion/recall-integration-source-audit.json"
+  },
+  "source_commit_scope": "retained initial application/device proof; final_device pins the final integrated executable separately",
+  "final_device": {
+    "status": "passed",
+    "device_qualified": true,
+    "source_commit": "2e24c8e193ac24a46fdd066f5b1735df44bdde1c",
+    "test_binary": "target/release/deps/openpatch_desktop-f84ca3f3391f1508",
+    "test_binary_sha256": "17c9f59076fb5a834f5f7e02dda662a8f5b03b85ab4f5a2d2f9244353dcb18c5",
+    "source_manifest": "native-test-output/host-completion/final-source-sha256.json",
+    "source_manifest_sha256": "77c24719067922eec56dee2adafd32160ab8798cc5bd364569eeeb376e137ea2",
+    "receipt": "native-test-output/host-completion/final-device/actual-macos-device-result.json",
+    "receipt_sha256": "403c2acb5257143765ab50e714fe129b5405fb96e7b6d3260309ec404063af1e",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+    "metadata": "native-test-output/host-completion/final-device-metadata.json",
+    "metadata_sha256": "ee0ba6472cc43719a49971e9b116cc4e03a124a4393106777728761644584946",
+    "log": "native-test-output/host-completion/final-device.log",
+    "qualified_scope": "one MacBook Pro Speakers output, 48000 Hz / fixed 128 frames, 60-second 16-voice representative native/actual OFFSET chain with native and Scope edits",
+    "metrics": {
+      "requested_seconds": 60,
+      "elapsed_seconds": 60.366971458,
+      "device": {
+        "channels": 2,
+        "name": "MacBook Pro Speakers",
+        "requested_buffer_frames": 128,
+        "sample_rate": 48000
+      },
+      "device_frames": 2879744,
+      "actual_callbacks": 22503,
+      "callback_allocations": 0,
+      "callback_deallocations": 0,
+      "maximum_observed_peak": 0.00410850765183568,
+      "final_timing": {
+        "adopted_graph": false,
+        "available": true,
+        "callback_sequence": 22498,
+        "callbacks": 22498,
+        "channels": 2,
+        "closed": false,
+        "coherent": true,
+        "crossfade": false,
+        "duration_ns": 258584,
+        "epoch": 0,
+        "frames": 128,
+        "invalid_callbacks": 0,
+        "max_duration_ns": 412750,
+        "overruns": 0,
+        "peak_utilization": 0.15478125,
+        "requested_epoch": 0,
+        "reset_pending": false,
+        "revision": 4,
+        "sample_rate": 48000,
+        "total_duration_ns": 5664398677,
+        "total_frames": 2879744,
+        "transition_callbacks": 8,
+        "utilization": 0.096969
+      },
+      "final_hosted_runtime": {
+        "fault_code": null,
+        "reason": null,
+        "status": "running"
+      },
+      "stream_error": false,
+      "failure": null,
+      "latency": {
+        "cpal_predicted_playback_ahead_max_ns": 2666666,
+        "cpal_predicted_playback_ahead_min_ns": 2666666,
+        "graph_anchor_frames": 387,
+        "graph_anchor_source": "separate actual-binary impulse receipt; not remeasured by this sustained test",
+        "physical_loopback_measured": false,
+        "transport_delay_frames": 384
+      },
+      "qualification_limits": "one device/profile/load; processing budget overruns are not hardware xrun counts; CPAL timestamps predict DAC delivery, no physical input/output loopback"
+    },
+    "timing_scope": "final timing publication contains 22,498 callbacks / 2,879,744 frames; actual_callbacks 22,503 and heap counts cover stream lifetime including additional shutdown callbacks",
+    "physical_loopback_measured": false,
+    "source_manifest_scope": "38 explicitly recorded host/Recall source and dependency paths; exact git source commit additionally pins the complete candidate"
+  },
+  "prior_integrated_device": {
+    "status": "passed",
+    "receipt": "native-test-output/host-completion/integrated-device/actual-macos-device-result.json",
+    "receipt_sha256": "a25b2b9bae3423e79a37b8351c45897591c7356e28f09c5e819817d5266b4fdb",
+    "scope": "earlier Recall-integrated candidate before the control-thread constructor stack fix; final_device supersedes this device result without replacing its raw receipt",
+    "metrics": {
+      "actual_callbacks": 22502,
+      "device_frames": 2879616,
+      "elapsed_seconds": 60.340113583,
+      "callback_allocations": 0,
+      "callback_deallocations": 0,
+      "final_timing": {
+        "adopted_graph": false,
+        "available": true,
+        "callback_sequence": 22497,
+        "callbacks": 22497,
+        "channels": 2,
+        "closed": false,
+        "coherent": true,
+        "crossfade": false,
+        "duration_ns": 257625,
+        "epoch": 0,
+        "frames": 128,
+        "invalid_callbacks": 0,
+        "max_duration_ns": 468333,
+        "overruns": 0,
+        "peak_utilization": 0.175624875,
+        "requested_epoch": 0,
+        "reset_pending": false,
+        "revision": 4,
+        "sample_rate": 48000,
+        "total_duration_ns": 5693417804,
+        "total_frames": 2879616,
+        "transition_callbacks": 8,
+        "utilization": 0.096609375
+      },
+      "stream_error": false,
+      "failure": null
+    }
   }
 }
