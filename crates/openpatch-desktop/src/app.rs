@@ -1640,11 +1640,37 @@ impl OpenPatch {
                 self.settings_status = error;
             }
         }
-        if audio_ticket.as_ref().is_some_and(|ticket| self.audio.as_ref()
-            .is_some_and(|audio| audio.needs_hosted_device_restart(ticket))) {
-            // Native and MCP activation both enter the qualified requested
-            // device profile, rather than relabeling a default-buffer stream.
+        if audio_ticket.as_ref().is_some_and(|ticket| {
+            self.audio
+                .as_ref()
+                .is_some_and(|audio| audio.needs_hosted_device_restart(ticket))
+        }) {
+            // Native and MCP activation both enter the requested device
+            // profile. Preserve transport intent across this automatic reopen.
+            let was_playing = self.audio.as_ref().is_some_and(Audio::is_playing);
             self.reopen_audio(self.output_device.clone());
+            if audio_ticket.as_ref().is_some_and(|ticket| {
+                self.audio
+                    .as_ref()
+                    .is_some_and(|audio| audio.needs_hosted_device_restart(ticket))
+            }) {
+                // A failed profile/configuration must wait for explicit Retry,
+                // rather than relaunching a companion on every UI frame.
+                self.status = format!("Hosted activation failed: {}", self.settings_status);
+                self.midi = None;
+                self.keyboard.release();
+                self.audio = None;
+                self.audio_revision = None;
+                self.attach_live_events();
+            } else if let Some(audio) = &self.audio {
+                audio.set_playing(was_playing);
+                self.status = if was_playing {
+                    "Hosted playback enabled"
+                } else {
+                    "Hosted playback enabled — press Play"
+                }
+                .into();
+            }
             audio_ticket = None;
         }
         let mut failure = None;

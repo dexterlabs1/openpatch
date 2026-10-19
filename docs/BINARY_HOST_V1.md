@@ -13,7 +13,7 @@ and native Rust extension API remain separate.
 
 Open [the quiet mono example](../examples/experimental-hosted-offset.json), click
 the hosted panel to review playback, then choose **Start experimental hosted
-playback**. Opening a document never grants execution. Only one fingerprint-pinned
+playback**, then press Play if transport is paused. Opening a document never grants execution. Only one fingerprint-pinned
 Bogaudio 2.6.47 OFFSET with genuine Rack SDK 2.6.6 is supported. Supply explicit
 `OPENPATCH_HOSTED_COMPANION`, `OPENPATCH_HOSTED_SDK` and
 `OPENPATCH_HOSTED_PLUGIN` paths before starting the candidate app; optional
