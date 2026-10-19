@@ -1,6 +1,6 @@
 # Roadmap: Rack functionality, then measurable improvements
 
-Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is a native Rust instrument prototype with 79 installed built-in module kinds and a separate Stock Process bringing the development catalog to 80. Stock Noise and the original Studio Mixer have merged application qualification in PR20; Ferrofluid is restored in installed 0.2.1 build 3 through PR21. Stock Process has passed its frozen source/host reference comparison; its local combined application qualification passes, with platform/native render delivery checks required. OpenPatch has not reached VCV Rack parity.
+Baseline updated **2026-10-16**, with a [manual and source review on 2026-10-13](VCV_MANUAL_REVIEW.md). This is an acceptance plan, not a completed-feature list. OpenPatch is a native Rust instrument prototype with 80 installed built-in module kinds in 0.2.2 build 4. Stock Noise and the original Studio Mixer have merged application qualification in PR20; Ferrofluid was restored through PR21. Stock Process passed its frozen source/host comparison, local application checks, platform CI and native render review before [PR22](https://github.com/dexterlabs1/openpatch/pull/22) merged. OpenPatch has not reached VCV Rack parity.
 
 ## Delivery order
 
@@ -65,7 +65,7 @@ resonator is an initial acoustic model, with its validation boundaries documente
 
 The first target is **VCV Rack 2 Free standalone host functionality plus its 49 Core/Free modules**. The [Rack product page](https://vcvrack.com/Rack) lists Free as the standalone edition for macOS, Windows, and Linux. DAW plugin operation belongs to the Pro follow-on. Hosting other VST plugins through the separately purchased VCV Host product is another distinct scope.
 
-The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The development catalog's 79 kinds include reference circuits, original utilities, and partial functional equivalents; this count is not a count of completed VCV equivalents. Studio Mixer is tracked separately as an original custom module, outside the 49 VCV targets.
+The bounded stock inventory is 12 Core modules and 37 Free modules, individually tracked in [MODULE_COVERAGE.md](MODULE_COVERAGE.md), using the [Core library](https://library.vcvrack.com/Core) and [Free manuals](https://vcvrack.com/Free). None should count as complete merely because an OpenPatch module has a similar name or musical role. The installed catalog's 80 kinds include reference circuits, original utilities, and partial functional equivalents; this count is not a count of completed VCV equivalents. Studio Mixer is tracked separately as an original custom module, outside the 49 VCV targets.
 
 The Free manifest also retains two hidden legacy models, VCA-2 and Unity.
 They are tracked separately for existing-patch compatibility in the coverage
@@ -656,5 +656,5 @@ The separate [Stock Process](STOCK_PROCESS.md) preserves legacy `process` patche
 Its actual Core/genuine SDK comparison passes 3,444 cases and 13,599 full
 snapshots without discarded fields at three sample rates. All six outputs,
 polyphonic state, gate thresholds, slew/glide timing and host lifecycle are
-included. Safety, realtime allocation, shared rack/browser UI, connected factory, MCP and local release qualification pass. Platform/native render delivery checks remain required. Rack Scope is
+included. Safety, realtime allocation, shared rack/browser UI, connected factory, MCP and local release qualification pass. Both exact-source CI runs passed all four jobs, and both 149-capture native sets were validated and reviewed before PR22 merged. The signed 0.2.2 build 4 ARM app is installed. Rack Scope is
 the next non-MIDI reference target; MIDI/live performance remain last.
