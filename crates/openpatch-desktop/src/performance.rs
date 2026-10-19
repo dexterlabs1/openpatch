@@ -1684,6 +1684,7 @@ impl Performance {
     }
     /// Control-thread equality stamp for native runtime intent. Authored
     /// revision alone cannot distinguish an equal assignment from a hosted edit.
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     pub(super) fn native_intent_stamp(&self) -> Vec<u64> {
         let control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         let mut stamp = vec![control.native_intent_generation];
