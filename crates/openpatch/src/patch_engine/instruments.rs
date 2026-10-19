@@ -135,14 +135,6 @@ pub(super) const DESIGNS: &[Design] = &[
         Some("stab"),
     ),
     d(
-        "metal_stab",
-        Chords,
-        "inharmonic metallic chord hits (macro voice · metallic)",
-        &["stab", "metallic", "dark", "weird", "dub"],
-        false,
-        None,
-    ),
-    d(
         "wt_pad",
         Chords,
         "an evolving wavetable pad, table position drifting on the motion LFO",
@@ -465,6 +457,19 @@ pub(super) fn choose(
 
 const C4: f64 = 261.6256;
 
+/// `harmonics` value that selects a macro-voice FM ratio. The engine reads `RATIOS[round(h × 15)]`; only whole-number
+/// ratios (and ½ for basses) keep every sideband on the harmonic series, so designs pick ratios, never raw values.
+fn fm_ratio(ratio: f64) -> f64 {
+    const RATIOS: [f64; 16] = [
+        0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 16.0,
+    ];
+    let i = RATIOS
+        .iter()
+        .position(|r| *r == ratio)
+        .expect("macro-voice FM ratio");
+    r3(i as f64 / 15.0)
+}
+
 impl Recipe {
     /// Catalog chord designs (poly, on the 4-voice chord pitch bus). Returns the poly output before summing, or
     /// `None` for the original subtractive voices that `chord_voice` builds itself.
@@ -483,27 +488,22 @@ impl Recipe {
         let env = format!("{id}_env");
         let pad_env = |c: &mut Ctx| json!({"attack": r3(c.rng.uni(0.3, 1.0)), "decay": 0.8, "sustain": 0.85, "release": r3(c.rng.uni(1.0, 2.0))});
         match kind {
-            "fm_keys" | "fold_stab" | "metal_stab" => {
+            "fm_keys" | "fold_stab" => {
                 // one macro voice per chord note; its own low-pass gate is the envelope
                 let (engine, label, p) = match kind {
                     "fm_keys" => (
                         2,
                         "FM keys",
-                        json!({"harmonics": r3(c.rng.pick(&[0.25, 0.25, 0.5, 0.375])), "timbre": r3((0.3 + 0.12 * b + c.rng.uni(-0.05, 0.08)).clamp(0.1, 0.6)),
+                        json!({"harmonics": fm_ratio(c.rng.pick(&[1.0, 1.0, 2.0, 3.0, 4.0])), "timbre": r3((0.24 + 0.06 * b + c.rng.uni(-0.04, 0.05)).clamp(0.15, 0.35)),
                                                        "morph": r3(c.rng.uni(0.15, 0.35)), "decay": r3(c.rng.uni(0.55, 0.75))}),
                     ),
                     "fold_stab" => (
                         1,
                         "Wavefold stabs",
-                        json!({"harmonics": r3(c.rng.uni(0.2, 0.5)), "timbre": r3((0.35 + 0.15 * b).clamp(0.1, 0.7)),
-                                                              "morph": r3(c.rng.uni(0.2, 0.5)), "decay": r3(c.rng.uni(0.3, 0.45))}),
+                        json!({"harmonics": r3(c.rng.uni(0.05, 0.2)), "timbre": r3((0.07 + 0.04 * b + c.rng.uni(-0.02, 0.03)).clamp(0.02, 0.12)),
+                                                              "morph": r3(c.rng.uni(0.0, 0.2)), "decay": r3(c.rng.uni(0.35, 0.5))}),
                     ),
-                    _ => (
-                        7,
-                        "Metallic hits",
-                        json!({"harmonics": r3(c.rng.uni(0.2, 0.6)), "timbre": r3(c.rng.uni(0.3, 0.6)),
-                                                    "morph": r3(c.rng.uni(0.2, 0.45)), "decay": r3(c.rng.uni(0.35, 0.55))}),
-                    ),
+                    _ => unreachable!(),
                 };
                 let mut p = p;
                 p["engine"] = json!(engine);
@@ -518,15 +518,21 @@ impl Recipe {
                 );
                 self.con(&pitch.0, &pitch.1, &v, "pitch");
                 self.con(gate.0, gate.1, &v, "trigger");
-                self.con(&fcv.0, &fcv.1, &v, "timbre");
+                // FM index follows the sweep; the folder's timbre is too sensitive, so the sweep tilts its symmetry
+                self.con(
+                    &fcv.0,
+                    &fcv.1,
+                    &v,
+                    if kind == "fm_keys" { "timbre" } else { "morph" },
+                );
                 Some((v, "out".into()))
             }
             "swarm_pad" | "harmonic_organ" => {
                 let swarm = kind == "swarm_pad";
                 let p = if swarm {
-                    json!({"engine": 6, "frequency": C4, "harmonics": r3(c.rng.uni(0.3, 0.6)), "timbre": r3(c.rng.uni(0.3, 0.6)), "morph": 0.5, "level": 0.8})
+                    json!({"engine": 6, "frequency": C4, "harmonics": r3(c.rng.uni(0.3, 0.55)), "timbre": r3((0.18 + 0.06 * b).clamp(0.12, 0.25)), "morph": 0.5, "level": 0.8})
                 } else {
-                    json!({"engine": 3, "frequency": C4, "harmonics": r3(c.rng.uni(0.3, 0.7)), "timbre": r3((0.35 + 0.15 * b).clamp(0.1, 0.7)), "morph": r3(c.rng.uni(0.2, 0.5)), "level": 0.8})
+                    json!({"engine": 3, "frequency": C4, "harmonics": r3(c.rng.uni(0.05, 0.3)), "timbre": r3((0.06 + 0.04 * b).clamp(0.02, 0.12)), "morph": r3(c.rng.uni(0.25, 0.45)), "level": 0.8})
                 };
                 self.module(
                     &v,
@@ -548,12 +554,13 @@ impl Recipe {
                 self.module(&env, "adsr", row, e, "Envelope → level");
                 self.con(gate.0, gate.1, &env, "gate");
                 self.con(&env, "out", &v, "level");
-                self.con(&fcv.0, &fcv.1, &v, "timbre");
+                // the sweep moves the spectral slope; timbre (centroid) would push these up into whistle range
+                self.con(&fcv.0, &fcv.1, &v, "morph");
                 if !swarm {
                     return Some((v, "out".into()));
                 }
                 // the swarm's energy sits high above the fundamental: a four-pole low-pass empties it, so only a
-                // gentle one-pole takes the fizz off while the sweep moves the swarm's own timbre
+                // gentle one-pole takes the fizz off
                 let lp = format!("{id}_lp");
                 self.module(
                     &lp,
@@ -588,7 +595,7 @@ impl Recipe {
                 Some((vca, "out".into()))
             }
             "glass" => {
-                self.module(&v, "modal_resonator", row, json!({"frequency": C4, "stiffness": r3(c.rng.uni(0.05, 0.35)), "decay": r3(c.rng.uni(1.5, 4.0)),
+                self.module(&v, "modal_resonator", row, json!({"frequency": C4, "stiffness": 0.0, "decay": r3(c.rng.uni(1.5, 4.0)),
                     "damping": r3(c.rng.uni(0.2, 0.5) - 0.1 * b), "strike_position": r3(c.rng.uni(0.1, 0.3)), "pickup_position": r3(c.rng.uni(0.5, 0.7)), "strike_strength": 1.0, "level": 1.0}),
                     "Struck glass (modal resonator ×4)");
                 self.con(&pitch.0, &pitch.1, &v, "pitch");
@@ -647,10 +654,10 @@ impl Recipe {
             "fm_bass" | "fold_bass" => {
                 let fm = kind == "fm_bass";
                 let p = if fm {
-                    json!({"engine": 2, "frequency": C4, "harmonics": r3(c.rng.pick(&[0.25, 0.5, 0.125])), "timbre": r3((0.25 + 0.1 * b + c.rng.uni(-0.05, 0.1)).clamp(0.05, 0.55)),
+                    json!({"engine": 2, "frequency": C4, "harmonics": fm_ratio(c.rng.pick(&[0.5, 1.0, 1.0, 2.0])), "timbre": r3((0.22 + 0.06 * b + c.rng.uni(-0.04, 0.05)).clamp(0.12, 0.32)),
                            "morph": r3(c.rng.uni(0.05, 0.3)), "decay": r3(c.rng.uni(0.35, 0.55)), "level": 0.9})
                 } else {
-                    json!({"engine": 1, "frequency": C4, "harmonics": r3(c.rng.uni(0.1, 0.4)), "timbre": r3((0.3 + 0.15 * b).clamp(0.05, 0.6)),
+                    json!({"engine": 1, "frequency": C4, "harmonics": r3(c.rng.uni(0.05, 0.25)), "timbre": r3((0.08 + 0.04 * b).clamp(0.03, 0.14)),
                            "morph": r3(c.rng.uni(0.1, 0.4)), "decay": r3(c.rng.uni(0.4, 0.6)), "level": 0.9})
                 };
                 self.module(
@@ -669,7 +676,12 @@ impl Recipe {
                 let bl = self.lane_out("bass");
                 self.con("lanes", &bl, "bass_voice", "level");
                 let cl = self.lane_out("cut");
-                self.con("lanes", &cl, "bass_voice", "timbre");
+                self.con(
+                    "lanes",
+                    &cl,
+                    "bass_voice",
+                    if fm { "timbre" } else { "morph" },
+                );
                 Some(("bass_voice".into(), "out".into()))
             }
             "analog_bass" | "moog_bass" => {
@@ -769,10 +781,10 @@ impl Recipe {
         match kind {
             "fm_bell" | "fold_lead" => {
                 let p = if kind == "fm_bell" {
-                    json!({"engine": 2, "frequency": C4, "harmonics": r3(c.rng.pick(&[0.6, 0.7, 0.85, 0.5])), "timbre": r3((0.3 + 0.1 * b + c.rng.uni(0.0, 0.15)).clamp(0.1, 0.65)),
+                    json!({"engine": 2, "frequency": C4, "harmonics": fm_ratio(c.rng.pick(&[2.0, 3.0, 4.0, 5.0, 6.0])), "timbre": r3((0.25 + 0.06 * b + c.rng.uni(-0.03, 0.06)).clamp(0.15, 0.38)),
                            "morph": r3(c.rng.uni(0.1, 0.3)), "decay": r3(c.rng.uni(0.6, 0.8)), "level": 0.8})
                 } else {
-                    json!({"engine": 1, "frequency": C4, "harmonics": r3(c.rng.uni(0.2, 0.5)), "timbre": r3((0.35 + 0.15 * b).clamp(0.1, 0.7)),
+                    json!({"engine": 1, "frequency": C4, "harmonics": r3(c.rng.uni(0.05, 0.25)), "timbre": r3((0.08 + 0.05 * b).clamp(0.03, 0.15)),
                            "morph": r3(c.rng.uni(0.2, 0.5)), "decay": r3(c.rng.uni(0.45, 0.65)), "level": 0.8})
                 };
                 self.module(
@@ -793,7 +805,7 @@ impl Recipe {
                 Some(("lead_voice".into(), "out".into()))
             }
             "modal_bell" => {
-                self.module("lead_voice", "modal_resonator", row, json!({"frequency": C4, "stiffness": r3(c.rng.uni(0.3, 0.7)), "decay": r3(c.rng.uni(2.0, 5.0)), "damping": r3(c.rng.uni(0.15, 0.4)),
+                self.module("lead_voice", "modal_resonator", row, json!({"frequency": C4, "stiffness": 0.0, "decay": r3(c.rng.uni(2.0, 5.0)), "damping": r3(c.rng.uni(0.15, 0.4)),
                     "strike_position": r3(c.rng.uni(0.1, 0.25)), "pickup_position": r3(c.rng.uni(0.55, 0.75)), "strike_strength": 1.0, "level": 1.0}), "Modal bells");
                 self.con(&pp, &po, "lead_voice", "pitch");
                 self.con("seq_music", "gate3", "lead_voice", "strike");
@@ -811,9 +823,9 @@ impl Recipe {
             "swarm_lead" | "harmonic_lead" => {
                 let swarm = kind == "swarm_lead";
                 let p = if swarm {
-                    json!({"engine": 6, "frequency": C4, "harmonics": r3(c.rng.uni(0.25, 0.5)), "timbre": r3(c.rng.uni(0.3, 0.6)), "morph": 0.5, "level": 0.8})
+                    json!({"engine": 6, "frequency": C4, "harmonics": r3(c.rng.uni(0.25, 0.5)), "timbre": r3((0.2 + 0.06 * b).clamp(0.12, 0.28)), "morph": 0.5, "level": 0.8})
                 } else {
-                    json!({"engine": 3, "frequency": C4, "harmonics": r3(c.rng.uni(0.15, 0.45)), "timbre": r3((0.3 + 0.15 * b).clamp(0.1, 0.6)), "morph": r3(c.rng.uni(0.2, 0.5)), "level": 0.8})
+                    json!({"engine": 3, "frequency": C4, "harmonics": r3(c.rng.uni(0.05, 0.3)), "timbre": r3((0.07 + 0.04 * b).clamp(0.02, 0.13)), "morph": r3(c.rng.uni(0.25, 0.45)), "level": 0.8})
                 };
                 self.module(
                     "lead_voice",
@@ -829,7 +841,7 @@ impl Recipe {
                 self.con(&pp, &po, "lead_voice", "pitch");
                 gated(self, env);
                 self.con("lead_gate", "out", "lead_voice", "level");
-                self.con("motion", "sine", "lead_voice", "timbre");
+                self.con("motion", "sine", "lead_voice", "morph");
                 if !swarm {
                     return Some(("lead_voice".into(), "out".into()));
                 }
