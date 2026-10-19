@@ -4,18 +4,35 @@ Updated 2026-10-17. This is the compact execution plan; [ROADMAP.md](ROADMAP.md)
 
 ## Installed Mac build
 
-**OpenPatch 0.2.7 build 9 is installed at `~/Applications/OpenPatch.app`.**
-The user explicitly requested this upgrade on 2026-10-17. It includes the 77-panel
-Signal Atlas design, softer local glow, Stock Scope, pinned 2.6.4 voice models,
-source-preserving Rack import and native RackMCP Sequencer/Listen/Bridge controls.
-Ferrofluid, Studio Mixer and Stock Process are present. The optimized ARM64
-bundle's installed binary hashes and deep/strict ad-hoc signature match the
-verified build. The previous 0.2.6 app and an older extracted candidate were
-removed; patches/settings were untouched. Local family validation passed 2,616
-Rust tests and 123 Python/MCP tests, plus four bundled-release CLI smoke tests.
-[PR #32](https://github.com/dexterlabs1/openpatch/pull/32) is merged; its [full Mac CI](https://github.com/dexterlabs1/openpatch/actions/runs/39040128343) passed the same 2,616 Rust/123 Python tests, optimized build, packaging and visualizer integration. This is not a notarized public release or a
-native-window/audio-device qualification. Keep the installed app stable; macOS
-ARM remains first, Windows/Linux and MIDI/live performance remain deferred.
+**OpenPatch 0.3.0 build 10 is installed at `~/Applications/OpenPatch.app`.**
+The user requested the upgrade after publication. The installation used the
+verified public macOS ARM archive: its SHA-256 checksum, GUI/CLI binary hashes
+and deep/strict ad-hoc signature matched. The previous installed 0.2.7 bundle
+was removed; user patches/settings and Claude's separate preview were preserved.
+This installation does not establish native-window/audio-device qualification.
+Keep the installed build stable until the user requests another upgrade.
+
+## Repository integration queue (2026-10-18)
+
+The branch audit confirms that all completed Patch Engine, visual, rack-tool and
+creative-family changes are already on `main`. No additional product feature
+was ready to merge. Superseded Wordpatch/release checkpoints and merged feature
+branches have been removed after a verified recovery backup. Historical archived
+checkouts retain their source and ignored validation evidence. Dirty checkouts
+and Claude's working branch are preserved.
+
+Only two unfinished product lines need integration:
+- [Recall Random — draft PR #37](https://github.com/dexterlabs1/openpatch/pull/37):
+  synchronized with current `main`; native Engine/state/capture/UI/MCP integration
+  and focused macOS qualification remain.
+- [Rack binary hosting — draft PR #38](https://github.com/dexterlabs1/openpatch/pull/38):
+  historical experimental checkpoint; 21 merge-conflict paths and the public
+  activation/save/device/compatibility gates remain. It is excluded from 0.3.0.
+
+[Branch disposition and recovery](BRANCH_STATUS.md) records the remaining work,
+protected dirty checkouts and rules for the next milestone. Earlier sections
+below retain historical milestone evidence; their old installation statements
+are historical, not the current installed version.
 
 ## Latest public release: 0.3.0 build 10
 
@@ -23,8 +40,8 @@ ARM remains first, Windows/Linux and MIDI/live performance remain deferred.
 is published for macOS ARM, Windows x64 and Steam Deck/Linux x64. [PR #35](https://github.com/dexterlabs1/openpatch/pull/35)
 merges Claude's latest Patch Engine and visual modes, the five finished creative
 instruments, scoped rack organization, signal tracing, cable materials and footer
-tools. The installed Mac app remains **0.2.7 build 9**; this publication did not
-replace it. Experimental VCV binary hosting is excluded.
+tools. The Mac app was subsequently upgraded to this same release at the user’s
+request, as recorded above. Experimental VCV binary hosting is excluded.
 
 The [final release gate](https://github.com/dexterlabs1/openpatch/actions/runs/39090065990)
 passed strict workspace lint, complete refreshed desktop suites and workspace
