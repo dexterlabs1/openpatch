@@ -31,6 +31,7 @@ impl BridgeObservation {
             .unwrap_or_else(|e| e.into_inner())
             .stdio_enabled = enabled;
     }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     pub(crate) fn reserve_start(&self) -> Result<u64, String> {
         let mut state = self
             .0
@@ -49,6 +50,7 @@ impl BridgeObservation {
         state.last_error = None;
         Ok(state.generation)
     }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     pub(crate) fn running(&self, generation: u64, id: &str) {
         let mut state = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if state.generation == generation && state.state == "starting" {
@@ -56,12 +58,14 @@ impl BridgeObservation {
             state.attachment_id = Some(id.into());
         }
     }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     pub(crate) fn clients(&self, generation: u64, count: usize) {
         let mut state = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if state.generation == generation && state.state == "running" {
             state.admitted_clients = count;
         }
     }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     pub(crate) fn failed(&self, generation: u64, error: String) {
         let mut state = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if state.generation == generation && matches!(state.state, "starting" | "running") {
@@ -71,6 +75,7 @@ impl BridgeObservation {
             state.last_error = Some(error.chars().take(256).collect());
         }
     }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     pub(crate) fn stopped(&self, generation: u64) {
         let mut state = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if state.generation == generation {
@@ -80,6 +85,7 @@ impl BridgeObservation {
             state.last_error = None;
         }
     }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     pub(crate) fn is_running(&self, generation: u64) -> bool {
         let state = self.0.lock().unwrap_or_else(|e| e.into_inner());
         state.generation == generation && state.state == "running"

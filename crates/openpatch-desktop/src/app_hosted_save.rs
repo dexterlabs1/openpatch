@@ -26,11 +26,15 @@ impl OpenPatch {
         if self.hosted_save_pending() {
             return Err("A plugin-state save is already in progress".into());
         }
+        // Hosted plugin capture exists only where the binary host does (macOS arm64).
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         let needs_capture = self
             .shared
             .try_lock()
             .map_err(|_| "Project is busy; try again".to_string())?
             .requires_hosted_project_capture();
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        let needs_capture = false;
         if !needs_capture {
             return Ok(false);
         }

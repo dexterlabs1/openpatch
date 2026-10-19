@@ -1,0 +1,16 @@
+{
+  "repositories": {
+    "eurorack": {
+      "url": "https://github.com/pichenettes/eurorack",
+      "commit": "f4cfa7697095a28d292bff758beb51deb49b5a86"
+    }
+  },
+  "files": {
+    "branches/branches.cc": {
+      "repository": "eurorack",
+      "path": "branches/branches.cc",
+      "sha256": "acb5f3439bd3a5b199071d351d8d17653fec98d100c0eb75b01e3ea678d148c6"
+    }
+  },
+  "source_execution": "Full original translation unit included with main renamed and while condition replaced only by finite scan scheduler; original decision/output/LED/LFSR body executes unchanged."
+}

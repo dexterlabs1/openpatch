@@ -1,521 +1,94 @@
 <p align="center">
-  <img src="docs/images/openpatch-banner.svg" alt="OpenPatch — patch sound, shape motion" width="100%">
+  <img src="docs/images/openpatch-banner.svg" alt="OpenPatch" width="100%">
 </p>
 
 <p align="center">
-  A native modular synthesizer in Rust.<br>
-  Build a voice, follow the voltage, and make it move.
+  An open-source modular synthesizer built in Rust.<br>
+  Make music by connecting modules, or build a patch with help from Claude or Codex.
 </p>
 
 <p align="center">
-  <a href="https://github.com/dexterlabs1/openpatch/actions/workflows/ci.yml"><img src="https://github.com/dexterlabs1/openpatch/actions/workflows/ci.yml/badge.svg" alt="Build and test"></a>
-  <a href="crates/openpatch-core/LICENSE-THIRD-PARTY"><img src="https://img.shields.io/badge/license-MIT%20%2B%20GPLv3%2B-8bb9a6" alt="MIT original code and GPL-3.0-or-later adaptations"></a>
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/built_with-Rust-dea584" alt="Built with Rust"></a>
+  <a href="#download">Download</a> ·
+  <a href="#get-started">Get started</a> ·
+  <a href="#use-claude-or-codex">Claude &amp; Codex</a> ·
+  <a href="docs/ROADMAP.md">Roadmap</a>
 </p>
 
-<p align="center">
-  <a href="#get-started-on-macos">Get started</a> ·
-  <a href="#play-the-rack">Controls</a> ·
-  <a href="docs/MCP.md">Claude &amp; Codex</a> ·
-  <a href="#where-it-stands">Project status</a> ·
-  <a href="#go-deeper">Documentation</a>
-</p>
+![OpenPatch with the Patch Engine and a modular music patch](docs/images/patch-engine-steamdeck.png)
 
-![OpenPatch native rack with wavetable VCO and LFO, rotary filter and amplifier, envelope, and live signal scope](docs/images/openpatch-rack.png)
-<p align="center"><sub>OpenPatch 0.2.4 rotary panels and signal scope, rendered in native Linux/Mesa CI. macOS is the primary design target.</sub></p>
+## Download
 
-- **An instrument you can patch.** Set values with rotary knobs, faders, visible mode choices and precise numeric entry, connect cables, and arrange modules on rack rails. Held cable drags pan at the rack edges to reach offscreen jacks. Live edits preserve oscillator phase and circuit memory.
-- **A reference analog voice.** Explore a nonlinear transistor ladder, OTA VCA, and switched RC envelope alongside an idealized ramp VCO, gate clock, and voltage/audio interface. Each model has [documented assumptions and validation](docs/ANALOG_MODELS.md).
-- **Strike a physical body.** Explore a stiff string / beam with sixteen resonant modes, force excitation, damping, and movable strike and pickup positions. Shape it with tactile controls and precise values. [Physical model and limits →](docs/MODAL_RESONATOR.md)
-- **Build a richer voice.** Blend four simultaneous oscillator waveforms, drive FM and PWM, and choose hard or soft sync. [Audio oscillator and validation →](docs/AUDIO_OSCILLATOR.md)
-- **Play your own waves.** Wavetable VCO and LFO add immutable custom banks, position CV, polyphonic modulation and guarded workspace import/export. [Controls, portable files and checked digital scope →](docs/WAVETABLES.md)
-- **Shape random motion.** Clock probabilistic voltage changes, control their spread, and move between targets with stepped, linear, smooth and exponential outputs. Patch external polyphonic CV to interpolate your own values. [Random controls and numerical scope →](docs/RANDOM.md)
-- **Hear noise become a resonator.** The separate seven-output Stock Noise source follows connection-dependent white, pink, red, violet, blue, gray and black paths. **File → Noise into matter** patches it into a physical resonator. [Stock Noise behavior and reference limits →](docs/STOCK_NOISE.md)
-- **Explore macro synthesis.** MACRO VOICE offers eight engines: detuned analog, wavefolding, feedback FM, harmonic spectra, spectral wavetables, four-note chords, swarm, and metallic tones. It supports 16 independent voices, OUT/AUX outputs, three timbral CVs, and a trigger-driven decaying low-pass gate. Leave TRIG unpatched for sustained sounds. Its FM and additive shaping adapt MIT-licensed Plaits algorithms; this native instrument is not a sample-identical Plaits port. [Signal contract and validation →](docs/MACRO_VOICE.md)
-- **Write a moving pattern.** Sequence pitch, timbre, and accents with three rows of eight voltage controls, live step lights, and Clock/Run/Reset actions. [Sequencer controls →](docs/SEQUENCER.md)
-- **Build longer arrangements.** Use SCORE through MCP for chords, ratchets and automation, then shape the mix with native drums, stereo delay, reverb and sidechain compression. A [bounded patch reconstruction](docs/STIW_RECONSTRUCTION.md) now maps matching VCA, ADSR and VCF roles to the qualified stock models. [Scores and studio modules →](docs/SCORE_AND_STUDIO.md)
-- **Mix a performance.** The original [Studio Mixer](docs/STUDIO_MIXER.md) grows from 1 to 16 channels with two stereo FX sends and returns, strip mute/solo and meters backed by live signal state. Its channel buttons retain hidden settings and cables; **File → New File → Studio Mixer FX** opens the factory routing example. Bounded application and platform qualification passed; physical-device checks remain open.
-- **Clock an echo.** Stock Delay adds a mono clock-synchronized delay with tone, feedback, independent MIX/WET outputs and four signed CV depths. Its shared rack/browser panel accepts milliseconds or seconds directly. The final guarded DSP matrix passes; native device and remaining host qualification are tracked in the [Delay contract](docs/STOCK_DELAY.md).
-- **Shape and route control signals.** Eight attenuverters, ten independent mutes, and a three-input CV mixer add voltage offsets and performance control. Module bypass is saved and undoable. [Voltage utilities →](docs/VOLTAGE_UTILITIES.md)
-- **Follow the voltage.** Probe any output and voice in the native signal scope. Compare two signals, trigger a waveform, or switch to X/Y; read calibrated range, DC, and RMS. [Scope controls →](docs/SCOPE.md)
-- **See the signal in each plug.** Green/red lights follow positive/negative mono signals; blue follows polyphonic signal energy. Stacked inputs show their actual sum, and the lights keep emitting in dark-room mode. [Signal lights →](docs/PORT_LIGHTS.md)
-- **Clear space to work.** Adjust cable transparency and tension in View, reveal routes by hovering a port, and set plug-light brightness independently. Turning plug lights off stops their observation work. [Cable presentation →](docs/CABLE_PRESENTATION.md)
-- **Sound into motion.** Open the optional Aurora, Spectrum, Waveform, or Ferrofluid view in the analysis dock. Edit GLSL shaders in the app while the last working shader keeps running.
-- **A rack agents can work with.** Claude and Codex can inspect, preview batch edits, patch, undo/redo, analyze individual output channels, capture waveform bins, tune, save, and render through a local MCP server using the same validated controls as the UI.
-- **Watch a patch take shape.** Agents can submit [paced construction plans](docs/CONSTRUCTION.md), with real edits, shared undo, and Pause, Resume and Cancel. Existing cables unplug, travel and settle when MCP repatches them, including direct tool calls. **View → Agent motion** offers Full, Reduced or Off for the [module, cable and parameter cues](docs/CONSTRUCTION_MOTION.md). Opt into [Follow agent edits](docs/AGENT_FOLLOW.md) to reveal offscreen work while preserving your zoom and saved project view.
+**OpenPatch 0.3.0 · build 10**
 
-## Get started on macOS
+| Your computer | Download |
+|---|---|
+| Mac with Apple silicon · macOS 12 or later | [Download for Mac](https://github.com/dexterlabs1/openpatch/releases/download/v0.3.0/OpenPatch-macos-arm64.zip) |
+| Windows PC · 64-bit Intel or AMD | [Download for Windows](https://github.com/dexterlabs1/openpatch/releases/download/v0.3.0/OpenPatch-windows-x86_64.zip) |
+| Steam Deck or Linux PC · 64-bit Intel or AMD | [Download for Steam Deck / Linux](https://github.com/dexterlabs1/openpatch/releases/download/v0.3.0/OpenPatch-linux-x86_64.tar.gz) |
 
-For Apple Silicon, install stable [Rust](https://rustup.rs), Xcode Command Line Tools (`xcode-select --install`), and Python 3.11 or later. Build a native application bundle:
+Extract the download, then:
+
+- **Mac:** move `OpenPatch.app` to Applications and open it.
+- **Windows:** open `openpatch-desktop.exe`. Keep the extracted files together.
+- **Linux / Steam Deck:** run `./install.sh` from the extracted folder, then open OpenPatch from your application menu. On Deck, install in Desktop Mode; the included `STEAM-DECK.txt` explains controller setup.
+
+The Mac app is not notarized by Apple. The Windows app is unsigned.
+
+[Release notes and checksums](https://github.com/dexterlabs1/openpatch/releases/tag/v0.3.0)
+
+## Get started
+
+1. Open OpenPatch and press **F1** to open the **Patch Engine**.
+2. Pick a genre, mood and texture, then choose **Build**. Try **Surprise me** for a random combination.
+3. Turn knobs, drag cables between ports, and add modules to change the sound.
+4. Save your patch with **Cmd-S** on Mac or **Ctrl-S** on Windows/Linux.
+
+Keep a patch's seed to generate the same composition again. Choose **Reveal**, **Showtime** or **Instant** to change how quickly it appears in the rack.
+
+To build from scratch, close the Patch Engine and press **Enter** to open the module library. **Space** starts or pauses playback when the Patch Engine is closed.
+
+## What you can do
+
+- **Make music:** combine oscillators, filters, envelopes, sequencers, drums and effects. Studio Mixer has up to 16 channels and two effects send/return loops.
+- **Explore new instruments:** Tidal Functions, Frame Scene, Segment Garden, Event Fork and Rhythm Terrain add evolving modulation, scene mixing, envelopes, random gates and drum patterns. [Module guide](docs/MODULE_COVERAGE.md)
+- **Keep a patch readable:** organize modules into rows, highlight signal paths, change cable styles, and dim the room to see the lights.
+- **Make visuals:** choose from nine visualizers, including Ferrofluid, or edit GLSL shaders in the app. [Visualizer guide](docs/VISUALIZERS.md)
+- **Work with an assistant:** watch Claude or Codex add modules, connect cables and adjust values in the rack. You can undo those edits just like your own.
+
+[Controls and shortcuts](docs/RACK_EDITING.md) · [Saving and recovery](docs/PROJECTS.md) · [Example patches](examples)
+
+## Use Claude or Codex
+
+Open the **MCP** panel in OpenPatch and follow the [setup guide](docs/MCP.md). MCP lets an assistant inspect your patch, add modules, connect cables, change settings, save and render audio.
+
+Connecting to an already open window works on Mac and Linux. On Windows, start a session with `openpatch-desktop.exe --mcp`.
+
+## Still in development
+
+OpenPatch is an early release. It does not yet match all of VCV Rack's features or module library.
+
+You can [import supported VCV patches](docs/VCV_IMPORT.md), but not every module can be converted. OpenPatch **cannot load existing VCV plugin binaries** in this release.
+
+Windows audio devices and Steam Deck game mode still need hands-on testing.
+
+[Roadmap](docs/ROADMAP.md) · [Current work](docs/WORKPLAN.md) · [Report a problem](https://github.com/dexterlabs1/openpatch/issues)
+
+## Build from source
+
+Install stable Rust and your platform's build tools. On Mac, install Xcode Command Line Tools. Linux dependencies are listed in the [build workflow](.github/workflows/ci.yml).
 
 ```sh
 git clone https://github.com/dexterlabs1/openpatch.git
 cd openpatch
+git checkout v0.3.0
 cargo build --locked --release -p openpatch-desktop -p openpatch --bins
-python3 scripts/package_macos.py
-open dist/OpenPatch.app
-```
-
-The bundle includes the desktop app and the CLI used for MCP attachment.
-The app opens a connected reference voice with playback paused. Press **Play** or **Space** to hear it. To run directly from source, use `cargo run --locked --release -p openpatch-desktop`.
-
-This is a **v0.2 development preview**, built from source. The local `.app` is ad-hoc signed; it is not notarized. Daily CI targets macOS ARM; Linux and Windows validation is available through the manual full-platform workflow. Platform notes are below.
-
-## Play the rack
-
-| Action | Control |
-|---|---|
-| Play / pause | **Space** or the transport toolbar button |
-| Open the library | **Enter**, the library toolbar icon, **Edit → Add module**, or right-click empty rack space |
-| Add from the library | Drag a tile onto the rack, click a tile, or use **Up/Down → Enter** in search |
-| Inspect a library panel | Click **Inspect**, or **Cmd/Ctrl-I** while the library has focus; **Esc** closes inspection first |
-| Enlarge library previews | **Library → Preview** selects 25–200%; wide panels scroll horizontally and keep their real proportions. [Details →](docs/LIBRARY_ZOOM.md) |
-| Patch / unplug | Drag or click between jacks; an occupied output picks its top plug for moving to another output; right-click an input to unplug |
-| Add / clone a cable | **Cmd-drag** either jack adds a cable; **Cmd-Shift-drag** clones its top cable |
-| Stack / remove cables | Drop onto a version-2 input to add a signal; **Shift-click** a jack deletes its top cable |
-| Bring a buried plug forward | Right-click its jack → select the cable → **Move this cable**, then return it to the same jack; the opposite end keeps its order |
-| Edit cable bundles / colours | Right-click either jack → **Move all cables**, individual cable actions, or **Custom RGB…**; each operation is undoable |
-| Choose the next cable colour | Toolbar **Cable** swatch; **[ / ]** cycle while the rack is idle. **Edit palettes…** saves personal sets |
-| Adjust a rotary or numeric fader | Click or drag vertically; hold **Cmd/Ctrl** for fine adjustment; double-click to reset |
-| Choose a categorical state | Click its segment; clicking or double-clicking the selected state leaves it selected. [Five shared choice controls and keyboard actions →](docs/RACK_EDITING.md#parameter-faders) |
-| Type a value or expression | Right-click a parameter control, or click a printed value; try `A4`, `440*2`, or `C4v`. **Enter** applies and **Esc** cancels |
-| Quantize a sequence and see the notes it plays | **File → Quantized stock voice**; [keyboard, pre-offset and exact stock behavior](docs/STOCK_QUANTIZER.md) |
-| Shape a voice with linear or exponential CV gain | **File → Stock VCA voice**; [controls and gain meter](docs/STOCK_VCA.md) |
-| Blend and synchronize audio waveforms | **File → Synced waveform voice** |
-| Layer voices with CV-controlled mixing | **File → Layered stereo morph** |
-| Shift a polyphonic voice by octaves | **File → Stock Octave voice**; [signal and state contract](docs/STOCK_OCTAVE.md) |
-| Mix four voices with independent VCAs | **File → Stock VCA Mix voice**; [strip outputs, master CV and state contract](docs/STOCK_VCA_MIX.md) |
-| Build a console with two FX loops | **File → New File → Studio Mixer FX**; [channels, sends, returns and qualification status](docs/STUDIO_MIXER.md) |
-| Mix three stock oscillators with averaging | **File → Stock Mix layered voice**; [signal and state contract](docs/STOCK_MIX.md) |
-| Add transpose and vibrato to a chord | **File → Stacked pitch voice** |
-| Shape gates and sample pitch | **File → Gate shaping voice** |
-| Explore voltage and mute banks | **File → Voltage utilities** |
-| Play manual gates and triggers | **File → Manual pulses voice** |
-| Latch and interrupt a note | **File → Manual push voice** |
-| Delay and reshape gates | **File → Delayed gate voice** |
-| Hear clocked audio repeats | **File → Clocked delay voice** |
-| Build a generative melody | **File → Random motion voice**; [probability and interpolation](docs/RANDOM.md) |
-| Excite a resonator with Stock Noise | **File → Noise into matter**; [seven outputs and source behavior](docs/STOCK_NOISE.md) |
-| Bypass a module | Right-click its panel → **Bypass module** |
-| Clock a stereo routing pattern | **File → Switched stereo voice** |
-| Play the sequencer example | **File → Sequenced analog voice** |
-| Inspect audio processing load | **View → Audio performance**, or click **DSP** in the footer; [measurement details](docs/PERFORMANCE.md) |
-| Inspect a signal | **View → Signal scope**, the scope toolbar icon, or right-click an output jack → **Inspect in scope X/Y** |
-| Select / arrange | **Shift-click** module headers to build a group; drag a selected header to move it; **Cmd-A** selects all |
-| Duplicate | **Cmd-D** for modules only; **Shift-Cmd-D** adds inputs for a selection, or all cables for a hovered module when nothing is selected |
-| Save / browse module presets | Right-click a module → **Presets**; preview settings before applying |
-| Initialize / randomize | **Cmd-I** / **Cmd-R**, or the module context menu; one undo step per group |
-| Remove | **Delete / Backspace** the selection, or the hovered module when nothing is selected |
-| Clear patching | **Edit → Clear cables** removes all cables in one undoable action |
-| Pan / zoom | Scroll, middle-drag, or arrow keys; pinch or **Cmd-scroll** to zoom **25–400%**; **Cmd −/+** steps zoom; **Cmd-0** restores 100% |
-| Dim the room | **View → Room brightness**, with **Darkroom** (10%) and **Lights on** (100%); live module lamps and Scope screens keep emitting |
-| Lock placement | **View → Lock module positions** prevents accidental module moves while keeping controls and cables editable |
-| Save / Save As / open | **Cmd-S** / **Shift-Cmd-S** / **Cmd-O** |
-| Undo / redo | **Cmd-Z** / **Shift-Cmd-Z** |
-
-Compatible jacks glow and snap during patching. Valid drops onto occupied version-2 inputs preserve existing cables. Dropping a moved plug on empty space, a wrong-type jack, or an identical route deletes that cable; **Esc** cancels. Add **Shift at drop** to permit an identical route. [Cable gestures →](docs/RACK_EDITING.md#cable-gestures) The quantizer’s piano keys toggle scale notes. One numeric parameter drag, changed categorical selection, or completed single/group module move is one undo step. Selecting the current categorical state adds no edit or undo step. Module drag previews stay out of saves and recovery. Split and Merge expose all 16 ports; right-click a module to select its monitored output, or right-click an output jack to inspect its voltage in the signal scope. Polyphonic playback uses the first channel unless you route through [SUM](docs/POLYPHONIC_SUM.md), which now includes output attenuation, a six-band level meter, and a live input-channel count. [VIZ](docs/POLYPHONIC_VIZ.md) adds a dedicated 16-channel polarity display with matching rack and browser panels.
-
-Use **Ctrl** in place of Cmd on Linux and Windows. Keyboard shortcuts apply outside text fields. **Esc** cancels patching or closes an editor.
-
-Projects live in `~/OpenPatch` by default. **Save** updates the current `.openpatch` file with its modules, cables, layout, view, and current sequencer Run and Push HOLD settings; **Save As** creates another copy. Older JSON patches still import. Recovery copies keep unsaved work separate from the original and are offered on the next launch. [Saving and recovery →](docs/PROJECTS.md)
-
-<details>
-<summary><strong>See the visualizer dock</strong></summary>
-
-![OpenPatch native rack with the audio-reactive visualizer dock open](docs/images/openpatch-visuals.png)
-
-<sub>Linux / Mesa CI render. The dock uses native OpenGL; it requires a compatible GPU and driver.</sub>
-
-[Visualizer modes and shader interface →](docs/VISUALIZERS.md)
-
-</details>
-
-<details>
-<summary><strong>Inspect voltage, timing, and phase</strong></summary>
-
-![Native signal scope showing two 100 Hz waveforms with calibrated scales and measurements](docs/images/openpatch-signal-scope.png)
-
-Right-click an output jack and choose **Inspect in scope X/Y**. Select a voice,
-set the trigger and timebase, or freeze a capture to examine it. The scope reads
-raw module outputs before master level. Claude and Codex can request calibrated
-waveform bins with `capture_signal`, rendered offline from a patch snapshot.
-
-![Paired sine and triangle signals in the native X/Y scope](docs/images/openpatch-signal-scope-xy.png)
-
-<sub>Native Linux / Mesa CI renders using an offline engine calibration fixture;
-these images do not demonstrate live audio-device qualification.</sub>
-
-[Scope dock controls and sampling contract →](docs/SCOPE.md) · [Rack Scope module →](docs/RACK_SCOPE.md)
-
-Add a rack **Scope** to keep two polyphonic signals in view. Choose ranges in
-volts per screen, read minimum/maximum/peak-to-peak voltage, and see whether
-triggering follows X or an external input. MCP can inspect the same live
-capture, including individual voices. Empty captures remain visibly unavailable.
-
-Choose the separate [Stock Scope](docs/STOCK_SCOPE.md) for the pinned Fundamental
-acquisition behavior, calibrated TIME controls and a native AUTO view that leaves
-source settings and undo history untouched. Existing Scope patches keep their model.
-
-</details>
-
-<details>
-<summary><strong>Sequence pitch, timbre, and accents</strong></summary>
-
-![Three-row sequencer with 24 voltage controls driving a connected analog voice](docs/images/openpatch-sequencer.png)
-
-Choose **File → Sequenced analog voice**. Edit three independent voltage rows,
-click step numbers to enable triggers, and rotate the pattern from the module's
-context menu. Clock, Run, and Reset buttons use the same ordered performance
-path available to Claude and Codex. Offline MCP events let you render or measure
-a performance at specified sample frames.
-
-<sub>Native Linux / Mesa CI render. The illuminated step comes from an offline
-engine fixture; this screenshot does not demonstrate live audio-device testing.</sub>
-
-[Sequencer controls, timing, and remaining parity →](docs/SEQUENCER.md)
-
-</details>
-
-<details>
-<summary><strong>Arrange patterns and stereo effects</strong></summary>
-
-![Native SCORE, DRUM, state-variable filter, stereo delay, SPACE reverb and DUCK compressor panels](docs/images/openpatch-score-studio.png)
-
-SCORE stores four note tracks and up to sixteen automation lanes. Use MCP to
-edit scores, connect voices and export an arrangement of up to five minutes.
-The panel exposes tempo, swing, run state and track outputs; a graphical note
-editor remains future work.
-
-These are original functional algorithms. The [SVF source integration](docs/SVF_FILTER.md)
-uses 16× oversampled drive with 76 samples of signal/CV delay, including at zero
-drive. The [prototype study](docs/benchmarks/svf-antialias/multistage/README.md)
-passes bounded spectral gates; the integrated filter has state, allocation and
-offline timing checks. Audio-device behavior and third-party VCV equivalence
-remain unqualified.
-[Module behavior, MCP examples and fidelity limits →](docs/SCORE_AND_STUDIO.md)
-
-<sub>Native Linux / Mesa CI render. This fixture illustrates the panels and
-connections; it does not demonstrate macOS device playback.</sub>
-
-</details>
-
-<details>
-<summary><strong>Route a voice around the rack</strong></summary>
-
-![Clocked pitch selector and stereo audio router with active-route lights](docs/images/openpatch-switches.png)
-
-Choose **File → Switched stereo voice**. One switch selects among four pitches;
-another routes the oscillator between left and right. Change either step count
-to reshape the pattern, and enable de-click for short ramps between audio routes.
-The illuminated route comes from the engine rather than a UI timer.
-
-<sub>Native Linux / Mesa CI render with offline engine telemetry. Actual device
-playback qualification remains separate.</sub>
-
-[Clocked routing and polyphony →](docs/SWITCHING.md)
-
-</details>
-
-<details>
-<summary><strong>Blend voices with voltage-controlled mixing</strong></summary>
-
-![Four voices feeding VCA Mix, a complementary Fade, and stereo output with LFO modulation](docs/images/openpatch-mixing.png)
-
-Choose **File → Layered stereo morph**. Mix four voices with independent level
-and CV controls, watch each channel's meter, and use Fade's complementary
-outputs to move the blend across stereo. Both modules support polyphonic signals.
-
-<sub>Native Linux / Mesa CI render with offline engine meter data.</sub>
-
-[Mixing controls, response curves, and channel behavior →](docs/VOLTAGE_MIXING.md)
-
-</details>
-
-<details>
-<summary><strong>Shape voltages and mute a voice</strong></summary>
-
-![8vert voltage bank and CV Mix setting a VCO pitch, with a ten-row Mutes bank feeding audio](docs/images/openpatch-voltage-utilities.png)
-
-Choose **File → Voltage utilities**. The first two 8vert rows create pitch
-voltages, CV Mix adds them, and Mutes row 1 controls the oscillator's output.
-Each row is independently editable; right-click Mutes to invert all ten states.
-
-![The same patch with Mutes bypassed, an amber panel border, and a visible BYPASSED label](docs/images/openpatch-bypass.png)
-
-Right-click a panel to bypass it. The amber border identifies the saved bypass
-state; controls and cables stay editable. Bypass and mute inversion share the
-same undo history through the UI and MCP.
-
-<sub>Native Linux / Mesa CI renders. Signal behavior is tested offline; these
-images do not establish live audio-device qualification.</sub>
-
-[Normaling, polyphony, and bypass behavior →](docs/VOLTAGE_UTILITIES.md)
-
-</details>
-
-<details>
-<summary><strong>Shape gates and hold a moving pitch</strong></summary>
-
-![Logic, Compare, Process, and Rescale driving a quantized voice](docs/images/openpatch-gate-shaping.png)
-
-Choose **File → Gate shaping voice**. Compare turns modulation into gates,
-Logic combines them with a clock, and Process samples a moving voltage.
-Rescale sets the range before it reaches the quantizer. Hold either manual
-button to override its gate input; release it to return control to the patch.
-
-![Manual B and gate controls illuminated from engine state](docs/images/openpatch-manual-gates.png)
-
-<sub>Native Linux / Mesa CI renders, using offline DSP state. Live macOS
-playback qualification remains separate.</sub>
-
-[Signal processing and momentary controls →](docs/SIGNAL_PROCESSING.md)
-
-</details>
-
-<details>
-<summary><strong>Make a voice move with a clocked LFO</strong></summary>
-
-![Clock-synced four-output LFO modulating a ladder filter and OTA VCA](docs/images/openpatch-modulation.png)
-
-Choose **File → Clocked modulation**. Four simultaneous waveforms let one LFO
-shape volume, filter cutoff, and other CV destinations. Patch a clock and the
-rate knob displays a multiplier; use reset to align phase independently. FM,
-PWM, bipolar/unipolar ranges, and inversion are available directly on the panel.
-
-<sub>Native Linux / Mesa CI render.</sub>
-
-[Modulation controls and signal contract →](docs/MODULATION.md)
-
-</details>
-
-<details>
-<summary><strong>Try a clocked random voice</strong></summary>
-
-![Clocked random voice with seeded noise, sample-and-hold, and a piano-key quantizer](docs/images/openpatch-utilities.png)
-
-Choose **File → Clocked random voice**. Noise supplies candidate pitches; a clock
-samples them, and the quantizer selects notes from a C-major pentatonic scale.
-Click its piano keys to change the scale, or edit the seed for another repeatable
-sequence. This is an original OpenPatch patch using the documented utility
-contracts, not an imported VCV project.
-
-<sub>Native Linux / Mesa CI render.</sub>
-
-</details>
-
-<details>
-<summary><strong>Play a polyphonic analog voice</strong></summary>
-
-![Three-note polyphonic voice with voltage source, oscillator, ladder filter, envelope, VCA, and explicit mono sum](docs/images/openpatch-polyphonic.png)
-
-Choose **File → Polyphonic voice**. Three pitch voltages drive independent
-oscillator, filter, and VCA states; one envelope controls all three voices.
-Change the first three voltage fields to reshape the chord. **SUM** combines
-the voices before the audio output. Split and Merge provide individual access
-to up to 16 channels for more elaborate routing.
-
-<sub>Native Linux / Mesa CI render. Sixteen-channel routing is supported;
-sixteen full circuit voices still exceed realtime CPU capacity in the
-[published M1 Max benchmark](docs/PERFORMANCE.md).</sub>
-
-</details>
-
-<details>
-<summary><strong>Perform with MIDI or your keyboard</strong></summary>
-
-![Native MIDI voice with a performance keyboard and independent envelope voices](docs/images/openpatch-midi.png)
-
-Choose **File → MIDI keyboard voice**, then **Play**. Play 32 pitches with the
-`ZXCVB` and `QWERTY` rows or click the piano keys. Backtick and `1` shift octaves;
-held notes retain their pitch. **Audio / MIDI** selects your output device and hardware
-controller. Sustain, velocity, pitch wheel, clock, and polyphonic voice allocation
-are available through the MIDI TO CV panel. The keyboard's **All notes off**
-button releases held notes.
-
-**File → MIDI controller voice** opens a connected CC-controlled instrument.
-CC7 sets its level and CC74 sets filter cutoff; saved controller values make it
-audible as soon as you press **Play**. Select a **Global MIDI input** in
-**Audio / MIDI**, then move a hardware controller. In the MIDI CC panel, click
-any assignment for an exact CC number (−1 unmaps it), or right-click for
-**Learn MIDI CC** / **Cancel MIDI Learn**. Tab visits all sixteen assignments.
-The panel shows Learn and controller values only from actual audio state.
-Smoothing, human-numbered channel filtering, MPE and 14-bit CC pairs are optional.
-See the [MIDI CC contract](docs/MIDI_CC.md) and [agent examples](docs/MCP.md#midi-controller-voltages-and-learn).
-
-**File → MIDI drum pads** connects three note gates to kick, clap and hi-hat
-voices. Press **Play**, then use **Z / X / C** for C4 / D4 / E4 (MIDI 60 / 62 / 64),
-click those on-screen keys, or play the same hardware notes. Click a Gate pad's
-assignment to enter −1…127; right-click for **Learn MIDI note** / **Cancel MIDI Learn**.
-Each gate lasts at least one millisecond; **Velocity** optionally scales its voltage.
-This example keeps Velocity off so even soft notes reliably cross the drum trigger
-threshold. Remapping a held cell preserves its gate; use the module's **Panic**
-button to clear held state, including while bypassed. Gate lamps show actual DSP
-activity and remain visible with room lights off. See the [Gate contract](docs/MIDI_GATE.md)
-and [agent note traces](docs/MCP.md#midi-note-gates-and-panic).
-
-Agents can render and inspect repeatable sample-timed MIDI phrases through MCP.
-See [MIDI and audio](docs/MIDI_AUDIO.md) for routing, device behavior, and examples.
-
-<sub>Native Linux / Mesa CI render. Physical MIDI hardware still needs qualification.</sub>
-
-</details>
-
-<details>
-<summary><strong>Shape a stereo image</strong></summary>
-
-![Stereo oscillator pair with Mid/Side encoder and decoder width controls](docs/images/openpatch-stereo.png)
-
-Choose **File → Stereo width study**. Two slightly detuned oscillators feed
-MID / SIDE, and its decoder connects to independent L/R audio outputs. Adjust
-either Width control to collapse the image to mono or increase its width.
-
-Mix 6 adds six-input mixing, averaging, and polarity inversion. Octave transposes
-pitch by whole octaves; Mult distributes an intact polyphonic signal to eight
-outputs. Their [signal contracts](docs/ROUTING_MODULES.md) state the voltage,
-normaling, and voice behavior explicitly.
-
-<sub>Native Linux / Mesa CI render. Original Rust functional implementations.</sub>
-
-</details>
-
-<details>
-<summary><strong>Browse without leaving the rack</strong></summary>
-
-![Studio Rack docked module library](docs/images/openpatch-library.png)
-
-Search module names, controls and ports, filter by musical role, and star favorites.
-Drag a tile onto the rack to preview its placement; adding a module is one undo step.
-In the floating precision editor, **Apply & Next / Tab** and **Previous / Shift-Tab** apply the draft and continue through type-entry controls in the same module.
-
-The library stays open while you patch cables and edit controls. Its thumbnails render the actual module panels at their default settings, with the same control layout, typography, faders, segmented choices, and jacks as the rack. Wide modules get full-width cards. Hover a card for a larger view, or click **Inspect** to pin its natural-size panel in a separate window. Wide panels scroll horizontally; details list ports and visible controls. Search and filters leave the pin on that module. [Panel design and preview behavior →](docs/PANEL_DESIGN.md)
-
-<sub>Actual native Linux / Mesa CI render. macOS is the primary design target.</sub>
-
-</details>
-
-## Claude & Codex
-
-Follow the [MCP setup guide](docs/MCP.md) for Claude Code, Claude Desktop, or Codex configuration. On macOS and Linux, `openpatch attach` connects clients to an already-open rack: Claude and Codex can share the same live patch, revision checks and undo history. Click **MCP** in the toolbar to start the bridge and copy connection details. Press **Play** locally to audition changes; agents can also export WAV files without speaker playback.
-
-The desktop `--mcp` mode launches a new window per client and remains available on all three platforms; Windows attachment is still ahead. The separate CLI also supports headless MCP, offline rendering, and visualizer export.
-
-## Where it stands
-
-**Parity is the baseline:** match VCV Rack Free 2 host functionality and the 49 Core / Free modules, then extend usability, performance, visuals, and agent control. The [parity roadmap](docs/ROADMAP.md) tracks concrete acceptance gates. OpenPatch has not reached parity yet.
-
-**Watch the patch take shape.** Progressive MCP construction now gives real
-committed steps coordinated module, cable and parameter motion, with Reduced
-and Off modes. The toolbar **MCP** button starts the local bridge and provides
-Claude/Codex connection details. See [visible construction](docs/CONSTRUCTION_MOTION.md)
-and [session controls](docs/MCP_SESSIONS.md).
-
-[Stock VCA Mix](docs/STOCK_VCA_MIX.md) merged at `95b47` in [PR19](https://github.com/dexterlabs1/openpatch/pull/19)
-after its recorded review of 139 native captures. The new Stock Noise
-[controlled-draw reference gate](docs/STOCK_NOISE.md#recorded-reference-and-limits)
-passes; combined application, UI and release qualification merged in [PR20](https://github.com/dexterlabs1/openpatch/pull/20).
-
-**83 built-in module kinds.** Version-specific [Rack 2.6.4 VCO and VCF](docs/VCV_IMPORT.md#supported-source-identities) add pinned voice imports with matching detailed rack/browser panels. [Studio Mixer](docs/STUDIO_MIXER.md) adds an original 1–16-channel console with two stereo send/return loops. It appears in both **Custom** and **Mixing**. The separate [Stock Noise](docs/STOCK_NOISE.md) retains seven consumer-gated outputs, distinct from the original [seven-color Noise](docs/COLORED_NOISE.md).
-
-The separate [Stock Process](docs/STOCK_PROCESS.md) adds six sample/hold, slew and glide outputs with a frozen source/host comparison. Its bounded source/host, local release, platform CI and native render checks passed before [PR22](https://github.com/dexterlabs1/openpatch/pull/22) merged. The macOS ARM app includes all four visualizers, including Ferrofluid.
-
-The [Signal Atlas panel redesign](docs/MODULE_DESIGN.md) uses prominent black
-knobs, warm ivory, clear titles and source-backed markings, with identical panels
-in the rack and library. The shared design now covers all
-**78 non-MIDI panels**, including Stock Scope: 77 detailed panels plus the existing
-Studio Mixer.
-The three MIDI panels remain deferred. Exact values, grouped undo and visible
-MCP edits remain part of the controls; LED and screen glow is now more restrained.
-
-[Review the panels and audit](design/reviews/signal-atlas-two-modules-v1/README.md#non-midi-design-candidate-audit) · [Stock Scope and softer lighting](https://github.com/dexterlabs1/openpatch/pull/29)
-
-The local Mac checkpoint is **0.2.7 build 9**, with the full non-MIDI panel pass,
-softer glow, Stock Scope, pinned voice models and source-preserving Rack import.
-The native RackMCP family adds live sequencing controls, bounded Listen capture
-and a Bridge panel with real connection/save status. Ferrofluid and Studio Mixer
-remain included. [Host contract and limits](docs/RACKMCP_CONTROL_CONTRACT.md) ·
-[Control-panel review](design/reviews/rackmcp-control-v1/README.md).
-Local validation passed 2,616 Rust tests and 123 Python/MCP tests, strict workspace
-Clippy/formatting, release packaging/signature checks and four bundled CLI smoke
-tests. Native-window, GPU-driver and physical audio-device qualification remain
-separate. This local build is ad-hoc signed, not a notarized public download.
-
-The library also includes [Stock VCA Mix](docs/STOCK_VCA_MIX.md), [Stock Mix](docs/STOCK_MIX.md), [Stock Mid/Side](docs/STOCK_MID_SIDE.md), [Stock VCO](docs/STOCK_VCO.md), [Stock LFO](docs/STOCK_LFO.md), [Stock Delay](docs/STOCK_DELAY.md), [Stock Quantizer](docs/STOCK_QUANTIZER.md), and [Stock SEQ3](docs/STOCK_SEQ3.md), alongside voices, modulation, scores, effects and utilities. Search controls and ports, filter by musical role, and save favorites in the docked library. The [module coverage plan](docs/MODULE_COVERAGE.md) tracks **49 VCV Core / Free targets**; the number of OpenPatch kinds is not a count of completed equivalents.
-
-The new Stock VCA's [pinned actual-class comparison](docs/benchmarks/stock-vca-reference.json)
-passes 72 traces at three sample rates: 55,872 frames and 800,328 active
-output/gain comparisons, with maximum absolute error 9.54e-7 under the frozen
-`2e-6 + 2e-6 * abs(reference)` gate. Its [integration validation record](docs/STOCK_VCA.md#recorded-host-and-platform-validation)
-includes passing callback/panel tests, reviewed Linux screenshots and macOS ARM,
-Windows and Linux CI. Native macOS/Windows window input, physical MIDI/audio I/O,
-and complete Rack host/import parity remain open.
-
-Stock Delay's [final guarded DSP report](docs/benchmarks/stock-delay-reference.json)
-passes all 43 whole-module cases at three rates with zero measured error.
-Its [Engine adoption microprofile](docs/benchmarks/stock-delay-handoff.json)
-measures ownership transfer separately from full callback deadlines. The
-release workspace, Rust checks and 79 Python/MCP tests pass; the macOS ARM
-bundle's ad-hoc signature and notices are verified without installing or
-launching it. Platform CI and verification of the configured 97 native
-screenshots are release gates. Native Mac window/input/playback and physical
-device qualification remain open.
-
-macOS ARM is the current product focus. CI builds and tests **macOS ARM64, Linux x86-64, and Windows x86-64**, including native window and shader checks on Linux. Audio devices and GPU drivers need broader hands-on testing.
-
-**File → Save template** sets your reusable starting patch. **New / Cmd-Ctrl-N** opens it as a clean, untitled project; missing or invalid templates fall back to the factory analog voice. See [projects and recovery](docs/PROJECTS.md).
-
-Factory patches use the [version-2 engine](docs/ENGINE_V2.md): named outputs, up to 16 channels per cable, and feedback with one sample of delay per cable. Old patches retain their original mono timing until explicitly converted. The explicit **STEREO AUDIO** sink sums polyphonic voices into left/right output and stereo WAV files; other selected outputs retain channel-0 mono behavior. Hardware audio input, expanded multichannel I/O, MIDI output and broader parameter mapping, VCV patch/plugin compatibility, and broader module coverage remain ahead. See [MIDI and audio](docs/MIDI_AUDIO.md) for performance controls and sample-timed MCP traces.
-
-**Performance goal:** low CPU use and predictable audio deadlines on large patches. The latest paired M1 Max reference-voice benchmark takes about **33% less processing time** than the previous OpenPatch build, with matching checked signals. Sixteen full circuit voices still exceed realtime capacity. Callback tests check allocation-free processing and graph swaps. A speedup over VCV Rack has **not** been demonstrated; see the [results and methodology](docs/PERFORMANCE.md).
-
-## Go deeper
-
-| Guide | What it covers |
-|---|---|
-| [Rack editing](docs/RACK_EDITING.md) | Group selection, duplication, placement, cable-copy policies, and runtime identity |
-| [Stacked cables](docs/STACKED_CABLES.md) | Input summing, polyphonic modulation, individual cable editing, and MCP routing |
-| [Projects and recovery](docs/PROJECTS.md) | Save, Save As, legacy imports, concurrent edits, and recovery copies |
-| [Module presets](docs/MODULE_PRESETS.md) | Capture, preview, save and load native presets from the rack or MCP |
-| [Stereo and routing](docs/ROUTING_MODULES.md) | Mid/Side width, six-input mixing, octave shifts, and signal distribution |
-| [Voltage-controlled mixing](docs/VOLTAGE_MIXING.md) | Four-channel VCA mixing, live strip meters, CV response, and complementary fades |
-| [MIDI and audio](docs/MIDI_AUDIO.md) | Keyboard performance, input devices, stereo routing, and reproducible agent performances |
-| [Engine v2](docs/ENGINE_V2.md) | Named ports, polyphony, feedback timing, state migration, and legacy compatibility |
-| [Analog models](docs/ANALOG_MODELS.md) | Circuit equations, voltage conventions, reference comparisons, and limits |
-| [Parity roadmap](docs/ROADMAP.md) | Host functionality, acceptance gates, delivery order, and MCP expansion |
-| [Stock Quantizer](docs/STOCK_QUANTIZER.md) | Scale painting, played-note observations, pre-offset and bounded exact source qualification |
-| [Stock VCA](docs/STOCK_VCA.md) | Percentage level, CV response modes, per-channel effective gain and bounded DSP qualification |
-| [Stock Delay](docs/STOCK_DELAY.md) | Clocked mono repeats, ms/s entry, MIX/WET routing, state handoff and final bounded DSP evidence |
-| [Audio oscillator](docs/AUDIO_OSCILLATOR.md) | Polyphonic FM, PWM, sync and measured compatibility gaps |
-| [Module coverage](docs/MODULE_COVERAGE.md) | The 49 Core / Free targets and acceptance criteria |
-| [MCP integration](docs/MCP.md) | Client configuration, tools, revision checks, and file safety |
-| [Visualizers](docs/VISUALIZERS.md) | Native rendering, shader uniforms, and optional HTML export |
-| [Architecture](docs/ARCHITECTURE.md) | DSP, audio/control thread boundaries, persistence, and roadmap |
-| [Performance](docs/PERFORMANCE.md) | Benchmarks and fair comparisons |
-
-<details>
-<summary><strong>Linux, Windows, and contributor checks</strong></summary>
-
-Linux requires ALSA, udev, XKB, Wayland, and OpenGL development libraries. On Debian / Ubuntu:
-
-```sh
-sudo apt-get install libasound2-dev libudev-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libgl1-mesa-dev
 cargo run --locked --release -p openpatch-desktop
 ```
 
-Windows requires stable Rust with the MSVC toolchain and C++ build tools. Run the same Cargo command; use `python` instead of `python3` for repository scripts.
+The app and command-line tool are in `target/release`. To package the Mac app, run `python3 scripts/package_macos.py` with Python 3.11 or later.
 
-```sh
-cargo fmt --all -- --check
-cargo clippy --locked --workspace --all-targets -- -D warnings
-cargo test --locked --workspace
-cargo build --locked --release --workspace
-python3 -m unittest discover -s scripts -v
-cargo bench --locked -p openpatch-core
-```
+## License
 
-See the [CI workflow](.github/workflows/ci.yml) for the platform build matrix and native smoke tests.
+Original OpenPatch code is [MIT licensed](LICENSE). The distributed app also includes GPL code and is provided under [GPL-3.0-or-later](crates/openpatch-core/LICENSE-GPL-3.0.txt). See the [third-party notices](crates/openpatch-core/LICENSE-THIRD-PARTY) for details.
 
-</details>
-
----
-
-Original OpenPatch code remains [MIT licensed](LICENSE). The source-adapted Fundamental 2.6.4 VCO and VCF are [GPL-3.0-or-later](crates/openpatch-core/LICENSE-GPL-3.0.txt), copyright © 2016–2023 VCV; combined binaries containing them are distributed under GPL-3.0-or-later. The crate expression `MIT AND GPL-3.0-or-later` records both sets of terms. [Source pins and adaptation notices](crates/openpatch-core/LICENSE-THIRD-PARTY) and the full GPL text are bundled with the Mac app and printed by `openpatch-desktop --third-party-licenses`. Corresponding source is in this repository at the revision matching the binary. OpenPatch uses original native artwork and is independent of VCV, with no affiliation or endorsement. Other dependency licenses remain with their authors, including Stock Delay's [BSD-2-Clause libsamplerate](docs/licenses/libsamplerate-0.1.9.txt) adaptation. Panel typography uses [Rajdhani SemiBold](crates/openpatch-desktop/assets/fonts/README.md) under the SIL Open Font License; bundled font notices are available with `openpatch-desktop --font-license`.
+OpenPatch is an independent project and is not affiliated with VCV. [Release source code](https://github.com/dexterlabs1/openpatch/tree/v0.3.0)

@@ -173,6 +173,7 @@ fn wavetable_filename_with_extension(filename: &str, extension: &str) -> String 
 enum PendingAction {
     NewTemplate,
     Replace(Patch, String),
+    PatchEngine(String),
     Load(String),
     Recover(String),
     Close,
@@ -401,7 +402,16 @@ pub struct OpenPatch {
     catalog: Value,
     start: Instant,
     mcp_session: crate::mcp_session_ui::Panel,
+    patch_engine: crate::patch_engine_ui::Panel,
+    /// A pending build, with a fence only after its own replacement succeeds.
+    patch_engine_wait: Option<Option<crate::patch_engine_ui::DocumentFence>>,
+    /// Rack zoom to keep across a Patch Engine build (a fresh document would otherwise reset it).
+    patch_engine_zoom: f32,
+    /// Verified generated authored content; any edit, save or replacement revokes scratch status.
+    patch_engine_last: Option<crate::patch_engine_ui::GeneratedDocument>,
     construction: crate::construction_ui::Panel,
+    /// A Pause/Resume/Cancel pressed in the footer's construction status, applied next frame.
+    construction_footer_action: Option<crate::construction_ui::Action>,
     smoke_motion_origin: Option<Instant>,
     documents: DocumentState,
     projects: Option<Store>,
@@ -573,7 +583,7 @@ impl OpenPatch {
             shader_open: false,
             shader_status,
             analysis_tab: None,
-            visual_mode: 0,
+            visual_mode: crate::visuals::DEFAULT_MODE,
             scope: Scope::default(),
             volume,
             status: startup
@@ -596,7 +606,12 @@ impl OpenPatch {
             catalog: catalog(),
             start: Instant::now(),
             mcp_session: crate::mcp_session_ui::Panel::new(mcp),
+            patch_engine: Default::default(),
+            patch_engine_wait: None,
+            patch_engine_zoom: 1.0,
+            patch_engine_last: None,
             construction: crate::construction_ui::Panel::default(),
+            construction_footer_action: None,
             cable_palette: crate::cable_palette::Palette::default(),
             cable_palette_ui: crate::cable_palette_ui::Panel::default(),
             smoke_motion_origin: None,
@@ -955,6 +970,7 @@ impl OpenPatch {
             && self.file_mode.is_none()
             && !self.shader_open
             && !self.mcp_session.is_open()
+            && !self.patch_engine.is_open()
             && !self.settings_open
             && !self.audio_performance_open
             && !self.recovery_open
@@ -2043,6 +2059,7 @@ impl OpenPatch {
                 PendingAction::Replace(patch, title) => {
                     self.replace_now_guarded(patch, &title, true)
                 }
+                PendingAction::PatchEngine(title) => self.replace_patch_engine(&title, true),
                 PendingAction::Load(name) => self.load_document_guarded(&name, false, true),
                 PendingAction::Recover(name) => self.load_document_guarded(&name, true, true),
                 PendingAction::Close | PendingAction::DiscardClose => unreachable!(),
@@ -2215,6 +2232,18 @@ impl OpenPatch {
         }
     }
     fn replace_now_guarded(&mut self, patch: Patch, title: &str, require_saved: bool) {
+        self.replace_document_guarded(patch, title, require_saved, false);
+    }
+    fn replace_patch_engine(&mut self, title: &str, require_saved: bool) {
+        self.replace_document_guarded(Patch::new_v2(), title, require_saved, true);
+    }
+    fn replace_document_guarded(
+        &mut self,
+        patch: Patch,
+        title: &str,
+        require_saved: bool,
+        patch_engine: bool,
+    ) {
         // Commit and local project metadata share the same serialization
         // boundary. A later MCP replacement cannot be adopted by sync and then
         // accidentally relabeled with this bundled example's title/layout.
@@ -2226,6 +2255,19 @@ impl OpenPatch {
                 return;
             }
         };
+        if patch_engine && !require_saved && self.patch_engine_last.is_some() {
+            let unchanged = self.active_file.is_none()
+                && self
+                    .patch_engine_last
+                    .as_ref()
+                    .is_some_and(|generated| generated.matches(&live));
+            if !unchanged {
+                self.patch_engine_last = None;
+                drop(live);
+                self.request_action(PendingAction::PatchEngine(title.into()));
+                return;
+            }
+        }
         let result = (|| {
             if require_saved {
                 self.check_saved_content(&live)?;
@@ -2240,7 +2282,11 @@ impl OpenPatch {
             Err(error) => {
                 self.status = error;
                 if require_saved {
-                    self.confirm_discard = Some(PendingAction::Replace(patch, title.into()));
+                    self.confirm_discard = Some(if patch_engine {
+                        PendingAction::PatchEngine(title.into())
+                    } else {
+                        PendingAction::Replace(patch, title.into())
+                    });
                 }
                 drop(live);
                 self.sync();
@@ -2248,6 +2294,8 @@ impl OpenPatch {
                 return;
             }
         };
+        let document_generation = live.project_save_baseline().generation();
+        self.patch_engine_last = None;
         self.project = live.project_document().clone();
         self.patch = live.patch().clone();
         self.revision = document_revision;
@@ -2369,7 +2417,48 @@ impl OpenPatch {
         drop(live);
         self.sync();
         self.capture_document();
+        if patch_engine && self.patch_engine_wait.is_some() {
+            if let Ok(live) = self.shared.lock() {
+                if live.revision() == document_revision
+                    && live.project_save_baseline().generation() == document_generation
+                {
+                    self.patch_engine_wait =
+                        Some(Some(crate::patch_engine_ui::DocumentFence::capture(&live)));
+                }
+            }
+        }
     }
+    fn prepare_patch_engine(&mut self, title: &str) {
+        self.patch_engine_zoom = self.rack.zoom();
+        self.patch_engine_wait = Some(None);
+        // The scratch exception is checked again under the replacement lock.
+        let scratch = self.active_file.is_none() && self.patch_engine_last.is_some();
+        if scratch {
+            self.replace_document_guarded(Patch::new_v2(), title, false, true);
+        } else {
+            self.request_action(PendingAction::PatchEngine(title.into()));
+        }
+    }
+
+    fn service_patch_engine(&mut self) {
+        if let Some(generated) = self.patch_engine.take_generated() {
+            self.patch_engine_last = Some(generated);
+        }
+        if self.confirm_discard.is_some()
+            || self.deferred_action.is_some()
+            || self.after_save.is_some()
+        {
+            return;
+        }
+        if let Some(handoff) = self.patch_engine_wait.take() {
+            if let Some(fence) = handoff {
+                self.patch_engine.launch(&self.shared, fence);
+            } else {
+                self.patch_engine.cancel_armed();
+            }
+        }
+    }
+
     fn stock_mix_voice_layout() -> Value {
         json!({"version":1,"zoom":0.75,"pan":[24,12],"positions":{
             "bass":[0,0],"fifth":[390,0],"upper":[780,0],
@@ -2576,6 +2665,7 @@ impl OpenPatch {
         match action {
             PendingAction::NewTemplate => self.new_from_template(false),
             PendingAction::Replace(patch, title) => self.replace_now(patch, &title),
+            PendingAction::PatchEngine(title) => self.replace_patch_engine(&title, false),
             PendingAction::Load(name) => self.load_document(&name, false),
             PendingAction::Recover(name) => self.load_document(&name, true),
             PendingAction::Close | PendingAction::DiscardClose => {
@@ -3295,6 +3385,10 @@ impl OpenPatch {
     }
 
     fn global_shortcuts(&mut self, ctx: &egui::Context) {
+        // The Patch Engine panel owns the keyboard while open (arrows, Enter, Space, letters).
+        if self.patch_engine.is_open() {
+            return;
+        }
         if !self.library_enabled()
             || !ctx.input(|i| i.focused)
             || self.rack.annotation_keyboard_active()
@@ -3465,49 +3559,87 @@ impl OpenPatch {
             .frame(
                 egui::Frame::new()
                     .fill(Color32::from_rgb(27, 31, 31))
-                    .inner_margin(8),
+                    .inner_margin(egui::Margin {
+                        left: 6,
+                        right: 6,
+                        top: 3,
+                        bottom: 4,
+                    }),
             )
             .show(ctx, |ui| {
+                // One slim row holds the dock tabs, every visual mode and the
+                // dock actions, so the visual itself gets the rest of the dock.
+                let small = |text: &str| egui::RichText::new(text).size(12.5);
                 ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(3.0, 0.0);
+                    ui.spacing_mut().button_padding = egui::vec2(5.0, 1.0);
+                    ui.spacing_mut().interact_size.y = 18.0;
                     for (value, label) in [
                         (AnalysisTab::Scope, "Scope"),
                         (AnalysisTab::Visuals, "Visuals"),
                     ] {
-                        if ui.selectable_label(tab == value, label).clicked() {
+                        if ui.selectable_label(tab == value, small(label)).clicked() {
                             self.select_analysis(Some(value));
                         }
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
-                            .button("×")
+                            .button(small("×"))
                             .on_hover_text("Close analysis dock")
                             .clicked()
                         {
                             self.select_analysis(None);
                         }
-                        if tab == AnalysisTab::Visuals && ui.button("Edit GLSL").clicked() {
+                        if tab != AnalysisTab::Visuals {
+                            return;
+                        }
+                        if ui
+                            .button(small("GLSL…"))
+                            .on_hover_text("Edit the visualizer shader")
+                            .clicked()
+                        {
                             self.shader_open = true;
                         }
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            ui.add(egui::Separator::default().spacing(8.0));
+                            // Narrow windows scroll the chips instead of wrapping
+                            // them into a second row.
+                            egui::ScrollArea::horizontal()
+                                .id_salt("visual-modes")
+                                .scroll_bar_visibility(
+                                    egui::scroll_area::ScrollBarVisibility::AlwaysHidden,
+                                )
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        for (index, (mode, name)) in
+                                            crate::visuals::MODES.into_iter().enumerate()
+                                        {
+                                            if index == crate::visuals::STUDIO_MODE_COUNT {
+                                                ui.add(egui::Separator::default().spacing(6.0));
+                                            }
+                                            let response = ui.selectable_value(
+                                                &mut self.visual_mode,
+                                                mode,
+                                                small(name),
+                                            );
+                                            #[cfg(test)]
+                                            ui.ctx().data_mut(|d| {
+                                                d.insert_temp(
+                                                    egui::Id::new(("visual-mode", mode)),
+                                                    response.rect,
+                                                )
+                                            });
+                                            let _ = response;
+                                        }
+                                    });
+                                });
+                        });
                     });
                 });
-                ui.separator();
+                ui.add_space(3.0);
                 match self.analysis_tab {
                     Some(AnalysisTab::Scope) => self.scope.contents(ui, &self.patch, &self.catalog),
                     Some(AnalysisTab::Visuals) => {
-                        ui.horizontal(|ui| {
-                            for (mode, name) in crate::visuals::MODES {
-                                let response =
-                                    ui.selectable_value(&mut self.visual_mode, mode, name);
-                                #[cfg(test)]
-                                ui.ctx().data_mut(|d| {
-                                    d.insert_temp(
-                                        egui::Id::new(("visual-mode", mode)),
-                                        response.rect,
-                                    )
-                                });
-                                let _ = response;
-                            }
-                        });
                         let (wave, peak) = self
                             .audio
                             .as_ref()
@@ -3601,6 +3733,7 @@ impl OpenPatch {
                 && !self.audio_performance_open
                 && !self.shader_open
                 && !self.mcp_session.is_open()
+                && !self.patch_engine.is_open()
                 && !self.cable_palette_ui.keyboard_active()
                 && !(self.browser_open && self.library.keyboard_active())
                 && self.preset_dialog.is_none()
@@ -8161,6 +8294,20 @@ impl eframe::App for OpenPatch {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.update_frame(ctx);
+    }
+
+    fn on_exit(&mut self, gl: Option<&glow::Context>) {
+        self.cancel_wavetable_import();
+        self.mcp_session.shutdown();
+        if let (Some(v), Some(gl)) = (&self.visualizer, gl) {
+            v.destroy(gl);
+        }
+    }
+}
+
+impl OpenPatch {
+    fn update_frame(&mut self, ctx: &egui::Context) {
         self.poll_wavetable_import();
         if self.wavetable_import.is_some() {
             ctx.request_repaint_after(Duration::from_millis(16));
@@ -8210,7 +8357,7 @@ impl eframe::App for OpenPatch {
         self.service_manual_release(ctx);
         self.observe_document();
         self.toolbar(ctx);
-        if let Some(action) = self.construction.show(ctx) {
+        if let Some(action) = self.construction_footer_action.take() {
             self.status = match execute_shared(&self.shared, action.name, action.arguments) {
                 Ok(receipt) => format!(
                     "Construction {} · {} steps committed",
@@ -8245,6 +8392,55 @@ impl eframe::App for OpenPatch {
         }
         self.performance_keyboard(ctx);
         self.scope.service(&self.patch, self.audio.as_mut());
+        // Patch Engine is a docked side sheet: draw it before the rack takes the remaining space.
+        // Steam Deck friendly keys (map them to Deck buttons in Steam Input): F1 Patch Engine, PageUp/PageDown zoom,
+        // Home view, F11 full screen. They work with the Patch Engine open; text fields keep their keys.
+        if !ctx.wants_keyboard_input() {
+            let pressed = |k: egui::Key| ctx.input(|i| i.key_pressed(k) && i.modifiers.is_none());
+            if pressed(egui::Key::F1) {
+                self.patch_engine.toggle();
+            }
+            if pressed(egui::Key::PageUp) {
+                self.rack.zoom_step(true);
+            }
+            if pressed(egui::Key::PageDown) {
+                self.rack.zoom_step(false);
+            }
+            if pressed(egui::Key::Home) {
+                self.rack.reset_view();
+            }
+            if pressed(egui::Key::F11) {
+                let full = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
+            }
+        }
+        for request in self.patch_engine.show(ctx, &self.shared) {
+            match request {
+                crate::patch_engine_ui::Request::StartPlayback => {
+                    if let Some(audio) = &self.audio {
+                        if !audio.is_playing() {
+                            audio.set_playing(true);
+                            self.status = "Playing".into();
+                        }
+                    }
+                }
+                crate::patch_engine_ui::Request::ShowPatch => {
+                    self.rack.show_origin(self.patch_engine_zoom)
+                }
+                crate::patch_engine_ui::Request::Prepare => {
+                    if let Some(title) = self.patch_engine.prepared_title() {
+                        self.prepare_patch_engine(&title);
+                    }
+                }
+            }
+        }
+        // The existing smoke scenes own their layout. Panel::show may open the
+        // Patch Engine automatically on a small viewport's first frame; close
+        // that presentation before it can claim rack shortcuts in these scenes.
+        if self.smoke_test.is_some() && self.patch_engine.is_open() {
+            self.patch_engine.toggle();
+        }
+        self.service_patch_engine();
         self.analysis_dock(ctx);
         if self.smoke_test.is_none() || self.audio.is_some() {
             self.rack.set_port_lights(
@@ -8399,13 +8595,6 @@ impl eframe::App for OpenPatch {
             ctx.request_repaint_after(Duration::from_millis(33));
         }
     }
-    fn on_exit(&mut self, gl: Option<&glow::Context>) {
-        self.cancel_wavetable_import();
-        self.mcp_session.shutdown();
-        if let (Some(v), Some(gl)) = (&self.visualizer, gl) {
-            v.destroy(gl);
-        }
-    }
 }
 
 #[cfg(test)]
@@ -8464,6 +8653,9 @@ mod project_workflow_tests {
     }
     mod import_app_tests {
         include!("import_app_tests.rs");
+    }
+    mod patch_engine_lifecycle_tests {
+        include!("patch_engine_lifecycle_tests.rs");
     }
     mod construction_document_tests {
         include!("construction_document_tests.rs");
@@ -8591,7 +8783,12 @@ mod project_workflow_tests {
             catalog: catalog(),
             start: Instant::now(),
             mcp_session: crate::mcp_session_ui::Panel::new(true),
+            patch_engine: Default::default(),
+            patch_engine_wait: None,
+            patch_engine_zoom: 1.0,
+            patch_engine_last: None,
             construction: crate::construction_ui::Panel::default(),
+            construction_footer_action: None,
             cable_palette: crate::cable_palette::Palette::default(),
             cable_palette_ui: crate::cable_palette_ui::Panel::default(),
             smoke_motion_origin: None,
@@ -9346,25 +9543,33 @@ mod project_workflow_tests {
     fn parameter_smoke_fixture_opens_real_popup_without_a_pointer() {
         let dir = tempfile::tempdir().unwrap();
         let mut app = host(dir.path());
-        app.smoke_test = Some((dir.path().join("unused.png"), 605, 35));
+        app.smoke_test = Some((dir.path().join("unused.png"), 604, 35));
         let ctx = egui::Context::default();
-        app.smoke(&ctx);
-        app.sync();
         let mut output = None;
-        for frame in 0..18 {
-            app.smoke_test.as_mut().unwrap().1 = 606 + frame;
+        while app.smoke_test.as_ref().unwrap().1 < 622 {
+            let logical = app.smoke_test.as_ref().unwrap().1;
             let mut input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
                     egui::vec2(1000.0, 800.0),
                 )),
-                time: Some(frame as f64),
+                time: Some(logical as f64 / 60.0),
                 focused: false,
                 events: vec![egui::Event::WindowFocused(false)],
                 ..Default::default()
             };
             eframe::App::raw_input_hook(&mut app, &ctx, &mut input);
-            output = Some(ctx.run(input, |ctx| app.rack_workspace(ctx, None)));
+            output = Some(ctx.run(input, |ctx| {
+                app.update_frame(ctx);
+                // Include the native sizing pass across the setup606 transition.
+                if logical == 604 {
+                    ctx.request_discard("exercise editor setup sizing pass");
+                }
+            }));
+            assert!(
+                !app.patch_engine.is_open(),
+                "smoke scenes keep the small-screen startup panel from claiming rack input"
+            );
         }
         let output = output.unwrap();
         preset_text(&output, "Apply");
@@ -10548,6 +10753,47 @@ mod project_workflow_tests {
             draw(&mut app, 0.15 + step as f64 * 0.1, vec![event(false)]);
             assert_eq!(app.visual_mode, mode);
             assert_eq!(app.analysis_tab, Some(AnalysisTab::Visuals));
+        }
+    }
+
+    #[test]
+    fn compact_visuals_bar_keeps_every_mode_on_one_slim_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        app.select_analysis(Some(AnalysisTab::Visuals));
+        // Steam Deck and the narrower workflow-test window both fit the row.
+        for width in [1280.0, 1000.0] {
+            let ctx = egui::Context::default();
+            for frame in 0..2 {
+                let _ = ctx.run(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(width, 800.0),
+                        )),
+                        time: Some(frame as f64 * 0.05),
+                        focused: true,
+                        ..Default::default()
+                    },
+                    |ctx| app.analysis_dock(ctx),
+                );
+            }
+            let rects: Vec<egui::Rect> = crate::visuals::MODES
+                .iter()
+                .map(|(mode, _)| {
+                    ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new(("visual-mode", *mode))))
+                        .unwrap()
+                })
+                .collect();
+            let top = rects[0].top();
+            for rect in &rects {
+                assert!((rect.top() - top).abs() < 0.5, "modes share one row");
+                assert!(rect.height() <= 22.0, "mode chips stay slim: {rect:?}");
+                assert!(
+                    rect.right() <= width - 6.0,
+                    "mode chip clipped at {width}: {rect:?}"
+                );
+            }
         }
     }
 

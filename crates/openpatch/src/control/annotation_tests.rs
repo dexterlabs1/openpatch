@@ -278,8 +278,16 @@ fn content_schema_is_strict_and_shared_by_add_edit_and_presets() {
         &schema("apply_module_preset")["inputSchema"]["properties"]["preset"]["properties"]
             ["content"]
     );
-    assert_eq!(content["oneOf"][0]["additionalProperties"], false);
-    assert_eq!(content["oneOf"][1]["properties"]["width_hp"]["maximum"], 96);
+    let variant = |kind| {
+        content["oneOf"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|schema| schema["properties"]["type"]["const"] == kind)
+            .unwrap()
+    };
+    assert_eq!(variant("notes")["additionalProperties"], false);
+    assert_eq!(variant("blank")["properties"]["width_hp"]["maximum"], 96);
     assert!(
         schema("apply_edits")["inputSchema"]["properties"]["edits"]["items"]["properties"]["tool"]
             ["enum"]

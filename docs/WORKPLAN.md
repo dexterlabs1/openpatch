@@ -2,20 +2,110 @@
 
 Updated 2026-10-17. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
 
-## Stable release
+## Installed Mac build
 
-**OpenPatch 0.2.7 build 9 is installed at `~/Applications/OpenPatch.app`.**
-The user explicitly requested this upgrade on 2026-10-17. It includes the 77-panel
-Signal Atlas design, softer local glow, Stock Scope, pinned 2.6.4 voice models,
-source-preserving Rack import and native RackMCP Sequencer/Listen/Bridge controls.
-Ferrofluid, Studio Mixer and Stock Process are present. The optimized ARM64
-bundle's installed binary hashes and deep/strict ad-hoc signature match the
-verified build. The previous 0.2.6 app and an older extracted candidate were
-removed; patches/settings were untouched. Local family validation passed 2,616
-Rust tests and 123 Python/MCP tests, plus four bundled-release CLI smoke tests.
-[PR #32](https://github.com/dexterlabs1/openpatch/pull/32) is merged; its [full Mac CI](https://github.com/dexterlabs1/openpatch/actions/runs/39040128343) passed the same 2,616 Rust/123 Python tests, optimized build, packaging and visualizer integration. This is not a notarized public release or a
-native-window/audio-device qualification. Keep the installed app stable; macOS
-ARM remains first, Windows/Linux and MIDI/live performance remain deferred.
+**OpenPatch 0.3.0 build 10 is installed at `~/Applications/OpenPatch.app`.**
+The user requested the upgrade after publication. The installation used the
+verified public macOS ARM archive: its SHA-256 checksum, GUI/CLI binary hashes
+and deep/strict ad-hoc signature matched. The previous installed 0.2.7 bundle
+was removed; user patches/settings and Claude's separate preview were preserved.
+This installation does not establish native-window/audio-device qualification.
+Keep the installed build stable until the user requests another upgrade.
+
+## Repository integration queue (2026-10-18)
+
+The branch audit confirms that all completed Patch Engine, visual, rack-tool and
+creative-family changes are already on `main`. No additional product feature
+was ready to merge. Superseded Wordpatch/release checkpoints and merged feature
+branches have been removed after a verified recovery backup. Historical archived
+checkouts retain their source and ignored validation evidence. Dirty checkouts
+and Claude's working branch are preserved.
+
+Only two unfinished product lines need integration:
+- [Recall Random — draft PR #37](https://github.com/dexterlabs1/openpatch/pull/37):
+  synchronized with current `main`; native Engine/state/capture/UI/MCP integration
+  and focused macOS qualification remain.
+- [Rack binary hosting — draft PR #38](https://github.com/dexterlabs1/openpatch/pull/38):
+  historical experimental checkpoint; 21 merge-conflict paths and the public
+  activation/save/device/compatibility gates remain. It is excluded from 0.3.0.
+
+[Branch disposition and recovery](BRANCH_STATUS.md) records the remaining work,
+protected dirty checkouts and rules for the next milestone. Earlier sections
+below retain historical milestone evidence; their old installation statements
+are historical, not the current installed version.
+
+## Latest public release: 0.3.0 build 10
+
+[OpenPatch 0.3.0](https://github.com/dexterlabs1/openpatch/releases/tag/v0.3.0)
+is published for macOS ARM, Windows x64 and Steam Deck/Linux x64. [PR #35](https://github.com/dexterlabs1/openpatch/pull/35)
+merges Claude's latest Patch Engine and visual modes, the five finished creative
+instruments, scoped rack organization, signal tracing, cable materials and footer
+tools. The Mac app was subsequently upgraded to this same release at the user’s
+request, as recorded above. Experimental VCV binary hosting is excluded.
+
+The [final release gate](https://github.com/dexterlabs1/openpatch/actions/runs/39090065990)
+passed strict workspace lint, complete refreshed desktop suites and workspace
+doc tests on all three platforms, optimized binaries, packaged launch/signature/
+installer checks, all **153 Linux native/Mesa captures**, Python/MCP and browser
+integration. Mac and Linux each pass **1,381 desktop tests** (15 intentionally
+ignored); Python discovery runs 131 tests per platform, with platform-specific
+skips where applicable. Unchanged CLI/Core results are source-checked against
+[the preceding full source gate](https://github.com/dexterlabs1/openpatch/actions/runs/39088036745).
+The reuse check rejects changed CLI/Core/dependency/package source and reruns
+complete desktop and doc tests for desktop changes. Release archives include
+SHA-256 checksums and source-tree provenance. Windows audio devices and Steam
+Deck hardware/game mode still require device qualification; these are separate
+from the automated native-window and protocol checks.
+
+Release fixes protect Save/Discard/Cancel for generated patches and fence
+asynchronous construction against another client's document edits. Shader LF
+checkout works consistently on Windows; native smoke scenes explicitly close
+the small-screen startup panel so it cannot steal editor input. Normal startup
+behavior is unchanged. Portable Linux installation preserves user patches and
+settings. The new installer also installs the updated release-asset updater.
+
+Recall Random's source checkpoint remains separately preserved on
+`work/recall-random`; it is not a sixth catalog instrument. Continue its native
+state/capture/UI integration and the remaining fifteen creative instruments,
+while retaining all broader parity, compatibility and device requirements.
+
+## User-requested rack workflow and creative expansion (2026-10-17)
+
+The first creative family is merged through [PR #34](https://github.com/dexterlabs1/openpatch/pull/34)
+at `7248095`: three source-derived instruments and their shared seated-black-screw
+rendering. [Full macOS CI](https://github.com/dexterlabs1/openpatch/actions/runs/39069352032) passed **2,693 Rust tests and 127 Python/MCP tests**, strict lint/format checks, optimized ARM binaries, application packaging and browser visualizer integration. Other rack/toolbar work and experimental
+binary hosting remain preserved on `work/rack-binary-feasibility` at `71c0cba`;
+[recorded rack tools](https://github.com/dexterlabs1/openpatch/tree/71c0cba/design/reviews/rack-tools-v1)
+and [host tools](https://github.com/dexterlabs1/openpatch/tree/71c0cba/design/reviews/host-tools-v1)
+are separate pending integration work. No source change is installed; keep
+0.2.7 build 9 stable. Claude's Wordpatch work is independent.
+
+The user's next creative-library milestone is [twenty genuinely new instruments](CREATIVE_MODULES_20.md),
+with independent contracts rather than renamed existing kinds. **Tidal Functions,
+Frame Scene and Segment Garden passed the first family gate. Event Fork and Rhythm Terrain are the
+fourth and fifth finished instruments in 0.3.0; fifteen remain.** Tidal
+Functions’ native Rust generator/extractor matches 129,840 frames in 34 pinned C++ reference cases
+bit for bit, including nonzero amplitude scans, while preserving the original
+frame-zero clock failure as a negative and explicitly adapting native startup.
+Shared Signal Atlas controls, actual output lamps, matching browser thumbnails,
+MCP/history/presets/reopen and callback no-heap checks have focused Mac evidence.
+[Contract and bounds](TIDAL_FUNCTIONS.md), [actual panel capture](../design/reviews/tidal-functions-v1/README.md).
+Frame Scene adds 64 persistent stable-ID scenes, source-integer keyframing,
+explicit ideal VCA normaling, real UI telemetry and shared revision/history/MCP
+editing. Its 25 source cases match 163,013 integer records and pass an independent
+UBSan/bounds audit; source-undefined endpoints have explicit native extensions.
+[Contract and example](FRAME_SCENE.md), [actual shared panel review](../design/reviews/frame-scene-v1/README.md).
+Segment Garden adds six persistent source kernels, physical-gate grouping, all standard
+segment modes, source-clock buffering and ordered edge capture. Its shared panel, real
+telemetry, seeded controls, MCP/presets/reopen and callback no-heap paths have focused Mac
+evidence; raw source qualification covers 952,896 records across 69 cases, with guarded
+endpoints and the internal zero-division boundary kept separate.
+[Contract and source bounds](SEGMENT_GARDEN.md), [shared panel review](../design/reviews/segment-garden-v1/README.md).
+The focused family cut passes local Mac validation: **2,693 Rust tests and 127 Python/MCP tests**, strict workspace Clippy, formatting and doc tests. The three normal-room panel/thumbnail captures are byte-identical to their reviewed checkpoints; all 55 module/reference files match the qualified source. Three regression issues were corrected: content schema tests now select by type, the spacer geometry test recognizes seated screws, and two example guides fit their panels without changing graph or parameter data. The same family-level macOS CI gate passed in PR #34. Source fidelity, shared UI/MCP/history, Custom plus functional tags for original instruments and Mac validation remain done requirements. Binary-host
+MCP save integration, active panels and actual device qualification remain open
+parallel goal requirements; no hosting-completion or new installation is claimed.
+
+**Next family, `work/creative-rhythm`:** [Event Fork](EVENT_FORK.md) adds two source-derived Bernoulli routers with physical input normaling, shared seeded RNG, toggle and latch memory. Eighteen source cases cover 12,190 exact raw scans plus the complete ADC table; 513 genuine frames also pass through the actual native Engine. Six adapter checks, four Engine contracts, callback allocation/deallocation checks at five rates, six UI checks, the 90-kind shared-renderer guard, readable factory guides, actual stdio MCP/history/preset/reopen, strict Clippy and reviewed normal/dim panels pass. Its quiet routed-duet example renders offline without clipping. The 0.3.0 release gate provides family-level validation; no local install or hardware/device qualification is claimed. [Rhythm Terrain](RHYTHM_TERRAIN.md) adds the pinned Grids drum maps and Euclidean engine, accents, swing, source clock/reset and runtime tap authority. Its genuine source/audited/Rust comparison passes 49 cases / 377,402 operations; the actual Engine matches 29,400 source frames. Focused native callback/no-heap, shared UI/history, stdio MCP/presets/reopen, normal/dim panels and a quiet offline groove have evidence. Fast TAP clicks preserve ordered HIGH/LOW snapshots, and emergency release cancels stale presses. The shared default rack/browser renderer now covers 91 kinds. Continue Recall Random after the completed cross-platform release gate. Retain all broader parity/host/rack-workflow requirements above.
 
 ## User-requested rack workflow and creative expansion (2026-10-17)
 

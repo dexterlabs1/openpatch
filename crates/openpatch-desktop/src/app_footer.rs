@@ -35,6 +35,9 @@ impl OpenPatch {
                     self.mcp_status(ui);
                     ui.separator();
                     ui.allocate_ui_with_layout(ui.available_size(),egui::Layout::left_to_right(egui::Align::Center),|ui| {
+                        if let Some(action) = self.construction.footer(ui) {
+                            self.construction_footer_action = Some(action);
+                        }
                         ui.label(RichText::new(format!("{} modules · {} cables",self.patch.nodes.len(),self.patch.cables.len())).size(10.0).color(MUTED))
                             .on_hover_text(if self.patch.version==2 {"Polyphonic engine v2"}else{"Legacy mono engine"});
                         if self.rack.selection_count()>1 {

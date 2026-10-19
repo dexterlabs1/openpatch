@@ -801,6 +801,7 @@ impl OpenPatch {
                     ui.label(RichText::new("OPENPATCH").strong().size(13.0).color(TEXT));
                     ui.add_space(10.0);
                     ui.add_enabled_ui(enabled, |ui| self.toolbar_menus(ui));
+                    ui.add_enabled_ui(enabled, |ui| self.patch_engine.toolbar(ui));
                     if !compact {
                         ui.add_enabled_ui(enabled, |ui| self.toolbar_organize(ui));
                     }

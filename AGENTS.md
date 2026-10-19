@@ -4,7 +4,7 @@ Read this file and [docs/WORKPLAN.md](docs/WORKPLAN.md) first. Open only the sou
 
 ## Delivery and focus
 
-- Keep the installed 0.2.7 build 9 stable until the user requests an upgrade or a substantial milestone is ready. Do not package, increment versions or install after every fix/module.
+- Keep the installed 0.3.0 build 10 stable until the user requests an upgrade or a substantial milestone is ready. Do not package, increment versions or install after every fix/module.
 - Validate macOS ARM only by default. Linux/Windows and throughput benchmarks are deferred to an explicitly requested full-platform milestone. MIDI and live performance remain last.
 - Work on one product milestone at a time. Signal Atlas, Stock Scope, source-preserving Rack import, the version-specific voice chain, native RackMCP sequencing/control and Core text import are delivered through PRs #28–#33 with full macOS CI. The first existing ARM binary load/process/persistent-restore probe passes separately; next pursue docs/BINARY_HOST_V1.md while preserving docs/COMPATIBILITY_DECISION.md. Native Rust extensions and existing-binary support remain separate; a probe or individual port does not establish ecosystem compatibility. Preserve native identities, shared document/history/MCP authority and shared rack/browser rendering. Do not install automatically.
 - Lighting should use restrained, local halos. The user rejected broad, bright neon clouds; keep readable lenses, soft falloff and visible signal differences without washing the panel in light.

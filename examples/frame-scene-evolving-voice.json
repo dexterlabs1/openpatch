@@ -7,7 +7,7 @@
       "kind": "notes",
       "content": {
         "type": "notes",
-        "text": "FRAME SCENE \u00b7 EVOLVING VOICE\nTidal Functions scans four authored scenes.\nScene1 controls volume; Scene2 opens the ladder.\nClick a stored tick to select its stable ID.\nDrag a lane point or its large LEVEL knob.\nDrag the top tick to move the stored timestamp.\nFRAME is the configured offset; LIVE is measured.\nCURVES changes easing and channel response.\nMCP edit_frame_scene uses the same undo/history.\nRequires the Frame Scene development build."
+        "text": "FRAME SCENE\nEVOLVING VOICE\nTidal scans four scenes.\nScene 1: voice level.\nScene 2: filter cutoff.\nSelect a stored tick.\nDrag LEVEL or a lane.\nMove time with top tick.\nCURVES edits response."
       }
     },
     {

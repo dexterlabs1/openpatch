@@ -102,6 +102,7 @@ enum ModuleKind {
     Push,
     Gates,
     RandomValues,
+    RhythmTerrain,
     Random,
     ShiftRegister,
     AdsrEg,
@@ -144,6 +145,7 @@ impl ModuleKind {
             "push" => Some(Self::Push),
             "gates" => Some(Self::Gates),
             "random_values" => Some(Self::RandomValues),
+            "rhythm_terrain" => Some(Self::RhythmTerrain),
             "random" => Some(Self::Random),
             "sh_asr" => Some(Self::ShiftRegister),
             "adsr_eg" => Some(Self::AdsrEg),
@@ -187,6 +189,7 @@ impl ModuleKind {
             Self::Push => "push",
             Self::Gates => "gates",
             Self::RandomValues => "random_values",
+            Self::RhythmTerrain => "rhythm_terrain",
             Self::Random => "random",
             Self::ShiftRegister => "sh_asr",
             Self::AdsrEg => "adsr_eg",
@@ -224,6 +227,7 @@ impl ModuleKind {
                 | Self::Push
                 | Self::Gates
                 | Self::RandomValues
+                | Self::RhythmTerrain
                 | Self::ShiftRegister
                 | Self::AdsrEg
         )
@@ -273,6 +277,13 @@ impl ModuleKind {
                     | ModuleAction::ResetPress
                     | ModuleAction::ResetRelease
             ),
+            Self::RhythmTerrain => matches!(
+                action,
+                ModuleAction::TapPress
+                    | ModuleAction::TapRelease
+                    | ModuleAction::ReleaseTap
+                    | ModuleAction::Reset
+            ),
             Self::MidiGate => action == ModuleAction::MidiPanic,
             Self::Push => matches!(
                 action,
@@ -297,6 +308,7 @@ fn is_release(action: ModuleAction) -> bool {
             | ModuleAction::ClockRelease
             | ModuleAction::RunRelease
             | ModuleAction::SeqGateRelease(_)
+            | ModuleAction::TapRelease
     ) || matches!(action.pulse_button(), Some((_, false)))
 }
 #[derive(Clone, Copy)]
@@ -837,8 +849,10 @@ impl Meter {
                         automatic_channels: (entry.kind == ModuleKind::Merge
                             && automatic_channels <= 16)
                             .then_some(automatic_channels as u8),
-                        clock_frequency: (entry.kind == ModuleKind::StockLfo
-                            && clock_frequency.is_finite()
+                        clock_frequency: (matches!(
+                            entry.kind,
+                            ModuleKind::StockLfo | ModuleKind::RhythmTerrain
+                        ) && clock_frequency.is_finite()
                             && clock_frequency > 0.0)
                             .then_some(clock_frequency),
                         waveform_position: (waveform_position.is_finite()
@@ -3516,7 +3530,10 @@ impl EventReader {
                                     if binding.kind != ModuleKind::StockQuantizer {
                                         lights.playing_notes = None;
                                     }
-                                    if binding.kind != ModuleKind::StockLfo {
+                                    if !matches!(
+                                        binding.kind,
+                                        ModuleKind::StockLfo | ModuleKind::RhythmTerrain
+                                    ) {
                                         lights.clock_frequency = None;
                                     }
                                     if binding.kind != ModuleKind::Merge {
@@ -3554,6 +3571,7 @@ mod tests {
     include!("stock_seq3_performance_tests.rs");
     include!("stock_quantizer_performance_tests.rs");
     include!("stock_octave_performance_tests.rs");
+    include!("rhythm_terrain_performance_tests.rs");
 
     fn effective_parameter_patch() -> Patch {
         serde_json::from_value(json!({

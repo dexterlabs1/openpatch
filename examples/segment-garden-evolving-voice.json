@@ -7,7 +7,7 @@
       "kind": "notes",
       "content": {
         "type": "notes",
-        "text": "SEGMENT GARDEN \u00b7 EVOLVING VOICE\nSix independent Ramp/Step/Hold functions.\nGarden output1 slowly morphs Tidal smoothness.\nTidal scans the stored Frame Scene gains.\nScene controls a soft ladder-filtered voice.\nPatch GATE inputs to form linked groups.\nEach gate starts a group until the next gate.\nGrouped OUTs show stage progress; ACTIVE is separate.\nControls, presets and MCP share one history.\nRequires the three-instrument development family."
+        "text": "SEGMENT GARDEN\nEVOLVING VOICE\nSix independent stages.\nGarden shapes Tidal.\nTidal scans Frame Scene.\nScene shapes the voice.\nGATE starts a group.\nNext GATE starts another.\nOUT: stage progress.\nACTIVE: stage gate."
       }
     },
     {
