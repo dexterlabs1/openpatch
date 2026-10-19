@@ -765,6 +765,40 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertEqual(reopened["execution"]["requested_disposition"], "suspended_unresolved")
         self.assertEqual(full(), edited)
 
+    def test_xfade_advertised_controls_stdio_history_and_full_save_reopen(self) -> None:
+        tools = self.client.request("tools/list")["result"]["tools"]
+        schema = next(t["inputSchema"] for t in tools if t["name"] == "set_hosted_parameter")
+        self.assertEqual(set(schema["properties"]["parameter"]["enum"]), {"offset", "scale", "mix", "curve", "linear"})
+        document = json.loads((REPOSITORY / "examples/experimental-hosted-xfade.json").read_text())
+        # Use a binary-exact quiet native gain so JSON equality tests hosted
+        # state/history rather than the native f32 inspection representation.
+        next(n["node"] for n in document["graph"]["nodes"] if n.get("node", {}).get("id") == "amp")["params"]["gain"] = 0.03125
+        self.require_tool_success("replace_document", {"document": document})
+
+        def full() -> dict[str, Any]:
+            return self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))["document"]
+
+        original = full()
+        for parameter, value in [("mix", -0.25), ("curve", 0.75), ("linear", 1)]:
+            self.require_tool_success("set_hosted_parameter", {"id": "binary", "parameter": parameter, "value": value})
+        edited = full()
+        state = next(n["module"]["state"] for n in edited["graph"]["nodes"] if n["type"] == "hosted")
+        self.assertEqual({p["id"]: p["value"] for p in state["params"]}, {0: -0.25, 1: 0.75, 2: 1})
+        self.assertEqual(state["data"], {})
+        for _ in range(3):
+            self.require_tool_success("undo")
+        self.assertEqual(full(), original)
+        for _ in range(3):
+            self.require_tool_success("redo")
+        self.assertEqual(full(), edited)
+        for parameter, value in [("linear", 0.5), ("curve", -0.25), ("offset", 0)]:
+            self.require_tool_error("set_hosted_parameter", {"id": "binary", "parameter": parameter, "value": value})
+        self.assertEqual(full(), edited)
+        self.require_tool_success("save_document", {"filename": "xfade.json"})
+        self.assertEqual(json.loads((self.workspace / "xfade.json").read_text()), edited)
+        self.require_tool_success("load_document", {"filename": "xfade.json"})
+        self.assertEqual(full(), edited)
+
     def test_atomic_preview_commit_and_shared_history(self) -> None:
         before = self.patch_snapshot()
         arguments = {"expected_revision": before["revision"], "edits": [
