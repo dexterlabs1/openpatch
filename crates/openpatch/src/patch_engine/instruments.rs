@@ -462,7 +462,11 @@ pub(super) fn choose(
         .filter(|x| x.role == role && fit(x))
         .map(|x| {
             let a = affinity(x, genre, mood, texture)
-                + if native.contains(&x.name) { 1.5 } else { 0.0 };
+                + if native.contains(&x.name) && rating(x.name) >= 0.6 {
+                    1.5
+                } else {
+                    0.0
+                };
             let w = (0.5 + a).powi(2)
                 * rating(x.name)
                 * if avoid.contains(&x.name) { 0.1 } else { 1.0 };
@@ -781,10 +785,11 @@ impl Recipe {
             return None;
         }
         let (pp, po) = self.key_src(c, "pitch3");
+        let (gn, gp) = self.gate_src(c, "gate3");
         // shared envelope × lane VCA for the sustained designs
         let gated = |r: &mut Recipe, env: &Value| {
             r.module("lead_env", "adsr", row, env.clone(), "Envelope");
-            r.con("seq_music", "gate3", "lead_env", "gate");
+            r.con(&gn, &gp, "lead_env", "gate");
             r.module(
                 "lead_gate",
                 "stock_vca",
@@ -816,7 +821,7 @@ impl Recipe {
                     },
                 );
                 self.con(&pp, &po, "lead_voice", "pitch");
-                self.con("seq_music", "gate3", "lead_voice", "trigger");
+                self.con(&gn, &gp, "lead_voice", "trigger");
                 self.con("lanes", lane_port, "lead_voice", "level");
                 self.con("motion", "sine", "lead_voice", "morph");
                 Some(("lead_voice".into(), "out".into()))
@@ -825,7 +830,7 @@ impl Recipe {
                 self.module("lead_voice", "modal_resonator", row, json!({"frequency": C4, "stiffness": 0.0, "decay": r3(c.rng.uni(2.0, 5.0)), "damping": r3(c.rng.uni(0.15, 0.4)),
                     "strike_position": r3(c.rng.uni(0.1, 0.25)), "pickup_position": r3(c.rng.uni(0.55, 0.75)), "strike_strength": 1.0, "level": 1.0}), "Modal bells");
                 self.con(&pp, &po, "lead_voice", "pitch");
-                self.con("seq_music", "gate3", "lead_voice", "strike");
+                self.con(&gn, &gp, "lead_voice", "strike");
                 self.module(
                     "lead_vca",
                     "stock_vca",
