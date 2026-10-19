@@ -2,16 +2,26 @@
 
 Updated 2026-10-19. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
 
-## All-platform release candidate: 0.3.1 build 11
+## Latest public release: 0.3.1 build 11
 
-The user requested new builds for macOS ARM, Windows x64 and Steam Deck/Linux
-x64. This candidate includes the merged Recall Random and experimental Mac
-binary-host work, plus constructor-stack and telemetry-test corrections.
-Full platform CI, package identity/signatures, installer and MCP checks are the
-release gate. Publish verified archives with checksums and source provenance
-only after all targets pass. Do not install automatically. Windows audio and
-Deck hardware/game mode remain separate hands-on qualifications; the existing
-binary-host device result covers only the documented Mac profile.
+[OpenPatch 0.3.1](https://github.com/dexterlabs1/openpatch/releases/tag/v0.3.1)
+is published for macOS ARM, Windows x64 and Steam Deck/Linux x64 through
+[PR #41](https://github.com/dexterlabs1/openpatch/pull/41). It adds Recall Random,
+experimental Mac binary hosting for one separately configured pinned Bogaudio
+OFFSET, and constructor-stack and telemetry-test corrections.
+
+[Full three-platform CI](https://github.com/dexterlabs1/openpatch/actions/runs/39267303832)
+passes strict lint, Rust correctness/allocation, optimized binaries, packaged
+signature/launch/installer checks, Python/MCP, browser integration and Linux
+native/Mesa captures. Published archives match the CI hashes and source tree;
+versions, architectures, licenses and examples are verified. The downloaded Mac
+archive also passes strict/deep signature and bundled CLI catalog checks.
+Release checksums and build provenance identify the exact tested files.
+
+The installed Mac app remains 0.3.0 build 10; no automatic installation was
+performed. Windows audio and Deck hardware/game mode still require hands-on
+qualification. Existing binary-host device evidence covers only the documented
+Mac profile; general VCV plugin compatibility remains unfinished.
 
 ## Installed Mac build
 
@@ -49,15 +59,15 @@ performance stay last.
 
 Finished feature branches are removed after merge; historical worktrees and
 validation evidence remain available. Protected dirty checkouts and Claude's
-working branch are preserved. The installed 0.3.0 app and published downloads
-are unchanged; no new release or installation was performed.
+working branch are preserved. The installed 0.3.0 app is unchanged; the
+subsequent 0.3.1 publication is recorded above.
 
 [Branch disposition and recovery](BRANCH_STATUS.md) records the remaining work,
 protected dirty checkouts and rules for the next milestone. Earlier sections
 below retain historical milestone evidence; their old installation statements
 are historical, not the current installed version.
 
-## Latest public release: 0.3.0 build 10
+## Previous public release: 0.3.0 build 10
 
 [OpenPatch 0.3.0](https://github.com/dexterlabs1/openpatch/releases/tag/v0.3.0)
 is published for macOS ARM, Windows x64 and Steam Deck/Linux x64. [PR #35](https://github.com/dexterlabs1/openpatch/pull/35)
@@ -87,8 +97,8 @@ the small-screen startup panel so it cannot steal editor input. Normal startup
 behavior is unchanged. Portable Linux installation preserves user patches and
 settings. The new installer also installs the updated release-asset updater.
 
-Recall Random is the sixth creative instrument in the development candidate;
-five ship in 0.3.0 and fourteen remain after it. Broader parity, compatibility and
+Recall Random is the sixth creative instrument, now shipped in 0.3.1;
+five shipped in 0.3.0 and fourteen remain after it. Broader parity, compatibility and
 device requirements remain open.
 
 ## User-requested rack workflow and creative expansion (2026-10-17)
