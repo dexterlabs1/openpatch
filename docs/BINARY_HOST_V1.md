@@ -106,8 +106,12 @@ buffering; the sustained test did not remeasure it. Neither is a physical
 input/output loopback measurement. Original pre-Recall and earlier integrated
 device receipts retain their exact source/binary scope; the final run above
 requalifies the integrated executable after the constructor repair.
-[Final macOS milestone CI](https://github.com/dexterlabs1/openpatch/actions/runs/39191932183)
-is pending. The installed app remains unchanged; general binary/widget
+[Final macOS milestone CI](https://github.com/dexterlabs1/openpatch/actions/runs/39193043027)
+passes the full Rust correctness/allocation, Python/MCP, optimized ARM build,
+package/signature and visualizer gates. PR #38 is merged. The subsequent
+telemetry change affects only its concurrency test clock; lease-expiry tests
+remain exact, and the final device source manifest is unchanged.
+The installed app remains unchanged; general binary/widget
 compatibility and broader device qualification remain separate.
 
 ## Prior implementation checkpoints

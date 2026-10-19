@@ -1,6 +1,6 @@
 # Branch and integration status
 
-Audited 2026-10-18 against `main` at `b1e84a6`. OpenPatch 0.3.0 build 10 is
+Updated 2026-10-18 after PRs #37 and #38 merged. OpenPatch 0.3.0 build 10 is
 published and installed on the user's Mac. This audit changes no application
 code or installed files.
 
@@ -18,17 +18,18 @@ and the old workflow checkpoint also remain in the recovery bundle. Clean
 historical worktrees were detached from deleted branches. Their files and ignored
 source-reference/build evidence were retained in OpenPatch Archive.
 
-## Product candidates
+## Finished product work
 
-| Work | Review location | Status |
+| Work | Merged review | Validation |
 | --- | --- | --- |
-| Recall Random | [#37](https://github.com/dexterlabs1/openpatch/pull/37), `work/recall-random` | Native Engine, six weighted slots, revision-fenced capture, shared panel/telemetry/MCP/history/presets/reopen and callback no-heap checks implemented. Genuine source comparison passes 26 cases / 288,485 observations. Final macOS milestone CI remains the merge gate. |
-| Experimental Rack binary host | [#38](https://github.com/dexterlabs1/openpatch/pull/38), `work/rack-binary-feasibility` | Current main and Recall candidate integrated; explicit activation/shared controls, coherent MCP save and native/Scope continuity implemented. Public real-binary workflow and sustained physical Mac output-device tests pass. Prior device receipt keeps its source/binary pins; integrated device, native-window review and macOS CI pending. One pinned OFFSET and fixed audio profile; wider compatibility remains separate. |
+| Recall Random | [#37](https://github.com/dexterlabs1/openpatch/pull/37), `e6b6164` | Native Engine, weighted scales/capture, shared UI/MCP/history and callback no-heap checks; genuine source comparison; [complete macOS gate](https://github.com/dexterlabs1/openpatch/actions/runs/39191841453). |
+| Experimental Rack binary host | [#38](https://github.com/dexterlabs1/openpatch/pull/38), `b0ce1fe` | Shared activation/controls/save, native/Scope continuity, native-window review, final physical Mac device test and [complete macOS gate](https://github.com/dexterlabs1/openpatch/actions/runs/39193043027). One pinned OFFSET and fixed audio profile; wider compatibility remains separate. |
 
-Both candidates preserve the installed 0.3.0 build. Fourteen further creative
-instruments and the larger parity roadmap remain; MIDI/live performance stay
-last. Delete the finished feature branches after their PRs merge, while retaining
-local evidence and protected work below.
+Both finished feature branches are deleted after merge. Their local worktrees
+and ignored validation evidence are retained. Source is integrated without
+changing the installed 0.3.0 build or published downloads. Fourteen further
+creative instruments and the larger parity roadmap remain; MIDI/live
+performance stay last.
 
 ## Protected local work
 

@@ -93,5 +93,6 @@ recording authority, real callback publication, presets and save/reopen. The
 callback allocation/deallocation checks cover five host sample rates.
 
 The normal and dim panel reviews are [here](../design/reviews/recall-random-v1/README.md).
-Final macOS CI is the merge gate; no installed-build or hardware-equivalence
-claim follows from these checks.
+[Full macOS CI](https://github.com/dexterlabs1/openpatch/actions/runs/39191841453)
+passes, and PR #37 is merged. No installed-build or hardware-equivalence claim
+follows from these checks.

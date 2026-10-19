@@ -1,6 +1,6 @@
 # Current work plan
 
-Updated 2026-10-17. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
+Updated 2026-10-18. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
 
 ## Installed Mac build
 
@@ -14,28 +14,32 @@ Keep the installed build stable until the user requests another upgrade.
 
 ## Repository integration queue (2026-10-18)
 
-The branch audit confirms that all completed Patch Engine, visual, rack-tool and
-creative-family changes are already on `main`. No additional product feature
-was ready to merge. Superseded Wordpatch/release checkpoints and merged feature
-branches have been removed after a verified recovery backup. Historical archived
-checkouts retain their source and ignored validation evidence. Dirty checkouts
-and Claude's working branch are preserved.
+Both product lines left by the branch audit are now finished and merged:
 
-Two product candidates are now implemented and in final macOS review:
-- [Recall Random — PR #37](https://github.com/dexterlabs1/openpatch/pull/37):
-  native source-derived rhythms/CV, six weighted scales, revision-fenced recording,
-  shared panel/browser, MCP/history/presets and a quiet example. Source-reference,
-  focused Engine/callback/no-heap and workflow checks pass. [Guide](RECALL_RANDOM.md).
-- [Experimental Rack binary hosting — PR #38](https://github.com/dexterlabs1/openpatch/pull/38):
-  current main and Recall candidate integrated, explicit activation, shared controls, coherent MCP save
-  and ordinary graph/Scope continuity. Actual public binary workflow and a
-  60-second physical Mac output-device gate pass for one pinned Bogaudio OFFSET.
-  Prior device evidence retains its exact source/binary pins; integrated device,
-  native-window and milestone checks are pending. [Evidence](BINARY_HOST_V1.md).
-  This is a bounded experimental capability, not general Rack binary compatibility.
+- [Recall Random — PR #37](https://github.com/dexterlabs1/openpatch/pull/37),
+  merged at `e6b6164`: native source-derived rhythms/CV, six weighted scales,
+  revision-fenced recording, shared panel/browser, MCP/history/presets and a
+  quiet example. [Full macOS CI](https://github.com/dexterlabs1/openpatch/actions/runs/39191841453)
+  passes. [Guide](RECALL_RANDOM.md).
+- [Experimental Rack binary hosting — PR #38](https://github.com/dexterlabs1/openpatch/pull/38),
+  merged at `b0ce1fe`: explicit activation, shared controls, coherent native/MCP
+  save and ordinary native/Scope continuity for one pinned Bogaudio OFFSET.
+  [Full macOS CI](https://github.com/dexterlabs1/openpatch/actions/runs/39193043027),
+  the native-window workflow and the final 60-second physical Mac output-device
+  gate pass. [Scope and evidence](BINARY_HOST_V1.md).
 
-Final milestone CI remains the merge gate. Neither candidate changes the
-installed 0.3.0 app or its published downloads.
+The CI gates include full Rust correctness/allocation, Python/MCP, optimized ARM
+binaries, packaging/signatures and visualizer integration. The constructor-stack
+regression is repaired without enlarging test stacks; the telemetry concurrency
+check uses a fixed logical clock while separate tests retain exact lease expiry.
+This is bounded experimental binary hosting, not general Rack compatibility.
+Fourteen creative instruments and the broader parity roadmap remain. MIDI/live
+performance stay last.
+
+Finished feature branches are removed after merge; historical worktrees and
+validation evidence remain available. Protected dirty checkouts and Claude's
+working branch are preserved. The installed 0.3.0 app and published downloads
+are unchanged; no new release or installation was performed.
 
 [Branch disposition and recovery](BRANCH_STATUS.md) records the remaining work,
 protected dirty checkouts and rules for the next milestone. Earlier sections

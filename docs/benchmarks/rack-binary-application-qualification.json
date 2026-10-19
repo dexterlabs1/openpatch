@@ -2,7 +2,7 @@
   "schema": 1,
   "date": "2026-10-18",
   "platform": "macOS ARM64",
-  "status": "final integrated optimized Mac output-device gate, public application workflow and native-window review pass; final macOS milestone CI pending",
+  "status": "passed bounded experimental application, native-window, final physical Mac device and complete macOS CI gates; merged in PR38",
   "source_commit": "5a4687100dcae10832d811a7e327d85839f94f9b",
   "runtime_commit": "d58cfb4edfb9a67b754794e3c6e23883809cd8b2",
   "fingerprints": {
@@ -81,9 +81,12 @@
       "log": "native-test-output/host-completion/final-clippy.log"
     },
     "milestone_ci": {
-      "status": "pending",
-      "run_id": 39191932183,
-      "url": "https://github.com/dexterlabs1/openpatch/actions/runs/39191932183"
+      "status": "passed",
+      "run_id": 39193043027,
+      "url": "https://github.com/dexterlabs1/openpatch/actions/runs/39193043027",
+      "source_commit": "c59e0ee820b87df0d8e906f43326478333e8a447",
+      "scope": "full workspace correctness/allocation, Python/MCP, strict lint/format, optimized ARM binaries, packaging/signatures and visualizer integration",
+      "device_evidence_reuse": "Since the final 2e24c8e device build, only qualification docs and a test-only logical-clock correction changed. All 38 final-device manifest paths remain unchanged."
     }
   },
   "actual_device": {
