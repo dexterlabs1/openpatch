@@ -18,7 +18,7 @@ parser.add_argument("--cli-binary", help="MCP attachment CLI (default: openpatch
 parser.add_argument("--output", default="dist/OpenPatch.app")
 parser.add_argument("--bundle-id", default="org.openpatch.desktop", help="CFBundleIdentifier (use a distinct id for side-by-side previews)")
 parser.add_argument("--name", default="OpenPatch", help="Bundle and display name")
-parser.add_argument("--build-number", default="10", help="CFBundleVersion (default: 10)")
+parser.add_argument("--build-number", default="11", help="CFBundleVersion (default: 11)")
 parser.add_argument("--source", help="Corresponding source URL for this exact build")
 args = parser.parse_args()
 binary = pathlib.Path(args.binary)
