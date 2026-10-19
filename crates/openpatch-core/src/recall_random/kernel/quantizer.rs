@@ -166,6 +166,12 @@ impl Quantizer {
                 value += self.feedback[level];
             }
             let note = value * self.base_interval_reciprocal;
+            // Native authored scales may have any positive finite interval.
+            // Outside the source's representable i32 octave domain its C++
+            // conversion/subtraction is undefined; preserve the raw voltage.
+            if !note.is_finite() || note <= -2147483648.0 || note >= 2147483648.0 {
+                return raw_value;
+            }
             let mut note_integral = note as i32;
             let mut note_fractional = note - note_integral as f32;
             if value < 0.0 {

@@ -88,6 +88,12 @@ impl XYGenerator {
             channel.load_scale(scale_index, scale);
         }
     }
+    /// Native host-only adoption: copy an already prepared slot to X and Y.
+    pub(crate) fn copy_prepared_scale(&mut self, slot: usize, prepared: &Self) {
+        for (channel, source) in self.output_channel.iter_mut().zip(&prepared.output_channel) {
+            channel.copy_prepared_scale(slot, source);
+        }
+    }
     #[allow(clippy::too_many_arguments)]
     pub fn process(
         &mut self,

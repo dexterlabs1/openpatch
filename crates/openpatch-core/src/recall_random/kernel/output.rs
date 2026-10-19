@@ -84,6 +84,10 @@ impl OutputChannel {
             quantizer.init(scale);
         }
     }
+    /// Native host-only adoption: prepared receiving content, no DSP or table preparation.
+    pub(crate) fn copy_prepared_scale(&mut self, slot: usize, prepared: &Self) {
+        self.quantizer[slot].clone_from(&prepared.quantizer[slot]);
+    }
     pub fn quantize(&mut self, voltage: f32, amount: f32) -> f32 {
         // Native guard for invalid host indices; the valid source domain is 0..6.
         if let Some(quantizer) = self.quantizer.get_mut(self.scale_index) {

@@ -853,3 +853,45 @@ fn rackmcp_exclusive_claims_vacancies_and_missing_target_handoff_use_no_heap() {
     assert_eq!(vacant_value, Some(0.9));
     assert_eq!(claimed_value, Some(0.25));
 }
+
+#[test]
+fn recall_random_bridge_capture_initialize_scale_adoption_and_bypass_use_no_heap() {
+    use openpatch_core::{ModuleContent, RecallRandomData};
+    for rate in [8000, 32000, 44100, 48000, 192000] {
+        let mut patch:openpatch_core::Patch=serde_json::from_value(serde_json::json!({"version":2,"sample_rate":rate,"nodes":[{"id":"recall","kind":"recall_random","params":{"t_rate":60,"x_steps":1,"y_steps":1}}],"output":"recall","output_port":"x1"})).unwrap();
+        let mut a = patch.compile().unwrap();
+        let h = a.resolve_module_lights("recall").unwrap();
+        let mut data = RecallRandomData::default();
+        data.scales[0].degrees[0].voltage = -0.005;
+        patch.nodes[0].content = Some(ModuleContent::RecallRandom(data));
+        let mut b = patch.compile().unwrap();
+        let hb = b.resolve_module_lights("recall").unwrap();
+        patch.nodes[0].bypassed = true;
+        let mut bypass = patch.compile().unwrap();
+        let mut out = [openpatch_core::PortFrame::default(); 1];
+        ALLOCATIONS.with(|n| n.set(0));
+        DEALLOCATIONS.with(|n| n.set(0));
+        TRACKING.with(|n| n.set(true));
+        let began = a.begin_recall_random_capture(h, 2, 57);
+        for _ in 0..4096 {
+            a.process_poly_block(&mut out);
+            a.module_lights(h);
+        }
+        let stopped = a.stop_recall_random_capture(h);
+        let receipt = a.recall_random_capture(h);
+        b.adopt_state_from(&a);
+        for _ in 0..7 {
+            b.process_poly_block(&mut out);
+        }
+        bypass.adopt_state_from(&b);
+        bypass.process_poly_block(&mut out);
+        b.adopt_state_from(&bypass);
+        let reset = b.reset_module_state(hb);
+        let restarted = b.begin_recall_random_capture(hb, 3, 58);
+        let cancelled = b.cancel_recall_random_capture(hb);
+        TRACKING.with(|n| n.set(false));
+        assert!(began && stopped && receipt.is_some() && reset && restarted && cancelled);
+        assert_eq!(ALLOCATIONS.with(Cell::get), 0, "rate {rate}");
+        assert_eq!(DEALLOCATIONS.with(Cell::get), 0, "rate {rate}");
+    }
+}
