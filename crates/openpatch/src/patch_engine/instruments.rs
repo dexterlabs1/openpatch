@@ -358,6 +358,41 @@ fn genre_tags(genre: &str) -> &'static [(&'static str, f64)] {
             ("keys", 1.0),
             ("evolving", 0.8),
         ],
+        "Progressive House" => &[
+            ("bright", 2.0),
+            ("pluck", 2.0),
+            ("huge", 1.5),
+            ("prog", 1.5),
+            ("analog", 1.0),
+        ],
+        "Hypnagogic" => &[
+            ("glassy", 2.0),
+            ("digital", 1.5),
+            ("evolving", 1.5),
+            ("weird", 1.2),
+            ("retro", 1.0),
+        ],
+        "Berlin School" => &[
+            ("analog", 2.0),
+            ("evolving", 2.0),
+            ("warm", 1.2),
+            ("retro", 1.0),
+            ("prog", 0.8),
+        ],
+        "IDM" => &[
+            ("digital", 2.0),
+            ("metallic", 1.5),
+            ("weird", 1.5),
+            ("glassy", 1.0),
+            ("pluck", 0.8),
+        ],
+        "Melodic Techno" => &[
+            ("huge", 2.0),
+            ("dark", 1.5),
+            ("evolving", 1.5),
+            ("prog", 1.2),
+            ("bright", 0.8),
+        ],
         _ => &[
             ("organ", 2.0),
             ("digital", 1.5),
@@ -449,6 +484,7 @@ fn rating(name: &str) -> f64 {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn choose(
     rng: &mut Rng,
+    weird: f64,
     role: Role,
     genre: &str,
     mood: &str,
@@ -462,9 +498,13 @@ pub(super) fn choose(
         .filter(|x| x.role == role && fit(x))
         .map(|x| {
             let a = affinity(x, genre, mood, texture)
-                + if native.contains(&x.name) { 1.5 } else { 0.0 };
+                + if native.contains(&x.name) && rating(x.name) >= 0.6 {
+                    1.5
+                } else {
+                    0.0
+                };
             let w = (0.5 + a).powi(2)
-                * rating(x.name)
+                * rating(x.name).powf(3.0 - 2.0 * weird)
                 * if avoid.contains(&x.name) { 0.1 } else { 1.0 };
             (x.name, w)
         })
@@ -666,7 +706,10 @@ impl Recipe {
     ) -> Option<(String, String)> {
         let row = 3;
         let b = c.bright;
-        let bold = matches!(c.genre, "Techno" | "UK Garage" | "Synthwave" | "Dub Techno");
+        let bold = matches!(
+            parent(c.genre),
+            "Techno" | "UK Garage" | "Synthwave" | "Dub Techno"
+        );
         match kind {
             "fm_bass" | "fold_bass" => {
                 let fm = kind == "fm_bass";
@@ -781,10 +824,11 @@ impl Recipe {
             return None;
         }
         let (pp, po) = self.key_src(c, "pitch3");
+        let (gn, gp) = self.gate_src(c, "gate3");
         // shared envelope × lane VCA for the sustained designs
         let gated = |r: &mut Recipe, env: &Value| {
             r.module("lead_env", "adsr", row, env.clone(), "Envelope");
-            r.con("seq_music", "gate3", "lead_env", "gate");
+            r.con(&gn, &gp, "lead_env", "gate");
             r.module(
                 "lead_gate",
                 "stock_vca",
@@ -816,7 +860,7 @@ impl Recipe {
                     },
                 );
                 self.con(&pp, &po, "lead_voice", "pitch");
-                self.con("seq_music", "gate3", "lead_voice", "trigger");
+                self.con(&gn, &gp, "lead_voice", "trigger");
                 self.con("lanes", lane_port, "lead_voice", "level");
                 self.con("motion", "sine", "lead_voice", "morph");
                 Some(("lead_voice".into(), "out".into()))
@@ -825,7 +869,7 @@ impl Recipe {
                 self.module("lead_voice", "modal_resonator", row, json!({"frequency": C4, "stiffness": 0.0, "decay": r3(c.rng.uni(2.0, 5.0)), "damping": r3(c.rng.uni(0.15, 0.4)),
                     "strike_position": r3(c.rng.uni(0.1, 0.25)), "pickup_position": r3(c.rng.uni(0.55, 0.75)), "strike_strength": 1.0, "level": 1.0}), "Modal bells");
                 self.con(&pp, &po, "lead_voice", "pitch");
-                self.con("seq_music", "gate3", "lead_voice", "strike");
+                self.con(&gn, &gp, "lead_voice", "strike");
                 self.module(
                     "lead_vca",
                     "stock_vca",
