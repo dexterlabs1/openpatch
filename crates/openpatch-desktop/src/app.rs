@@ -1640,6 +1640,13 @@ impl OpenPatch {
                 self.settings_status = error;
             }
         }
+        if audio_ticket.as_ref().is_some_and(|ticket| self.audio.as_ref()
+            .is_some_and(|audio| audio.needs_hosted_device_restart(ticket))) {
+            // Native and MCP activation both enter the qualified requested
+            // device profile, rather than relabeling a default-buffer stream.
+            self.reopen_audio(self.output_device.clone());
+            audio_ticket = None;
+        }
         let mut failure = None;
         if let Some(audio) = &mut self.audio {
             audio.service();

@@ -569,4 +569,5 @@ mod hosted_callback {
         );
     }
     include!("audio_hosted_activation_tests.rs");
+    include!("audio_hosted_device_tests.rs");
 }

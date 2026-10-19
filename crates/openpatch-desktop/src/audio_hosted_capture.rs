@@ -37,6 +37,10 @@ pub(super) struct CaptureControl {
     pending: Option<PendingCapture>,
     ready: Option<(u64, Result<HostedProjectCaptureReceipt, String>)>,
     resume_error: Option<String>,
+    dispatched: Option<(
+        u64,
+        std::sync::mpsc::SyncSender<Result<HostedProjectCaptureReceipt, String>>,
+    )>,
     pub(super) recovery: Option<PreparedGraph>,
 }
 pub(super) struct CaptureCallback {
@@ -66,6 +70,7 @@ impl CaptureCallback {
                 pending: None,
                 ready: None,
                 resume_error: None,
+                dispatched: None,
                 recovery: None,
             }),
         }
@@ -223,6 +228,21 @@ impl Audio {
     }
 
     pub(super) fn service_hosted_capture(&mut self) {
+        if let Some((ticket, send)) = self.performance.take_hosted_capture_dispatch() {
+            match self.begin_hosted_capture(ticket) {
+                Ok(id) => self.capture.dispatched = Some((id, send)),
+                Err(error) => {
+                    let _ = send.try_send(Err(error));
+                }
+            }
+        }
+        if let Some((id, _)) = self.capture.dispatched.as_ref() {
+            if let Some(result) = self.take_hosted_capture_result(*id) {
+                let (_, send) = self.capture.dispatched.take().unwrap();
+                let _ = send.try_send(result);
+            }
+        }
+
         let Some(mut pending) = self.capture.pending.take() else {
             while let Ok(packet) = self.capture.returns.pop() {
                 self.dispose_graph(packet.graph);
@@ -418,6 +438,12 @@ impl Audio {
     }
 
     pub(super) fn shutdown_hosted_capture(&mut self) {
+        if let Some((_, send)) = self.performance.take_hosted_capture_dispatch() {
+            let _ = send.try_send(Err("audio closed before hosted capture dispatch".into()));
+        }
+        if let Some((_, send)) = self.capture.dispatched.take() {
+            let _ = send.try_send(Err("audio closed during hosted capture".into()));
+        }
         if let Some(mut pending) = self.capture.pending.take() {
             if let Some(draining) = pending.draining.take() {
                 drop(draining.runner);

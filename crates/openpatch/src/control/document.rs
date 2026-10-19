@@ -558,14 +558,28 @@ impl Session {
         value: f32,
         expected_revision: Option<u64>,
     ) -> Result<u64, String> {
+        self.set_hosted_parameter_with_group(id, parameter, value, expected_revision, None)
+    }
+    fn set_hosted_parameter_with_group(
+        &mut self,
+        id: &str,
+        parameter: &str,
+        value: f32,
+        expected_revision: Option<u64>,
+        group: Option<(String, String, String)>,
+    ) -> Result<u64, String> {
         let index = match parameter {
             "offset" => 0,
             "scale" => 1,
             _ => return Err("unsupported hosted parameter".into()),
         };
-        self.edit_hosted_module(id, expected_revision, Some((index, value)), |module| {
-            module.with_parameter(parameter, value)
-        })
+        self.edit_hosted_module(
+            id,
+            expected_revision,
+            Some((index, value)),
+            group,
+            |module| module.with_parameter(parameter, value),
+        )
     }
     pub fn set_hosted_option(
         &mut self,
@@ -574,7 +588,7 @@ impl Session {
         value: bool,
         expected_revision: Option<u64>,
     ) -> Result<u64, String> {
-        self.edit_hosted_module(id, expected_revision, None, |module| {
+        self.edit_hosted_module(id, expected_revision, None, None, |module| {
             module.with_option(option, value)
         })
     }
@@ -583,6 +597,7 @@ impl Session {
         id: &str,
         expected_revision: Option<u64>,
         assignment: Option<(u16, f32)>,
+        group: Option<(String, String, String)>,
         edit: impl FnOnce(
             &crate::project_document::hosted::HostedModule,
         ) -> Result<crate::project_document::hosted::HostedModule, String>,
@@ -614,7 +629,7 @@ impl Session {
             });
         }
         effects.replacement_document = Some(document);
-        self.commit(carrier.patch, expected_revision, None, &effects)
+        self.commit(carrier.patch, expected_revision, group, &effects)
     }
 
     fn capture_document_state(
@@ -715,14 +730,35 @@ impl Session {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         let status = {
             let mut status = status;
+            let runtime = self
+                .live_module_events
+                .as_ref()
+                .and_then(|backend| backend.hosted_execution_status());
             status["delayed_hosted_request"] = self.hosted_execution_grant.as_ref().map_or(
                 json!({"status":"not_requested"}),
                 |grant| {
                     json!({"status":"requested", "document_generation":grant.document_generation(),
                     "topology_key":grant.topology_key(), "profile":grant.profile(),
-                    "active":false})
+                    "active":runtime.as_ref().is_some_and(|status| status["active"] == true),
+                    "runtime":runtime})
                 },
             );
+            if self.hosted_execution_grant.is_some() {
+                let state = if status["delayed_hosted_request"]["active"] == true {
+                    "running"
+                } else if status["delayed_hosted_request"]["runtime"]["runtime"]["status"]
+                    == "suspended_fault"
+                {
+                    "suspended_fault"
+                } else {
+                    "requested"
+                };
+                if let Some(modules) = status["hosted_modules"].as_array_mut() {
+                    for module in modules {
+                        module["execution"] = json!(state);
+                    }
+                }
+            }
             status
         };
         status
@@ -740,6 +776,7 @@ impl Session {
                 | "load_document"
                 | "save_document"
                 | "set_document_playback"
+                | "set_hosted_execution"
                 | "set_hosted_parameter"
                 | "set_hosted_option"
         ) {
@@ -771,6 +808,22 @@ impl Session {
                 let captured = self.capture_project_document(expected_revision(args)?)?;
                 write_document_snapshot(&path, string(args, "filename")?, captured)
             }
+            "set_hosted_execution" => {
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                {
+                    let enabled = args["enabled"]
+                        .as_bool()
+                        .ok_or("enabled must be a boolean")?;
+                    if enabled {
+                        self.request_delayed_hosted_execution(expected_revision(args)?)?;
+                    } else {
+                        self.revoke_delayed_hosted_execution(expected_revision(args)?)?;
+                    }
+                    Ok(self.snapshot())
+                }
+                #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+                Err("experimental hosted execution currently requires macOS ARM".into())
+            }
             "set_document_playback" => {
                 let mode = match string(args, "mode")? {
                     "exact" => PlaybackMode::Exact,
@@ -785,11 +838,24 @@ impl Session {
                     .as_f64()
                     .filter(|v| v.is_finite() && (-1.0..=1.0).contains(v))
                     .ok_or("hosted parameter must be finite and in -1..=1")?;
-                self.set_hosted_parameter(
-                    string(args, "id")?,
-                    string(args, "parameter")?,
+                let id = string(args, "id")?;
+                let parameter = string(args, "parameter")?;
+                let group = args
+                    .get("history_group")
+                    .map(|_| {
+                        Ok::<_, String>((
+                            history_group_key(args)?.into(),
+                            id.into(),
+                            format!("hosted:{parameter}"),
+                        ))
+                    })
+                    .transpose()?;
+                self.set_hosted_parameter_with_group(
+                    id,
+                    parameter,
                     value as f32,
                     expected_revision(args)?,
+                    group,
                 )?;
                 Ok(self.snapshot())
             }

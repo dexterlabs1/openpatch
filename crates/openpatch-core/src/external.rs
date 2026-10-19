@@ -175,6 +175,41 @@ impl Engine {
         })
     }
 
+    /// Check an explicit same-executor move into an identically routed graph.
+    /// Foreign handles, changed topology and rates are refused before mutation.
+    pub fn can_continue_external_from(
+        &self,
+        previous: &Self,
+        current: ResolvedExternalModule,
+        old: ResolvedExternalModule,
+    ) -> bool {
+        if current.owner != self.identity || old.owner != previous.identity {
+            return false;
+        }
+        match (&self.inner, &previous.inner) {
+            (EngineKind::Poly(a), EngineKind::Poly(b)) => {
+                a.can_continue_external(b, current.node, old.node)
+            }
+            _ => false,
+        }
+    }
+    pub fn continue_external_from(
+        &mut self,
+        previous: &Self,
+        current: ResolvedExternalModule,
+        old: ResolvedExternalModule,
+    ) -> bool {
+        if !self.can_continue_external_from(previous, current, old) {
+            return false;
+        }
+        if let (EngineKind::Poly(a), EngineKind::Poly(b)) = (&mut self.inner, &previous.inner) {
+            a.continue_external_from(b, current.node);
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn process_audio_frame_with_externals(
         &mut self,
         frames: &mut [ExternalFrameIo],
@@ -706,6 +741,50 @@ mod tests {
         assert_eq!(
             direct.process_audio_frame_with_externals(&mut io).unwrap(),
             [8.0; 2]
+        );
+    }
+    #[test]
+    fn explicit_executor_continuation_preserves_cable_frame_and_refuses_foreign_or_changed_routes()
+    {
+        let patch = patch(json!([
+            {"id":"source","kind":"constant","params":{"value":2}},
+            {"id":"sink","kind":"gain","params":{"gain":3}}
+        ]));
+        let specs = [spec("binary", &["in"], &["out"])];
+        let routes = [
+            cable("in", "source", "out", "binary", "in"),
+            cable("out", "binary", "out", "sink", "signal"),
+        ];
+        let mut old = compile(&patch, &specs, &routes, Some("sink"), "out");
+        let old_handle = old.resolve_external_module("binary").unwrap();
+        let mut io = [ExternalFrameIo::new(old_handle)];
+        io[0].outputs[0] = PortFrame::mono(7.);
+        old.process_audio_frame_with_externals(&mut io).unwrap();
+        let mut next = compile(&patch, &specs, &routes, Some("sink"), "out");
+        let handle = next.resolve_external_module("binary").unwrap();
+        assert!(!next.continue_external_from(&old, old_handle, old_handle));
+        next.adopt_state_from(&old);
+        assert!(next.continue_external_from(&old, handle, old_handle));
+        let mut next_io = [ExternalFrameIo::new(handle)];
+        next_io[0].outputs[0] = PortFrame::mono(8.);
+        assert_eq!(
+            next.process_audio_frame_with_externals(&mut next_io)
+                .unwrap(),
+            [21.; 2]
+        );
+        assert_eq!(next_io[0].inputs[0], PortFrame::mono(2.));
+        let mut changed = routes.clone();
+        changed[1].id = Some("recreated".into());
+        let mut fresh = compile(&patch, &specs, &changed, Some("sink"), "out");
+        let fresh_handle = fresh.resolve_external_module("binary").unwrap();
+        assert!(!fresh.continue_external_from(&old, fresh_handle, old_handle));
+        let mut fresh_io = [ExternalFrameIo::new(fresh_handle)];
+        fresh_io[0].outputs[0] = PortFrame::mono(8.);
+        assert_eq!(
+            fresh
+                .process_audio_frame_with_externals(&mut fresh_io)
+                .unwrap(),
+            [0.; 2]
         );
     }
 }

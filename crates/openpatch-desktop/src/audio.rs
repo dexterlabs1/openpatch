@@ -397,6 +397,11 @@ struct PreparedGraph {
     engine: Engine,
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     hosted: Option<openpatch::binary_host::runner::HostedRunner>,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted_transfer: Option<(
+        openpatch::binary_host::Fence,
+        openpatch_core::ResolvedExternalModule,
+    )>,
     scope: ScopeSetup,
     modules: ModulePlan,
     revision: u64,
@@ -417,6 +422,8 @@ impl From<Engine> for PreparedGraph {
             engine,
             #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
             hosted: None,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_transfer: None,
             scope: ScopeSetup::default(),
             modules: ModulePlan::default(),
             revision: 0,
@@ -550,6 +557,8 @@ fn prepare_graph_for_control(
         engine,
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         hosted: None,
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted_transfer: None,
         modules: ModulePlan::default(),
         revision: 0,
         authored_revision: None,
@@ -650,6 +659,28 @@ impl Audio {
         )?;
         audio.accepted_document = Some(ticket);
         Ok(audio)
+    }
+
+    pub(crate) fn needs_hosted_device_restart(&self, ticket: &HostLifecycleTicket) -> bool {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            self._stream.is_some()
+                && matches!(
+                    ticket.execution,
+                    openpatch::control::DocumentExecutionRequest::HostedDelayed(_)
+                )
+                && !self.accepted_document.as_ref().is_some_and(|accepted| {
+                    matches!(
+                        accepted.execution,
+                        openpatch::control::DocumentExecutionRequest::HostedDelayed(_)
+                    )
+                })
+        }
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        {
+            let _ = ticket;
+            false
+        }
     }
 
     pub fn submit_document(&mut self, ticket: Arc<HostLifecycleTicket>) -> Result<(), String> {
@@ -761,12 +792,28 @@ impl Audio {
             self.accepted_document = Some(ticket);
             return Ok(());
         }
-        self.hosted_controller.ensure_config()?;
-        let prepared = self.hosted_controller.prepare(&ticket)?;
-        debug_assert_eq!(prepared.control.fence(), prepared.fence);
-        let mut graph = PreparedGraph::from(prepared.engine);
-        graph.hosted = Some(prepared.runner);
-        let control = prepared.control;
+        let reuse = donor.is_none()
+            && ticket.delta.is_empty()
+            && self.hosted_control.as_ref().is_some_and(|control| {
+                control.is_open()
+                    && control
+                        .accepts_document(&ticket.document, ticket.document_generation)
+                        .unwrap_or(false)
+            });
+        let (mut graph, control, proof) = if reuse {
+            let (engine, handle, proof) = plan.compile_attested(&ticket.banks)?;
+            let control = self.hosted_control.as_ref().unwrap().clone();
+            let mut graph = PreparedGraph::from(engine);
+            graph.hosted_transfer = Some((control.fence(), handle));
+            (graph, control, proof)
+        } else {
+            self.hosted_controller.ensure_config()?;
+            let prepared = self.hosted_controller.prepare(&ticket)?;
+            debug_assert_eq!(prepared.control.fence(), prepared.fence);
+            let mut graph = PreparedGraph::from(prepared.engine);
+            graph.hosted = Some(prepared.runner);
+            (graph, prepared.control, prepared.proof)
+        };
         let authored = Arc::new(AtomicU64::new(ticket.revision));
         graph.authored_revision = Some(authored.clone());
         let generation = self
@@ -775,12 +822,9 @@ impl Audio {
             .ok_or("Scope generation exhausted");
         let result = (|| {
             let generation = generation?;
-            graph.modules = self.performance.plan_hosted(
-                &ticket,
-                &graph.engine,
-                control.clone(),
-                &prepared.proof,
-            )?;
+            graph.modules =
+                self.performance
+                    .plan_hosted(&ticket, &graph.engine, control.clone(), &proof)?;
             graph.revision = ticket.revision;
             graph.contains_rackmcp_sequence = native
                 .nodes
@@ -828,7 +872,7 @@ impl Audio {
         self.hosted_control = Some(control);
         self.hosted_authored_revision = Some(authored);
         self.hosted_native_intent = stamp;
-        self.accepted_patch = prepared.native_patch;
+        self.accepted_patch = native;
         self.prepared_wave_banks = ticket.banks.clone();
         self.submitted_revision = ticket.revision;
         self.accepted_document = Some(ticket);
@@ -1247,6 +1291,30 @@ impl Audio {
         _ui_patch: &Patch,
         selection: Option<ScopeSelection>,
     ) -> Result<u64, String> {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if let Some(ticket) = self.accepted_document.clone().filter(|ticket| {
+            matches!(
+                ticket.execution,
+                openpatch::control::DocumentExecutionRequest::HostedDelayed(_)
+            )
+        }) {
+            if self.capture_in_progress() {
+                return Err("Scope waits for hosted capture to finish".into());
+            }
+            let binding = selection
+                .map(|selection| ScopeBinding::new(&self.accepted_patch, selection))
+                .transpose()?;
+            let previous = std::mem::replace(&mut self.scope_binding, binding);
+            let stamp = std::mem::take(&mut self.hosted_native_intent);
+            match self.submit_hosted_document(ticket) {
+                Ok(()) => return Ok(self.scope_generation),
+                Err(error) => {
+                    self.scope_binding = previous;
+                    self.hosted_native_intent = stamp;
+                    return Err(error);
+                }
+            }
+        }
         if let Some(ticket) = &self.accepted_document {
             ticket.native_projection()?;
         }
@@ -1784,6 +1852,15 @@ impl Callback {
                 let fenced = active.contains_rackmcp_sequence || next.contains_rackmcp_sequence;
                 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
                 let fenced = fenced || active.hosted.is_some() || next.hosted.is_some();
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                if let Some((fence, handle)) = next.hosted_transfer {
+                    if !active.hosted.as_ref().is_some_and(|runner| {
+                        runner.fence() == fence
+                            && runner.can_rebind(&active.engine, &next.engine, handle)
+                    }) {
+                        return false;
+                    }
+                }
                 next.current_revision() >= revision_floor || !fenced
             });
         self.graph_revision_high_water = self
@@ -1834,6 +1911,20 @@ impl Callback {
                         }
                     }
                 }
+            }
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            if let Some((_, handle)) = self.graphs.active.hosted_transfer.take() {
+                let previous = self
+                    .graphs
+                    .previous
+                    .as_mut()
+                    .expect("validated hosted donor");
+                let mut runner = previous.hosted.take().expect("validated hosted runner");
+                let rebound =
+                    runner.rebind(&previous.engine, &mut self.graphs.active.engine, handle);
+                debug_assert!(rebound, "prevalidated hosted continuation");
+                self.graphs.active.hosted = Some(runner);
+                moved = true;
             }
             #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
             let hosted_donor = self
@@ -2284,7 +2375,18 @@ fn build_stream<T: OutputSample>(
     let errors = callback.shared.clone();
     device.build_output_stream(
         config,
-        move |output: &mut [T], _| callback.render(output, channels),
+        move |output: &mut [T], info| {
+            #[cfg(test)]
+            if tests::device_tracking_enabled() {
+                tests::record_device_callback(info.timestamp(), || {
+                    callback.render(output, channels)
+                });
+                return;
+            }
+            #[cfg(not(test))]
+            let _ = info;
+            callback.render(output, channels);
+        },
         move |_| {
             errors.stream_error.store(true, Ordering::Relaxed);
         },
@@ -2428,6 +2530,36 @@ mod tests {
                 }
             });
             unsafe { System.dealloc(pointer, layout) }
+        }
+    }
+
+    // Enabled only by the ignored real-device qualification. Counts the actual
+    // CPAL render invocation on its own callback thread, including first use.
+    pub(super) static DEVICE_TRACKING: AtomicBool = AtomicBool::new(false);
+    pub(super) static DEVICE_ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
+    pub(super) static DEVICE_DEALLOCATIONS: AtomicU64 = AtomicU64::new(0);
+    pub(super) static DEVICE_CALLBACKS: AtomicU64 = AtomicU64::new(0);
+    pub(super) static DEVICE_PLAYBACK_MIN_NS: AtomicU64 = AtomicU64::new(u64::MAX);
+    pub(super) static DEVICE_PLAYBACK_MAX_NS: AtomicU64 = AtomicU64::new(0);
+    pub(super) fn device_tracking_enabled() -> bool {
+        DEVICE_TRACKING.load(Ordering::Acquire)
+    }
+    pub(super) fn record_device_callback(
+        timestamp: cpal::OutputStreamTimestamp,
+        operation: impl FnOnce(),
+    ) {
+        ALLOCATIONS.with(|count| count.set(0));
+        DEALLOCATIONS.with(|count| count.set(0));
+        TRACKING.with(|tracking| tracking.set(true));
+        operation();
+        TRACKING.with(|tracking| tracking.set(false));
+        DEVICE_ALLOCATIONS.fetch_add(ALLOCATIONS.with(Cell::get) as u64, Ordering::Relaxed);
+        DEVICE_DEALLOCATIONS.fetch_add(DEALLOCATIONS.with(Cell::get) as u64, Ordering::Relaxed);
+        DEVICE_CALLBACKS.fetch_add(1, Ordering::Release);
+        if let Some(ahead) = timestamp.playback.duration_since(&timestamp.callback) {
+            let nanos = ahead.as_nanos().min(u128::from(u64::MAX)) as u64;
+            DEVICE_PLAYBACK_MIN_NS.fetch_min(nanos, Ordering::Relaxed);
+            DEVICE_PLAYBACK_MAX_NS.fetch_max(nanos, Ordering::Relaxed);
         }
     }
 

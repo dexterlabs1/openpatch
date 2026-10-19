@@ -8,7 +8,7 @@ use openpatch::binary_host::process::{HostProcess, LaunchConfig};
 use openpatch::binary_host::runner::HostedRunner;
 use openpatch::binary_host::{Fence, OutputBlock, OwnedEndpoint, Status};
 use openpatch::control::{DocumentExecutionRequest, HostLifecycleTicket};
-use openpatch_core::{Engine, Patch};
+use openpatch_core::Engine;
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -53,7 +53,6 @@ pub(super) struct HostedPreparation {
     pub(super) engine: Engine,
     pub(super) runner: HostedRunner,
     pub(super) control: Arc<HostedControl>,
-    pub(super) native_patch: Patch,
     pub(super) fence: Fence,
     pub(super) proof: openpatch::binary_host::graph::HostedCompilationProof,
 }
@@ -240,7 +239,6 @@ impl HostedAudioController {
             engine,
             runner,
             control,
-            native_patch: plan.native_patch().clone(),
             fence,
             proof,
         })

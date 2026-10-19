@@ -3202,6 +3202,48 @@ impl PolyEngine {
             self.host_context_dirty = false;
         }
     }
+    /// Explicit continuation of the same external executor. Ordinary adoption
+    /// still excludes external histories. Every ordered route and vertex must
+    /// match before any payload can cross this boundary.
+    pub(crate) fn can_continue_external(&self, old: &Self, node: usize, previous: usize) -> bool {
+        self.rate == old.rate
+            && self.node_lookup == old.node_lookup
+            && self.selected == old.selected
+            && self.stereo == old.stereo
+            && self.input_edges == old.input_edges
+            && self.external_nodes.len() == 1
+            && old.external_nodes.len() == 1
+            && matches!((self.nodes.get(node).map(|n| &n.model), old.nodes.get(previous).map(|n| &n.model)),
+                (Some(Model::External(a)), Some(Model::External(b))) if a == b)
+            && self.nodes.iter().zip(&old.nodes).all(|(a, b)| {
+                a.kind == b.kind
+                    && a.bypassed == b.bypassed
+                    && a.input_count == b.input_count
+                    && a.output_count == b.output_count
+                    && a.physical_input_mask == b.physical_input_mask
+                    && a.connected_mask == b.connected_mask
+            })
+            && self.edges.len() == old.edges.len()
+            && self
+                .edges
+                .iter()
+                .zip(&old.edges)
+                .all(|(a, b)| a.identity == b.identity && a.route == b.route)
+    }
+    pub(crate) fn continue_external_from(&mut self, old: &Self, node: usize) {
+        let old_node = old.external_nodes[0];
+        let target = &self.nodes[node];
+        let previous = &old.nodes[old_node];
+        self.edge_frames.copy_from_slice(&old.edge_frames);
+        self.outputs[target.output_start..target.output_start + target.output_count]
+            .copy_from_slice(
+                &old.outputs[previous.output_start..previous.output_start + previous.output_count],
+            );
+        if let (Some(host), Some(previous)) = (&mut self.host, &old.host) {
+            host.inputs.copy_from_slice(&previous.inputs);
+        }
+        self.host_context_dirty = true;
+    }
     pub(crate) fn begin_external_frame(&mut self, frames: &mut [crate::ExternalFrameIo]) {
         self.reconcile_external_context();
         for frame in frames {

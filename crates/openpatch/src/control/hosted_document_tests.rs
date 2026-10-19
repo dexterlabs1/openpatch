@@ -715,3 +715,55 @@ mod live_admission {
         }
     }
 }
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn public_hosted_activation_is_explicit_revision_fenced_and_never_saved_or_undo_revived() {
+    let workspace = tempfile::tempdir().unwrap();
+    let mut session = Session::new(workspace.path()).unwrap();
+    session.replace_project_document(document(), None).unwrap();
+    let original = session.project_document().encode().unwrap();
+    let revision = session.revision();
+    assert!(session
+        .execute(
+            "set_hosted_execution",
+            json!({"enabled":true,"expected_revision":revision-1})
+        )
+        .is_err());
+    assert!(session.hosted_execution_grant.is_none());
+    let result = session
+        .execute(
+            "set_hosted_execution",
+            json!({"enabled":true,"expected_revision":revision}),
+        )
+        .unwrap();
+    assert_eq!(result["revision"], revision + 1);
+    assert_eq!(
+        session.document_execution_status()["delayed_hosted_request"]["active"],
+        false
+    );
+    assert_eq!(session.project_document().encode().unwrap(), original);
+    session
+        .execute(
+            "set_hosted_parameter",
+            json!({"id":"offset","parameter":"offset","value":0.5,"history_group":"one-drag"}),
+        )
+        .unwrap();
+    let grouped_state = session.state_id();
+    session
+        .execute(
+            "set_hosted_parameter",
+            json!({"id":"offset","parameter":"offset","value":0.75,"history_group":"one-drag"}),
+        )
+        .unwrap();
+    assert_eq!(session.state_id(), grouped_state);
+    session.execute("undo", json!({})).unwrap();
+    assert_eq!(session.project_document().encode().unwrap(), original);
+    session.execute("redo", json!({})).unwrap();
+    session
+        .execute("set_hosted_execution", json!({"enabled":false}))
+        .unwrap();
+    assert!(session.hosted_execution_grant.is_none());
+    session.execute("undo", json!({})).unwrap();
+    assert!(session.hosted_execution_grant.is_none());
+}

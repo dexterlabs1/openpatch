@@ -474,3 +474,211 @@ fn actual_application_capture_timeout_race_and_stale_edit_preserve_native_dsp() 
         ,"dead_child_capture_refused_and_native_resumed":true
     })).unwrap()).unwrap();
 }
+
+#[test]
+#[ignore = "requires explicit actual ARM companion/SDK/plugin; paced callback, no audio device"]
+fn actual_public_hosted_controls_scope_native_continuity_and_mcp_save() {
+    let destination = std::path::PathBuf::from(
+        std::env::var_os("OPENPATCH_HOSTED_CAPTURE_REVIEW").expect("review path"),
+    );
+    std::fs::create_dir_all(&destination).unwrap();
+    let children = tempfile::tempdir_in(&destination).unwrap();
+    let workspace = tempfile::tempdir_in(&destination).unwrap();
+    let mut session = Session::new(workspace.path()).unwrap();
+    session.replace_project_document(document(), None).unwrap();
+    session
+        .execute(
+            "set_hosted_execution",
+            json!({"enabled":true,"expected_revision":session.revision()}),
+        )
+        .unwrap();
+    let native = session.project_document().state_carrier().unwrap().patch;
+    let (mut audio, mut callback) = super::super::tests::host_test_audio(&native);
+    audio
+        .hosted_controller
+        .set_config(real_configuration(children.path()));
+    session
+        .set_live_module_events(Some(audio.performance.clone()))
+        .unwrap();
+    submit(&mut audio, &mut session);
+    audio.set_playing(true);
+    for _ in 0..8 {
+        render(&mut callback, 128);
+        audio.service();
+    }
+    let owner = audio.hosted_controller.statuses()[0].process_id;
+    let incarnation = audio.hosted_control.as_ref().unwrap().fence().incarnation;
+    let hold = callback
+        .graphs
+        .active
+        .engine
+        .resolve_module_state("hold")
+        .unwrap();
+    assert!(callback
+        .graphs
+        .active
+        .engine
+        .set_module_saved_state(hold, SavedModuleState::PushHold(true)));
+    let mut frame = callback.graphs.active.hosted.as_ref().unwrap().frame();
+    for level in [0.5, 0.75] {
+        session
+            .execute(
+                "set_parameter",
+                json!({"id":"amp","parameter":"level","value":level}),
+            )
+            .unwrap();
+        submit(&mut audio, &mut session);
+        render(&mut callback, 128);
+        audio.service();
+        frame += 128;
+        assert_eq!(
+            callback.graphs.active.hosted.as_ref().unwrap().frame(),
+            frame
+        );
+        assert_eq!(native_level(&callback), level);
+        assert_eq!(audio.hosted_controller.owner_count(), 1);
+        assert_eq!(audio.hosted_controller.statuses()[0].process_id, owner);
+        for _ in 0..4 {
+            render(&mut callback, 128);
+            audio.service();
+            frame += 128;
+        }
+    }
+    let generation = audio
+        .set_scope(
+            &native,
+            Some(ScopeSelection {
+                x: Some(ScopeEndpoint {
+                    id: "amp".into(),
+                    port: "out".into(),
+                    channel: 0,
+                }),
+                y: None,
+            }),
+        )
+        .unwrap();
+    for _ in 0..5 {
+        render(&mut callback, 128);
+        audio.service();
+        frame += 128;
+    }
+    assert_eq!(
+        callback.graphs.active.hosted.as_ref().unwrap().frame(),
+        frame
+    );
+    assert_eq!(
+        audio.hosted_control.as_ref().unwrap().fence().incarnation,
+        incarnation
+    );
+    assert_eq!(audio.hosted_controller.statuses()[0].process_id, owner);
+    let packets: Vec<_> = audio.scope_packets().collect();
+    assert!(packets
+        .iter()
+        .any(|packet| packet.generation == generation
+            && packet.x_active.iter().any(|active| *active)));
+    let hold = callback
+        .graphs
+        .active
+        .engine
+        .resolve_module_state("hold")
+        .unwrap();
+    assert_eq!(
+        callback.graphs.active.engine.module_saved_state(hold),
+        Some(SavedModuleState::PushHold(true))
+    );
+    // Native and MCP edit exactly the same history and bounded event channel.
+    session.execute("set_hosted_parameter",json!({"id":"binary","parameter":"offset","value":0.25,"history_group":"public-gesture"})).unwrap();
+    session.execute("set_hosted_parameter",json!({"id":"binary","parameter":"offset","value":0.5,"history_group":"public-gesture"})).unwrap();
+    session.execute("undo", json!({})).unwrap();
+    session.execute("redo", json!({})).unwrap();
+    submit(&mut audio, &mut session);
+    for _ in 0..8 {
+        render(&mut callback, 128);
+        audio.service();
+    }
+    let shared = Arc::new(std::sync::Mutex::new(session));
+    let worker_session = shared.clone();
+    let (send, receive) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let result = openpatch::control::execute_shared(
+            &worker_session,
+            "save_document",
+            json!({"filename":"public-hosted.json"}),
+        );
+        send.send(result).unwrap();
+    });
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let result = loop {
+        audio.service();
+        // The MCP worker must release Session while the real graph drains.
+        let lock_start = Instant::now();
+        let revision = shared.lock().unwrap().revision();
+        assert!(revision > 0 && lock_start.elapsed() < Duration::from_secs(1));
+        render(&mut callback, 128);
+        audio.service();
+        if let Ok(result) = receive.try_recv() {
+            break result.unwrap();
+        }
+        assert!(Instant::now() < deadline, "MCP save did not complete");
+    };
+    worker.join().unwrap();
+    assert_eq!(result["state_source"], "live_hosted_barrier");
+    assert_eq!(result["affects_active_project_baseline"], false);
+    let saved = ProjectDocument::decode(
+        &std::fs::read(workspace.path().join("public-hosted.json")).unwrap(),
+    )
+    .unwrap();
+    let saved_native = saved.state_carrier().unwrap().patch;
+    assert_eq!(
+        saved_native
+            .nodes
+            .iter()
+            .find(|node| node.id == "amp")
+            .unwrap()
+            .params["level"],
+        0.75
+    );
+    assert_eq!(
+        saved_native
+            .nodes
+            .iter()
+            .find(|node| node.id == "hold")
+            .unwrap()
+            .params["holding"],
+        1.
+    );
+    let saved_hosted = saved
+        .graph
+        .nodes
+        .iter()
+        .find_map(|node| {
+            if let DocumentNode::Hosted { module, .. } = node {
+                Some(module)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    assert_eq!(saved_hosted.parameter("offset").unwrap(), 0.5);
+    assert_eq!(saved_hosted.option("offset_first").unwrap(), true);
+    assert_eq!(saved_hosted.option("disable_output_limit").unwrap(), false);
+    for _ in 0..8 {
+        render(&mut callback, 128);
+        audio.service();
+    }
+    assert!(audio.performance.execution_available());
+    shared
+        .lock()
+        .unwrap()
+        .execute("set_hosted_execution", json!({"enabled":false}))
+        .unwrap();
+    drop(callback);
+    drop(audio);
+    drop(shared);
+    assert!(std::fs::read_dir(children.path()).unwrap().next().is_none());
+    std::fs::write(destination.join("public-hosted-workflow-result.json"),serde_json::to_vec_pretty(&json!({
+        "passed":true,"scope":"actual installed binary with public Session activation, native/Scope graph continuity, grouped hosted edit/history and MCP save dispatch; paced/no device/window",
+        "same_child_across_native_edits_and_scope":true,"scope_generation":generation,
+        "mcp_save_state_source":result["state_source"],"callback_heap_operations":0,"device_qualified":false
+    })).unwrap()).unwrap();
+}

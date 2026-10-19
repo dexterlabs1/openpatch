@@ -6,6 +6,7 @@ struct UnresolvedPanel {
     model: String,
     version: String,
     hosted: bool,
+    hosted_module: Option<openpatch::project_document::hosted::HostedModule>,
     ports: Vec<DeferredPort>,
 }
 #[derive(Clone)]
@@ -41,6 +42,7 @@ impl Rack {
                         model: record["model"].as_str().unwrap_or("Unknown module").into(),
                         version: record["version"].as_str().unwrap_or("unspecified").into(),
                         hosted: false,
+                        hosted_module: None,
                         ports: ports
                             .iter()
                             .map(|port| DeferredPort {
@@ -67,6 +69,7 @@ impl Rack {
                     model: module.identity.model.clone(),
                     version: module.identity.version.clone(),
                     hosted: true,
+                    hosted_module: Some(module.clone()),
                     ports: module
                         .ports
                         .iter()
@@ -169,6 +172,7 @@ impl Rack {
         self.dependency_focus.take()
     }
 
+    #[allow(clippy::too_many_arguments)] // Shared rack draw context and command sink.
     fn paint_unresolved_panels(
         &mut self,
         ui: &mut egui::Ui,
@@ -176,10 +180,13 @@ impl Rack {
         canvas: Rect,
         inputs: &mut BTreeMap<(String, String), Pos2>,
         outputs: &mut BTreeMap<(String, String), Pos2>,
+        revision: u64,
+        interactive: bool,
+        action: &mut Option<RackAction>,
     ) -> bool {
         use openpatch::project_document::PortDirection;
         let mut pointer_on_panel = false;
-        for panel in &self.unresolved_panels {
+        for panel in self.unresolved_panels.clone() {
             let Some(position) = self.positions.get(&panel.id) else {
                 continue;
             };
@@ -253,7 +260,7 @@ impl Rack {
                 rect.min + vec2(12., 81.) * z,
                 Align2::LEFT_TOP,
                 if panel.hosted {
-                    "HOST NOT RUNNING"
+                    "EXPERIMENTAL HOST"
                 } else {
                     "UNAVAILABLE"
                 },
@@ -296,13 +303,106 @@ impl Rack {
                 rect.min + vec2(12., 360.) * z,
                 Align2::LEFT_TOP,
                 if panel.hosted {
-                    "Execution not enabled"
+                    "Click for playback controls"
                 } else {
                     "Click to inspect / repair"
                 },
                 FontId::proportional(10. * z),
                 ink,
             );
+            if let Some(module) = &panel.hosted_module {
+                for (index, name) in ["offset", "scale"].into_iter().enumerate() {
+                    if let Ok(value) = module.parameter(name) {
+                        let center = rect.min + vec2(55. + 70. * index as f32, 278.) * z;
+                        let normalized = (value + 1.) * 0.5;
+                        let response = ui.interact(
+                            Rect::from_center_size(center, vec2(48., 48.) * z),
+                            ui.id().with(("hosted-knob", &panel.id, name)),
+                            Sense::click_and_drag(),
+                        );
+                        let input = self.parameter_knob_input(
+                            ui,
+                            &response,
+                            normalized,
+                            interactive,
+                            &format!("{value:.3}"),
+                        );
+                        let next = if input.reset {
+                            Some(0.)
+                        } else if let Some(boundary) = input.boundary {
+                            Some(if boundary { 1. } else { -1. })
+                        } else {
+                            input.normalized.map(|v| v * 2. - 1.).or_else(|| {
+                                (input.nudge != 0)
+                                    .then_some((value + input.nudge as f32 * 0.01).clamp(-1., 1.))
+                            })
+                        };
+                        if let Some(next) = next {
+                            let mut args = json!({"id":panel.id,"parameter":name,"value":next,"expected_revision":revision});
+                            if let Some(group) = input.history_group {
+                                args["history_group"] = json!(group);
+                            }
+                            *action = Some(RackAction::Command("set_hosted_parameter", args));
+                        }
+                        crate::panel_skin::signal_atlas_rotary(
+                            &clipped,
+                            center,
+                            normalized,
+                            response.hovered(),
+                            19.,
+                            z,
+                        );
+                        clipped.text(
+                            center + vec2(0., -31.) * z,
+                            Align2::CENTER_CENTER,
+                            name.to_uppercase(),
+                            FontId::proportional(10. * z),
+                            ink,
+                        );
+                        clipped.text(
+                            center + vec2(0., 31.) * z,
+                            Align2::CENTER_CENTER,
+                            format!("{value:.3}"),
+                            FontId::monospace(10. * z),
+                            ink,
+                        );
+                    }
+                }
+                for (index, (name, label)) in [
+                    ("offset_first", "Offset first"),
+                    ("disable_output_limit", "Disable limit"),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    if let Ok(value) = module.option(name) {
+                        let rect = Rect::from_min_size(
+                            rect.min + vec2(24., 320. + index as f32 * 18.) * z,
+                            vec2(132., 17.) * z,
+                        );
+                        let response = ui.interact(
+                            rect,
+                            ui.id().with(("hosted-option", &panel.id, name)),
+                            Sense::click(),
+                        );
+                        clipped.text(
+                            rect.left_center(),
+                            Align2::LEFT_CENTER,
+                            format!("{} {label}", if value { "●" } else { "○" }),
+                            FontId::proportional(10. * z),
+                            ink,
+                        );
+                        let clicked = response.clicked();
+                        response.on_hover_text("Changing a persistent option stops hosted playback. Start it again in playback controls.");
+                        if interactive && clicked {
+                            *action = Some(RackAction::Command(
+                                "set_hosted_option",
+                                json!({"id":panel.id,"option":name,"value":!value,"expected_revision":revision}),
+                            ));
+                        }
+                    }
+                }
+            }
             for x in [8., 172.] {
                 for y in [8., PANEL_HEIGHT - 8.] {
                     let center = rect.min + vec2(x, y) * z;
@@ -315,10 +415,10 @@ impl Rack {
                 Sense::click(),
             );
             pointer_on_panel |= response.hovered();
-            if response.clicked() && !panel.hosted {
+            if response.clicked() {
                 self.dependency_focus = Some(panel.id.clone());
             }
-            response.on_hover_text(if panel.hosted{format!("{} / {} ({})\nHosted settings and routing are retained. External playback is not active; this module produces no signal.",panel.plugin,panel.model,panel.version)}else{format!("{} / {} ({})\nUnavailable dependency. Its source data and observed port indices are retained. Click to review; this module does not run.",panel.plugin,panel.model,panel.version)});
+            response.on_hover_text(if panel.hosted{format!("{} / {} ({})\nExperimental pinned hosted module. Controls use shared history. Click for explicit playback controls and actual execution status.",panel.plugin,panel.model,panel.version)}else{format!("{} / {} ({})\nUnavailable dependency. Its source data and observed port indices are retained. Click to review; this module does not run.",panel.plugin,panel.model,panel.version)});
         }
         // Dashed source routes have no signal indication and cannot imply a
         // running module. Their original identities/colors remain in the document.

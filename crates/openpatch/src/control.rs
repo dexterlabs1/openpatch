@@ -197,6 +197,22 @@ pub trait LiveModuleEvents: Send + Sync {
         Ok(None)
     }
 
+    /// Actual hosted execution publication, when implemented by this backend.
+    fn hosted_execution_status(&self) -> Option<Value> {
+        None
+    }
+
+    /// Enqueue a quiescent capture for the application's control thread. The
+    /// receiving MCP worker waits without holding Session or touching audio.
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn request_hosted_project_capture(
+        &self,
+        _ticket: HostedProjectCaptureTicket,
+    ) -> Result<std::sync::mpsc::Receiver<Result<HostedProjectCaptureReceipt, String>>, String>
+    {
+        Err("live hosted capture is not dispatched by this backend".into())
+    }
+
     /// Attach an existing snapshot without inventing an authored load intent.
     fn sync_document(&self, context: DocumentExecutionContext<'_>) {
         if context.fence_native {
@@ -700,9 +716,37 @@ pub(crate) fn execute_shared_authorized(
     live.reconcile_midi_cc_learn()?;
     if name == "save_document" {
         validate_arguments(&tools(), name, &args)?;
-        let captured = live.capture_project_document(expected_revision(&args)?)?;
         let filename = string(&args, "filename")?;
         let path = live.file(filename, ".json")?;
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if live.requires_hosted_project_capture() {
+            let ticket = live.begin_hosted_project_capture(expected_revision(&args)?)?;
+            let receiver = live
+                .live_module_events
+                .as_ref()
+                .unwrap()
+                .request_hosted_project_capture(ticket.clone())?;
+            drop(live);
+            let result = (|| {
+                let receipt = receiver
+                    .recv_timeout(std::time::Duration::from_secs(12))
+                    .map_err(|_| {
+                        "hosted save timed out or its audio backend closed".to_string()
+                    })??;
+                let live = session.lock().map_err(|_| "session lock poisoned")?;
+                check_transport_authorization(authorization)?;
+                let captured = live
+                    .complete_hosted_project_capture(&ticket, receipt)?
+                    .snapshot;
+                drop(live);
+                document::write_document_snapshot(&path, filename, captured)
+            })();
+            if let Ok(mut live) = session.lock() {
+                live.record_operation(name, authorization.is_some(), &result);
+            }
+            return result;
+        }
+        let captured = live.capture_project_document(expected_revision(&args)?)?;
         drop(live);
         let result = document::write_document_snapshot(&path, filename, captured);
         if let Ok(mut live) = session.lock() {
@@ -2992,8 +3036,9 @@ pub fn tools() -> Value {
         tool("replace_document", "Explicitly replace the complete project, retaining original Rack records/assets and unresolved modules. Loads in exact mode; unresolved dependencies suspend playback. One undo step.", json!({"document":{"type":"object"},"expected_revision":rev}), &["document"], false),
         tool("load_document", "Load a portable project JSON from workspace, preserving original source data. Migrates native legacy projects. Exact playback is the default.", json!({"filename":s,"expected_revision":rev}), &["filename"], false),
         tool("save_document", "Save a complete portable project inside workspace without overwriting. Preserves original Rack data and unresolved dependencies. Suspended saves use persisted state explicitly, never fabricated live observations.", json!({"filename":s,"expected_revision":rev}), &["filename"], false),
-        tool("set_hosted_parameter", "Edit a supported hosted module's authored parameter through shared undo/redo. Does not start a companion or enable playback. Current capability: Bogaudio OFFSET 2.6.47, offset/scale in -1..1.", json!({"id":s,"parameter":{"type":"string","enum":["offset","scale"]},"value":{"type":"number","minimum":-1,"maximum":1},"expected_revision":rev}), &["id","parameter","value"], false),
+        tool("set_hosted_parameter", "Edit a supported hosted module's authored parameter through shared undo/redo. Does not start a companion or enable playback. Current capability: Bogaudio OFFSET 2.6.47, offset/scale in -1..1.", json!({"id":s,"parameter":{"type":"string","enum":["offset","scale"]},"value":{"type":"number","minimum":-1,"maximum":1},"history_group":history_group,"expected_revision":rev}), &["id","parameter","value"], false),
         tool("set_hosted_option", "Edit a supported hosted module's persistent option through shared undo/redo. Does not start a companion or enable playback. Current capability: Bogaudio OFFSET 2.6.47.", json!({"id":s,"option":{"type":"string","enum":["offset_first","disable_output_limit"]},"value":{"type":"boolean"},"expected_revision":rev}), &["id","option","value"], false),
+        tool("set_hosted_execution", "Explicitly start or stop experimental delayed hosted playback. Supports one pinned Bogaudio OFFSET at 48000 Hz / 128-frame buffers with 384 transport frames. Requires explicit local companion/SDK/plugin configuration. Grant is session-only, revocable and never enables Exact/Partial automatically. Inspect performance for actual running/failure state.", json!({"enabled":{"type":"boolean"},"expected_revision":rev}), &["enabled"], false),
         tool("set_document_playback", "Explicitly choose exact or partial playback. Partial omits unresolved modules and incident routes and changes downstream normaling; inspect the omission report. Permission is undoable and never saved as an automatic load default.", json!({"mode":{"type":"string","enum":["exact","partial"]},"expected_revision":rev}), &["mode"], false),
         tool("inspect_patch","Read the session patch and revision with compact asset metadata. Set include_asset_data for the full portable payload. In desktop MCP mode this is the live patch shown in the native window.",json!({"include_asset_data":{"type":"boolean","default":false}}),&[],true),
         tool("capture_project_patch","Capture a project-save patch with actual SEQ3 Run, Push HOLD, MIDI CC assignments and controller values, and all Random Values and Shift Register held voltages plus next PRNG state overlaid on a cloned graph. All live stateful modules must be available at the current revision and the same callback frame; otherwise retry. Without a backend uses initial/default state. No stateful modules means parameter-only capture without reading the backend. Returns patch, revision, state_id, running, holding, random_values and shift_registers maps, state_source, and frame. Does not change session, history, queue, or runtime.",json!({"expected_revision":rev,"include_asset_data":{"type":"boolean","default":false}}),&[],true),

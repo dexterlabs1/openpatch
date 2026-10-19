@@ -6,7 +6,6 @@ impl Session {
     /// Request preparation of the complete hosted graph. This is not an active
     /// playback receipt, does not change Exact/Partial, and is not persisted.
     /// The application controller must still prepare/admit the full request.
-    #[doc(hidden)]
     pub fn request_delayed_hosted_execution(
         &mut self,
         expected_revision: Option<u64>,
@@ -28,7 +27,6 @@ impl Session {
         Ok(revision)
     }
 
-    #[doc(hidden)]
     pub fn revoke_delayed_hosted_execution(
         &mut self,
         expected_revision: Option<u64>,

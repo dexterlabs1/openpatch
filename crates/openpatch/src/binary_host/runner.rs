@@ -82,6 +82,34 @@ impl HostedRunner {
         Ok(runner)
     }
 
+    /// Move the same executor into a proven identical graph without resetting
+    /// its transport clock, queued events, output block or incident histories.
+    pub fn can_rebind(
+        &self,
+        previous: &Engine,
+        current: &Engine,
+        handle: ResolvedExternalModule,
+    ) -> bool {
+        !self.awaiting_inputs
+            && self.fault.is_none()
+            && current.can_continue_external_from(previous, handle, self.io.handle)
+    }
+    pub fn rebind(
+        &mut self,
+        previous: &Engine,
+        current: &mut Engine,
+        handle: ResolvedExternalModule,
+    ) -> bool {
+        if !self.can_rebind(previous, current, handle) {
+            return false;
+        }
+        if !current.continue_external_from(previous, handle, self.io.handle) {
+            return false;
+        }
+        self.io.handle = handle;
+        true
+    }
+
     pub fn frame(&self) -> u64 {
         self.frame
     }
@@ -567,6 +595,38 @@ mod tests {
             "submitted events must not repeat in subsequent blocks"
         );
         assert_eq!(runner.frame(), audio.len() as u64);
+    }
+
+    #[test]
+    fn same_executor_rebind_keeps_partial_quantum_delay_events_and_clock() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let (mut engine, mut actual) = runner(&first);
+        let (mut reference_engine, mut reference) = runner(&second);
+        for frame in 0..1024 {
+            if frame == 657 {
+                actual.queue_parameter(0, 0.25, 1).unwrap();
+                reference.queue_parameter(0, 0.25, 1).unwrap();
+                let (mut replacement, handle) = super::super::graph::tests::compiled();
+                replacement.adopt_state_from(&engine);
+                assert!(actual.rebind(&engine, &mut replacement, handle));
+                engine = replacement;
+                assert_eq!(actual.frame(), 657);
+                assert_eq!(actual.input.event_count, 1);
+            }
+            assert_eq!(
+                actual.process_frame(&mut engine).unwrap(),
+                reference.process_frame(&mut reference_engine).unwrap(),
+                "frame {frame}"
+            );
+            if actual.frame() % QUANTUM as u64 == 0 {
+                echo_ready(&actual);
+                echo_ready(&reference);
+            }
+        }
+        assert!(actual.fault().is_none());
+        assert_eq!(actual.frame(), reference.frame());
+        assert_eq!(actual.submitted_blocks(), reference.submitted_blocks());
     }
 
     #[test]

@@ -254,6 +254,18 @@ impl HostedModule {
         Ok(updated)
     }
 
+    pub fn option(&self, key: &str) -> Result<bool, String> {
+        self.validate_supported_offset()?;
+        let key = match key {
+            "offset_first" => "offset_first",
+            "disable_output_limit" => "disableOutputLimit",
+            _ => return Err("unknown hosted Offset option".into()),
+        };
+        self.state.as_ref()["data"][key]
+            .as_bool()
+            .ok_or_else(|| "hosted Offset option missing".into())
+    }
+
     pub fn with_option(&self, key: &str, value: bool) -> Result<Self, String> {
         self.validate_supported_offset()?;
         let source_key = match key {

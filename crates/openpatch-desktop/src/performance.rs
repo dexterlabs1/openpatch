@@ -1068,10 +1068,17 @@ struct HostedControlBinding {
     revision: u64,
     control: Option<Arc<openpatch::binary_host::control::HostedControl>>,
 }
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub(super) type HostedCaptureDispatch = (
+    openpatch::control::HostedProjectCaptureTicket,
+    std::sync::mpsc::SyncSender<Result<openpatch::control::HostedProjectCaptureReceipt, String>>,
+);
 pub(super) struct Performance {
     control: Mutex<Control>,
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     hosted_control: Mutex<HostedControlBinding>,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted_capture_dispatch: Mutex<Option<HostedCaptureDispatch>>,
     pub(super) diagnostics: Arc<Diagnostics>,
     shared: Arc<Shared>,
     rate: u32,
@@ -1827,6 +1834,8 @@ impl Performance {
             Arc::new(Self {
                 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
                 hosted_control: Mutex::new(HostedControlBinding::default()),
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                hosted_capture_dispatch: Mutex::new(None),
                 control: Mutex::new(Control {
                     queue,
                     entries: BTreeMap::new(),
@@ -2550,7 +2559,44 @@ impl Performance {
             .fetch_add(pending, Ordering::Relaxed);
     }
 }
+impl Performance {
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn take_hosted_capture_dispatch(&self) -> Option<HostedCaptureDispatch> {
+        self.hosted_capture_dispatch
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+    }
+}
 impl LiveModuleEvents for Performance {
+    fn hosted_execution_status(&self) -> Option<Value> {
+        let live = self.snapshot();
+        Some(
+            json!({"active":live["available"] == true && live["hosted_runtime"]["status"] == "running",
+            "runtime":live["hosted_runtime"], "controls":live["hosted_controls"]}),
+        )
+    }
+
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn request_hosted_project_capture(
+        &self,
+        ticket: openpatch::control::HostedProjectCaptureTicket,
+    ) -> Result<
+        std::sync::mpsc::Receiver<Result<openpatch::control::HostedProjectCaptureReceipt, String>>,
+        String,
+    > {
+        let mut pending = self
+            .hosted_capture_dispatch
+            .lock()
+            .map_err(|_| "capture dispatch poisoned")?;
+        if self.shared.closed.load(Ordering::Acquire) || pending.is_some() {
+            return Err("hosted capture dispatch is closed or already pending".into());
+        }
+        let (send, receive) = std::sync::mpsc::sync_channel(1);
+        *pending = Some((ticket, send));
+        Ok(receive)
+    }
+
     fn start_listen_capture(
         &self,
         id: &str,

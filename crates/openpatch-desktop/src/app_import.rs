@@ -4,9 +4,13 @@ impl OpenPatch {
         use openpatch::project_document::{
             AutomationOmissionReason, MappingFidelity, PlaybackMode, PortDirection,
         };
-        if self.project.sources.is_empty() {
-            return;
-        }
+        let hosted: Vec<_> = self.project.graph.nodes.iter().filter_map(|node| {
+            if let DocumentNode::Hosted { id, module, .. } = node { Some((id.clone(), module.clone())) } else { None }
+        }).collect();
+        if self.project.sources.is_empty() && hosted.is_empty() { return; }
+        let hosted_status = self.shared.try_lock().ok()
+            .map(|session| session.document_execution_status()["delayed_hosted_request"].clone())
+            .unwrap_or(Value::Null);
         let dependencies: Vec<_> = self
             .project
             .graph
@@ -41,8 +45,8 @@ impl OpenPatch {
                 return;
             }
         };
-        let suspended = mode == Some(PlaybackMode::Exact)
-            && (!dependencies.is_empty() || !automation.is_empty());
+        let suspended = mode == Some(PlaybackMode::Exact) && hosted_status["active"] != true
+            && (!dependencies.is_empty() || !automation.is_empty() || !hosted.is_empty());
         let automation_count = format!(
             "{} omitted automation {}",
             automation.len(),
@@ -88,6 +92,22 @@ impl OpenPatch {
                     if ui.selectable_label(mode==Some(PlaybackMode::Exact),"Exact").clicked() {command=Some(("set_document_playback",json!({"mode":"exact"})));}
                     if ui.selectable_label(mode==Some(PlaybackMode::Partial),"Enable partial").clicked() {command=Some(("set_document_playback",json!({"mode":"partial"})));}
                 });
+                if !hosted.is_empty() {
+                    ui.separator();
+                    ui.strong("Experimental binary host");
+                    ui.label("Pinned Bogaudio OFFSET only · 48 kHz · 128-frame buffers · 384 transport frames. Permission lasts for this session and graph.");
+                    ui.label(if hosted_status["active"] == true { "Hosted audio running" }
+                        else if hosted_status["status"] == "requested" { "Hosted execution requested; inspect performance for preparation or failure" }
+                        else { "Hosted execution stopped" });
+                    if ui.button(if hosted_status["status"] == "requested" { "Stop hosted playback" } else { "Start experimental hosted playback" }).clicked() {
+                        command=Some(("set_hosted_execution",json!({"enabled":hosted_status["status"] != "requested"})));
+                    }
+                    if let Some(reason) = hosted_status["runtime"]["runtime"]["reason"].as_str() { ui.colored_label(Color32::from_rgb(201,159,92), reason); }
+                    ui.small("Save briefly suspends execution while the companion state is captured. A failed capture never marks the project saved.");
+                    for (id, module) in &hosted {
+                        ui.label(format!("{id} · {} {}", module.identity.plugin, module.identity.version));
+                    }
+                }
                 if self.patch.output.is_none() {ui.colored_label(Color32::from_rgb(201,159,92),"No native audio output selected.");}
                 egui::ComboBox::from_id_salt("import-monitor").selected_text(self.patch.output.as_deref().unwrap_or("Choose monitor output")).show_ui(ui,|ui| {
                     for node in &self.patch.nodes {
@@ -172,7 +192,7 @@ impl OpenPatch {
         if let Some((tool, mut args)) = command {
             args["expected_revision"] = json!(self.revision);
             self.status = match execute_shared(&self.shared, tool, args) {
-                Ok(_) => "Import change committed; original source retained.".into(),
+                Ok(_) => if tool == "set_hosted_execution" { "Hosted playback request committed".into() } else { "Import change committed; original source retained.".into() },
                 Err(error) => format!("Import change rejected: {error}"),
             };
             self.sync();
