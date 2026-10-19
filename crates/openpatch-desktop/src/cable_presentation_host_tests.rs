@@ -68,6 +68,7 @@ fn custom() -> CablePresentation {
         opacity: 0.23,
         tension: 0.81,
         plug_brightness: 0.37,
+        ..Default::default()
     }
 }
 
@@ -109,7 +110,8 @@ fn cable_preferences_roundtrip_and_invalid_settings_never_enter_document_or_hist
         CablePresentation {
             opacity: 0.0,
             tension: 1.0,
-            plug_brightness: 0.0
+            plug_brightness: 0.0,
+            ..Default::default()
         }
     );
     app.apply_host_preferences(
@@ -120,13 +122,15 @@ fn cable_preferences_roundtrip_and_invalid_settings_never_enter_document_or_hist
         CablePresentation {
             opacity: 1.0,
             tension: 0.0,
-            plug_brightness: 1.0
+            plug_brightness: 1.0,
+            ..Default::default()
         }
     );
     app.set_cable_presentation(CablePresentation {
         opacity: f32::NAN,
         tension: f32::INFINITY,
         plug_brightness: f32::NEG_INFINITY,
+        ..Default::default()
     });
     assert_eq!(app.rack.cable_presentation(), CablePresentation::default());
     assert_eq!(app.rack.layout_revision(), layout_revision);
@@ -310,7 +314,8 @@ fn cable_preferences_survive_template_new_example_open_import_revert_recovery_hi
             store.save_recovery(&expected).unwrap();
             store.save_new("saved.openpatch", &expected).unwrap();
             let template = crate::startup::factory_document();
-            let mut layout = template.layout().clone(); layout["zoom"] = json!(0.75);
+            let mut layout = template.layout().clone();
+            layout["zoom"] = json!(0.75);
             let template = template.with_layout(layout).unwrap();
             store.save_template(&template, None).unwrap();
         }
@@ -428,7 +433,8 @@ fn appended_smoke_scenes_use_actual_view_popup_and_fresh_offline_signal_fixture(
         CablePresentation {
             opacity: 0.15,
             tension: 1.0,
-            plug_brightness: 1.0
+            plug_brightness: 1.0,
+            ..Default::default()
         }
     );
     assert!(app.title.contains("Clear panels"));
@@ -442,6 +448,7 @@ fn appended_smoke_scenes_use_actual_view_popup_and_fresh_offline_signal_fixture(
             opacity: 1.0,
             tension: 0.0,
             plug_brightness: 1.0,
+            ..Default::default()
         }
     );
     assert_eq!(app.rack.zoom(), 0.72);

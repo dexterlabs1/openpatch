@@ -12,17 +12,26 @@ on:
         description: 'Also validate Linux and Windows and run throughput benchmarks'
         type: boolean
         default: false
+      release_validation:
+        description: 'Validate and package macOS, Windows and Steam Deck without benchmarks'
+        type: boolean
+        default: false
+      qualified_run:
+        description: 'Reuse passed unchanged crates from this run; refresh changed desktop and package checks'
+        type: string
+        default: ''
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 permissions:
   contents: read
+  actions: read
 jobs:
   test:
     strategy:
       fail-fast: false
-      # Daily development targets the user's Mac. Other platforms are opt-in.
-      matrix: ${{ fromJSON(inputs.full_validation && '{"include":[{"os":"macos-14","target":"aarch64-apple-darwin","artifact":"macos-arm64","binary":"openpatch"},{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","artifact":"linux-x86_64","binary":"openpatch"},{"os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"windows-x86_64","binary":"openpatch.exe"}]}' || '{"include":[{"os":"macos-14","target":"aarch64-apple-darwin","artifact":"macos-arm64","binary":"openpatch"}]}') }}
+      # Release PRs qualify all requested platforms once; daily work targets Mac.
+      matrix: ${{ fromJSON((inputs.full_validation || inputs.release_validation || startsWith(github.head_ref, 'work/release-')) && '{"include":[{"os":"macos-14","target":"aarch64-apple-darwin","artifact":"macos-arm64","binary":"openpatch"},{"os":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","artifact":"linux-x86_64","binary":"openpatch"},{"os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"windows-x86_64","binary":"openpatch.exe"}]}' || '{"include":[{"os":"macos-14","target":"aarch64-apple-darwin","artifact":"macos-arm64","binary":"openpatch"}]}') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -51,29 +60,121 @@ jobs:
       - name: Linux desktop dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libgl1-mesa-dev xvfb
+      - name: Verify reusable correctness evidence
+        id: qualification
+        shell: python
+        env:
+          QUALIFIED_RUN: ${{ inputs.qualified_run }}
+          QUALIFIED_PLATFORM: ${{ matrix.artifact }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          import json, os, pathlib, re, subprocess
+          prior = os.environ.get("QUALIFIED_RUN", "")
+          mode = "none"
+          if prior:
+              assert prior.isdecimal(), "qualified_run must be a run ID"
+              repository = os.environ["GITHUB_REPOSITORY"]
+              def fetch(path):
+                  return json.loads(subprocess.check_output(["gh", "api", f"repos/{repository}/{path}"], encoding="utf-8"))
+              run = fetch(f"actions/runs/{prior}")
+              assert run["event"] in ("pull_request", "workflow_dispatch"), "reuse requires a correctness gate"
+              source = run["head_sha"]
+              changes = subprocess.check_output(["git", "diff", "--name-only", source, "HEAD"], text=True).splitlines()
+              allowed = {".github/workflows/ci.yml", ".gitattributes"}
+              desktop_changed = any(path.startswith("crates/openpatch-desktop/src/") or path.startswith("crates/openpatch-desktop/assets/shaders/") for path in changes)
+              assert all(path in allowed or path.startswith("crates/openpatch-desktop/src/") or path.startswith("crates/openpatch-desktop/assets/shaders/") for path in changes), f"CLI, Core, dependency or package source changed: {changes}"
+              if ".gitattributes" in changes:
+                  assert pathlib.Path(".gitattributes").read_text() == "*.frag text eol=lf\n", "only canonical shader LF policy may reuse unchanged source"
+              jobs = fetch(f"actions/runs/{prior}/jobs?per_page=100")["jobs"]
+              platform = os.environ["QUALIFIED_PLATFORM"]
+              matches = [job for job in jobs if platform in job["name"] and job["name"].startswith("test (")]
+              assert len(matches) == 1, f"missing unique {platform} evidence"
+              steps = {step["name"]: step.get("conclusion") for step in matches[0]["steps"]}
+              complete = all(steps.get(name) == "success" for name in ("Format check", "Clippy", "Rust correctness and allocation tests"))
+              if complete:
+                  mode = "desktop" if desktop_changed else "all"
+              elif steps.get("Format check") == "success" and steps.get("Clippy") == "success" and steps.get("Rust correctness and allocation tests") == "failure":
+                  # Cargo stops at the first failing target. Prove all CLI/Core
+                  # targets passed before the final desktop binary failed; the
+                  # complete desktop suite and all doc tests will run again.
+                  help_text = subprocess.check_output(["gh", "api", "--help"], encoding="utf-8")
+                  escape_flag = ["--allow-escape-sequences"] if "--allow-escape-sequences" in help_text else []
+                  log = subprocess.check_output(["gh", "api", *escape_flag, f"repos/{repository}/actions/jobs/{matches[0]['id']}/logs"], encoding="utf-8", errors="replace")
+                  log = re.sub(r"\x1b\[[0-9;]*m", "", log).replace("\\", "/")
+                  desktop = re.search(r"Running unittests src/main\.rs \([^\r\n]*/openpatch_desktop-", log)
+                  prefix = log[:desktop.start()] if desktop else ""
+                  cli = re.search(r"Running unittests src/lib\.rs \([^\r\n]*/openpatch-[a-f0-9]", prefix)
+                  core = re.search(r"Running unittests src/lib\.rs \([^\r\n]*/openpatch_core-", prefix)
+                  if cli and core and "test result: FAILED" not in prefix and "panicked at" not in prefix and "to rerun pass `-p openpatch-desktop --bin openpatch-desktop`" in log:
+                      mode = "desktop"
+              if platform == "windows-x86_64" and ".gitattributes" in changes and mode == "all":
+                  mode = "desktop"
+              print(f"Prior run {prior} at {source}: {platform} correctness refresh={mode}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("mode=" + mode + "\n")
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Clippy
+        if: steps.qualification.outputs.mode != 'all'
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Rust correctness and allocation tests
+        if: steps.qualification.outputs.mode == 'none'
         run: cargo test --locked --workspace
+      - name: Refresh desktop correctness and workspace doc tests
+        if: steps.qualification.outputs.mode == 'desktop'
+        run: |
+          cargo test --locked -p openpatch-desktop
+          cargo test --locked --doc --workspace
       - name: Release binary
+        env:
+          RUSTFLAGS: ${{ runner.os == 'Windows' && '-C target-feature=+crt-static' || '' }}
         run: cargo build --locked --release --target ${{ matrix.target }}
       - name: Native window and GLSL smoke test
         if: runner.os == 'Linux'
         run: |
           mkdir -p native-test-output
-          timeout 45s xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 target/${{ matrix.target }}/release/openpatch-desktop --smoke-test native-test-output/rack.png --workspace /tmp/openpatch-smoke
+          timeout 180s xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 target/${{ matrix.target }}/release/openpatch-desktop --smoke-test native-test-output/rack.png --workspace /tmp/openpatch-smoke
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Linux'
         with:
           name: native-desktop-screenshot
           path: native-test-output/
-      - name: macOS application bundle
+      - name: Portable desktop package
+        run: python scripts/package_release.py --platform ${{ matrix.artifact }} --binary-dir target/${{ matrix.target }}/release --output dist
+      - name: Check packaged macOS signatures
         if: runner.os == 'macOS'
         run: |
-          python3 scripts/package_macos.py --binary target/${{ matrix.target }}/release/openpatch-desktop
-          ditto -c -k --sequesterRsrc --keepParent dist/OpenPatch.app dist/OpenPatch-macos-arm64.zip
+          mkdir -p native-test-output/packaged-mac
+          unzip -q dist/OpenPatch-macos-arm64.zip -d native-test-output/packaged-mac
+          codesign --verify --deep --strict native-test-output/packaged-mac/OpenPatch-macos-arm64/OpenPatch.app
+          native-test-output/packaged-mac/OpenPatch-macos-arm64/OpenPatch.app/Contents/MacOS/openpatch catalog > native-test-output/packaged-mac/catalog.json
+      - name: Check packaged Windows executables
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Expand-Archive dist/OpenPatch-windows-x86_64.zip native-test-output/packaged-windows
+          & native-test-output/packaged-windows/OpenPatch-windows-x86_64/openpatch.exe catalog | Out-File native-test-output/packaged-windows/catalog.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & native-test-output/packaged-windows/OpenPatch-windows-x86_64/openpatch-desktop.exe --third-party-licenses | Out-File native-test-output/packaged-windows/licenses.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check packaged Linux executables and user-space installation
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p native-test-output/packaged-linux
+          tar -xzf dist/OpenPatch-linux-x86_64.tar.gz -C native-test-output/packaged-linux
+          native-test-output/packaged-linux/OpenPatch-linux-x86_64/openpatch catalog > native-test-output/packaged-linux/catalog.json
+          HOME="$RUNNER_TEMP/openpatch-install" sh native-test-output/packaged-linux/OpenPatch-linux-x86_64/install.sh
+          "$RUNNER_TEMP/openpatch-install/.local/share/openpatch/openpatch" patch-engine "Deep House" Dreamy Liquid --info
+          ldd native-test-output/packaged-linux/OpenPatch-linux-x86_64/openpatch-desktop
+      - name: Record package identity
+        shell: python
+        env:
+          QUALIFIED_RUN: ${{ inputs.qualified_run }}
+          CORRECTNESS_REFRESH: ${{ steps.qualification.outputs.mode }}
+        run: |
+          import hashlib, json, os, pathlib, subprocess
+          info = {"correctness_reference": os.environ.get("QUALIFIED_RUN") or None, "correctness_refresh": os.environ["CORRECTNESS_REFRESH"], "commit": os.environ["GITHUB_SHA"], "tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(), "platform": "${{ matrix.artifact }}", "archives": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in pathlib.Path("dist").glob("OpenPatch-*") if p.is_file()}}
+          pathlib.Path("dist/release-${{ matrix.artifact }}.json").write_text(json.dumps(info, indent=2) + "\n")
       - name: MCP integration tests
         env:
           OPENPATCH_BIN: target/${{ matrix.target }}/release/${{ matrix.binary }}
@@ -88,15 +189,17 @@ jobs:
             target/${{ matrix.target }}/release/${{ matrix.binary }}
             target/${{ matrix.target }}/release/openpatch-desktop
             target/${{ matrix.target }}/release/openpatch-desktop.exe
-            dist/OpenPatch-macos-arm64.zip
+            dist/OpenPatch-*.zip
+            dist/OpenPatch-*.tar.gz
+            dist/release-*.json
             Cargo.lock
             LICENSE
             README.md
       - name: Portable repository snapshot
-        if: matrix.os == 'ubuntu-latest'
+        if: runner.os == 'Linux'
         run: git bundle create openpatch.bundle --all
       - uses: actions/upload-artifact@v4
-        if: matrix.os == 'ubuntu-latest'
+        if: runner.os == 'Linux'
         with:
           name: repository-snapshot
           path: openpatch.bundle

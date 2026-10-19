@@ -5,6 +5,89 @@ use eframe::egui::{self, vec2, Color32, Context, Id, Rect, Response, Sense, Stro
 const AMBER: Color32 = Color32::from_rgb(226, 175, 88);
 const MUTED: Color32 = Color32::from_rgb(157, 158, 151);
 
+/// Host cable material choice. Native buttons retain keyboard navigation and
+/// accessible names; vector swatches communicate the jacket before selection.
+pub(crate) fn cable_finish_picker(
+    ui: &mut Ui,
+    finish: &mut crate::cable_presentation::CableFinish,
+) -> bool {
+    use crate::cable_presentation::CableFinish;
+    let mut changed = false;
+    ui.horizontal_wrapped(|ui| {
+        for candidate in CableFinish::ALL {
+            let response = ui.add_sized(
+                vec2(104.0, 66.0),
+                egui::Button::new(format!("\n\n{}", candidate.label()))
+                    .selected(*finish == candidate),
+            );
+            let painter = ui
+                .painter()
+                .with_clip_rect(response.rect.intersect(ui.clip_rect()));
+            let origin = response.rect.min + vec2(13.0, 14.0);
+            let point = |t: f32| {
+                let inverse = 1.0 - t;
+                origin
+                    + vec2(0.0, 0.0) * inverse.powi(3)
+                    + vec2(19.0, 25.0) * (3.0 * inverse.powi(2) * t)
+                    + vec2(58.0, 25.0) * (3.0 * inverse * t.powi(2))
+                    + vec2(78.0, 0.0) * t.powi(3)
+            };
+            let points: Vec<_> = (0..=24).map(|index| point(index as f32 / 24.0)).collect();
+            let stroke = |width: f32, color| {
+                painter.add(egui::Shape::line(points.clone(), Stroke::new(width, color)));
+            };
+            stroke(7.0, Color32::from_black_alpha(110));
+            match candidate {
+                CableFinish::Classic => {
+                    stroke(5.2, Color32::from_rgb(169, 112, 51));
+                    stroke(2.2, AMBER);
+                }
+                CableFinish::Woven => {
+                    stroke(5.2, Color32::from_rgb(164, 124, 73));
+                    for index in 2..23 {
+                        let t = index as f32 / 24.0;
+                        let tangent = (point(t + 0.01) - point(t - 0.01)).normalized();
+                        let diagonal = (vec2(-tangent.y, tangent.x) + tangent * 0.45) * 2.0;
+                        painter.line_segment(
+                            [point(t) - diagonal, point(t) + diagonal],
+                            Stroke::new(
+                                0.8_f32,
+                                if index % 2 == 0 {
+                                    Color32::from_rgb(216, 178, 117)
+                                } else {
+                                    Color32::from_rgb(112, 82, 49)
+                                },
+                            ),
+                        );
+                    }
+                }
+                CableFinish::Tracer => {
+                    stroke(5.2, Color32::from_rgb(114, 87, 56));
+                    stroke(1.4, Color32::from_rgb(239, 195, 118));
+                }
+                CableFinish::Translucent => {
+                    stroke(5.8, Color32::from_rgba_unmultiplied(226, 175, 88, 105));
+                    stroke(2.0, Color32::from_rgb(163, 127, 75));
+                    stroke(0.7, Color32::from_rgb(223, 201, 160));
+                }
+            }
+            for endpoint in [point(0.0), point(1.0)] {
+                painter.circle_filled(endpoint, 3.5, Color32::from_rgb(39, 41, 38));
+                painter.circle_stroke(
+                    endpoint,
+                    2.7,
+                    Stroke::new(0.7_f32, Color32::from_rgb(137, 137, 125)),
+                );
+            }
+            if response.clicked() && *finish != candidate {
+                *finish = candidate;
+                changed = true;
+            }
+        }
+    });
+    changed
+}
+
 #[derive(Clone)]
 struct Draft {
     presets: Vec<Preset>,
@@ -588,6 +671,37 @@ fn swatch(ui: &mut Ui, color: [u8; 3], selected: bool, index: usize) -> Response
 mod tests {
     use super::*;
     use egui::{pos2, Event, Key, Modifiers, PointerButton, Pos2};
+
+    #[test]
+    fn cable_finish_swatch_click_selects_material_once() {
+        use crate::cable_presentation::CableFinish;
+        let ctx = Context::default();
+        let mut finish = CableFinish::Classic;
+        let mut frame = |events| {
+            let mut changed = false;
+            let output = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(650.0, 200.0))),
+                    focused: true,
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        changed = cable_finish_picker(ui, &mut finish);
+                    });
+                },
+            );
+            (changed, output)
+        };
+        let (_, initial) = frame(vec![]);
+        let target = text_position(&initial, "\n\nWoven");
+        assert!(!frame(vec![Event::PointerMoved(target), pointer(target, true)]).0);
+        assert!(frame(vec![pointer(target, false)]).0);
+        assert!(!frame(vec![pointer(target, true)]).0);
+        assert!(!frame(vec![pointer(target, false)]).0);
+        assert_eq!(finish, CableFinish::Woven);
+    }
 
     fn frame(
         ctx: &Context,

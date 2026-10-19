@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenPatch Downloads</title>
+<meta name="description" content="Download the latest OpenPatch build with the Patch Engine for Steam Deck, Linux, Windows and macOS.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root { --bg:#f4f1ea; --panel:#fffdf8; --ink:#1d1b18; --muted:#6f6a60; --line:#e2dccf; --accent:#d29f53; --g:#d9572b; --m:#3f6fd8; --t:#2f9a6b; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#121110; --panel:#1b1a18; --ink:#f1ece2; --muted:#9b958a; --line:#2c2a26; --g:#ff7a4a; --m:#7aa2ff; --t:#4fd39b; } }
+:root[data-theme="dark"] { --bg:#121110; --panel:#1b1a18; --ink:#f1ece2; --muted:#9b958a; --line:#2c2a26; --g:#ff7a4a; --m:#7aa2ff; --t:#4fd39b; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 Inter, system-ui, sans-serif; }
+.wrap { max-width: 880px; margin: 0 auto; padding: 32px 16px 64px; }
+header { display:flex; align-items:center; gap:10px; }
+.mark { width:4px; height:22px; border-radius:2px; background:var(--accent); }
+.logo { font:600 15px Inter, sans-serif; letter-spacing:.12em; }
+h1 { font:400 clamp(34px,6vw,58px)/1.05 Fraunces, Georgia, serif; letter-spacing:-.02em; margin:36px 0 12px; }
+h1 b { font-weight:600; } .m { color:var(--m); } .g { color:var(--g); } .t { color:var(--t); }
+.lede { color:var(--muted); font-size:18px; max-width:620px; margin:0 0 28px; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:22px; }
+.primary { display:flex; flex-wrap:wrap; align-items:center; gap:16px; }
+a.btn { display:inline-flex; align-items:center; gap:10px; background:var(--ink); color:var(--bg); text-decoration:none; border-radius:14px; padding:16px 26px; font:600 17px Inter, sans-serif; }
+a.btn:hover { opacity:.9; }
+a.btn.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); font-weight:500; font-size:15px; padding:12px 18px; }
+.meta { font:13px JetBrains Mono, monospace; color:var(--muted); }
+.grid { display:grid; grid-template-columns: repeat(2, 1fr); gap:14px; margin-top:14px; }
+.plat h3 { margin:0 0 4px; font-size:16px; } .plat p { margin:0 0 14px; color:var(--muted); font-size:14px; }
+pre { margin:10px 0 0; background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:12px 14px; overflow-x:auto; font:13px/1.5 JetBrains Mono, monospace; white-space:pre-wrap; word-break:break-all; }
+.copy { float:right; font:12px Inter, sans-serif; border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:8px; padding:4px 10px; cursor:pointer; }
+h2 { font:600 22px Fraunces, Georgia, serif; margin:36px 0 10px; }
+.notes { color:var(--muted); font-size:14px; }
+.notes ul { padding-left:20px; }
+.err { color:var(--g); }
+footer { margin-top:40px; color:var(--muted); font-size:13px; }
+footer a { color:inherit; }
+@media (max-width: 640px) { .grid { grid-template-columns: 1fr; } a.btn { width:100%; justify-content:center; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><span class="mark"></span><span class="logo">OPENPATCH</span></header>
+  <h1>A <b class="m">dreamy</b> <b class="g">Deep House track</b><br><b class="t">built in two seconds.</b></h1>
+  <p class="lede">Pick a genre, a mood and a texture. The Patch Engine composes a new piece and patches it live in the rack. Download the latest build for your machine.</p>
+
+  <div class="card">
+    <div class="primary">
+      <a class="btn" id="main-btn" href="https://github.com/dexterlabs1/openpatch/releases">Download</a>
+      <div><div id="main-label" style="font-weight:600">Finding the latest build…</div><div class="meta" id="main-meta"></div></div>
+    </div>
+  </div>
+
+  <div class="grid" id="platforms"></div>
+
+  <h2>Steam Deck: install or update</h2>
+  <div class="card">
+    <div class="meta">Desktop Mode → Konsole. Download and extract the Linux package, then run the installer below. No root needed. Run it again to update.</div>
+    <pre id="deck-cmd"><button class="copy" data-copy="deck-cmd">Copy</button><span>cd ~/Downloads/OpenPatch-linux-x86_64 &amp;&amp; ./install.sh</span></pre>
+    <div class="meta" style="margin-top:10px">After installing: launch <b>OpenPatch</b> from the app menu. Next time run <b>~/.local/bin/openpatch-update</b> or pick <b>Update OpenPatch</b> from the menu.</div>
+  </div>
+
+  <h2>What's new</h2>
+  <div class="card notes" id="notes">Loading release notes…</div>
+
+  <footer>Builds come straight from <a href="https://github.com/dexterlabs1/openpatch/releases">GitHub releases</a>. This page always shows the newest one. · <a href="#" id="theme">Toggle theme</a></footer>
+</div>
+<script>
+const REPO = "dexterlabs1/openpatch";
+const PLATFORMS = [
+  { id: "linux", name: "Steam Deck / Linux", match: /^OpenPatch-linux-x86_64\.tar\.gz$/, note: "x86_64 · extract and run install.sh" },
+  { id: "windows", name: "Windows PC", match: /^OpenPatch-windows-x86_64\.zip$/, note: "x86_64 · extract and run openpatch-desktop.exe" },
+  { id: "mac", name: "macOS (Apple silicon)", match: /^OpenPatch-macos-arm64\.zip$/, note: "Apple silicon · ad-hoc signed; not notarized" },
+];
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const mb = n => (n / 1048576).toFixed(1) + " MB";
+function detect() {
+  const ua = navigator.userAgent;
+  if (/Linux|X11|SteamOS|Valve/i.test(ua) && !/Android/i.test(ua)) return "linux";
+  if (/Windows/i.test(ua)) return "windows";
+  if (/Mac/i.test(ua)) return "mac";
+  return null;
+}
+function notesHtml(md) {
+  // Keep it simple: paragraphs and bullet lists from the release body.
+  const lines = (md || "").split(/\r?\n/).filter(l => !/^\|/.test(l) && !/^```/.test(l) && !/^(curl|tar) /.test(l));
+  let html = "", inList = false;
+  for (const l of lines) {
+    if (/^\s*[-*] /.test(l)) { if (!inList) { html += "<ul>"; inList = true; } html += "<li>" + esc(l.replace(/^\s*[-*] /, "")).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>") + "</li>"; continue; }
+    if (inList) { html += "</ul>"; inList = false; }
+    if (/^#+ /.test(l)) html += "<p><b>" + esc(l.replace(/^#+ /, "")) + "</b></p>";
+    else if (l.trim()) html += "<p>" + esc(l).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>") + "</p>";
+  }
+  return html + (inList ? "</ul>" : "");
+}
+async function load() {
+  try {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=20`, { headers: { Accept: "application/vnd.github+json" } });
+    if (!r.ok) throw new Error("GitHub said " + r.status);
+    const releases = (await r.json()).filter(x => !x.draft).sort((a, b) => Date.parse(b.published_at) - Date.parse(a.published_at));
+    const pick = id => { const p = PLATFORMS.find(p => p.id === id); if (!p) return null; for (const rel of releases) { const a = (rel.assets || []).find(a => p.match.test(a.name)); if (a) return { rel, a, p }; } return null; };
+    const found = PLATFORMS.map(p => pick(p.id)).filter(Boolean);
+    if (!found.length) throw new Error("no builds published yet");
+    const mine = pick(detect()) || found[0];
+    $("main-btn").href = mine.a.browser_download_url;
+    $("main-btn").textContent = "Download for " + mine.p.name;
+    $("main-label").textContent = mine.rel.name || mine.rel.tag_name;
+    $("main-meta").textContent = `${mine.rel.tag_name} · ${new Date(mine.rel.published_at).toLocaleDateString()} · ${mb(mine.a.size)}`;
+    $("platforms").innerHTML = found.map(f => `<div class="card plat"><h3>${esc(f.p.name)}</h3><p>${esc(f.p.note)}<br><span class="meta">${esc(f.rel.tag_name)} · ${mb(f.a.size)}</span></p><a class="btn ghost" href="${esc(f.a.browser_download_url)}">Download ${esc(f.a.name)}</a></div>`).join("");
+    $("notes").innerHTML = notesHtml(mine.rel.body) || "No notes for this build.";
+  } catch (e) {
+    $("main-label").innerHTML = `<span class="err">Couldn't reach GitHub (${esc(e.message)}).</span> Use the releases page instead.`;
+    $("notes").textContent = "";
+  }
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest(".copy");
+  if (!b) return;
+  navigator.clipboard.writeText($(b.dataset.copy).querySelector("span").textContent).then(() => { b.textContent = "Copied"; setTimeout(() => b.textContent = "Copy", 1500); });
+});
+$("theme").onclick = e => { e.preventDefault(); const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; document.documentElement.dataset.theme = dark ? "light" : "dark"; };
+load();
+</script>
+</body>
+</html>

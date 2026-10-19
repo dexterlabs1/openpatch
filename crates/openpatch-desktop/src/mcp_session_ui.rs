@@ -15,6 +15,7 @@ pub(crate) struct Panel {
     server: Option<LocalServer>,
     stdio: bool,
     open: bool,
+    anchor: Option<(egui::Rect, egui::LayerId, bool)>,
     error: Option<String>,
 }
 
@@ -25,6 +26,7 @@ impl Panel {
             server: None,
             stdio,
             open: false,
+            anchor: None,
             error: None,
         }
     }
@@ -236,26 +238,33 @@ impl Panel {
                 "MCP"
             }
         };
-        if ui
+        let response = ui
             .button(label)
-            .on_hover_text("Connect Claude or Codex to this live rack")
-            .clicked()
-        {
+            .on_hover_text("Connect Claude or Codex to this live rack");
+        if self.open && self.anchor.is_some_and(|(_, _, above)| !above) {
+            self.anchor = Some((response.rect, response.layer_id, false));
+        }
+        if response.clicked() {
             if self.session_id().is_none() {
                 #[cfg(any(target_os = "macos", target_os = "linux"))]
                 let _ = self.bridge_action("start", session, workspace);
             }
-            self.open = true;
+            self.anchor = Some((response.rect, response.layer_id, false));
+            self.open = !self.open;
         }
     }
 
     pub(crate) fn status(&mut self, ui: &mut egui::Ui) {
-        if ui
-            .add(egui::Button::new(RichText::new(self.summary()).small()).frame(false))
-            .on_hover_text("Open MCP session details")
-            .clicked()
-        {
-            self.open = true;
+        let summary = self.summary();
+        let response = ui
+            .add(egui::Button::new(RichText::new(&summary).small()).frame(false))
+            .on_hover_text(format!("{summary}\nOpen MCP session details"));
+        if self.open && self.anchor.is_some_and(|(_, _, above)| above) {
+            self.anchor = Some((response.rect, response.layer_id, true));
+        }
+        if response.clicked() {
+            self.anchor = Some((response.rect, response.layer_id, true));
+            self.open = !self.open;
         }
     }
 
@@ -264,16 +273,32 @@ impl Panel {
             return;
         }
         let mut open = self.open;
-        egui::Window::new("MCP session")
-            .id(egui::Id::new("mcp_session"))
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .default_width(500.0)
-            .max_width(620.0)
-            .default_pos(egui::pos2(170.0, 100.0))
-            .show(ctx, |ui| {
-                egui::ScrollArea::vertical().max_height(470.0).show(ui, |ui| {
+        let (anchor, layer, above) = self.anchor.unwrap_or((
+            egui::Rect::from_min_size(
+                ctx.content_rect().right_top() + egui::vec2(-110.0, 10.0),
+                egui::vec2(90.0, 30.0),
+            ),
+            egui::LayerId::background(),
+            false,
+        ));
+        let width = 500.0_f32.min(ctx.content_rect().width() - 28.0).max(240.0);
+        let height = if above {
+            anchor.top() - ctx.content_rect().top()
+        } else {
+            ctx.content_rect().bottom() - anchor.bottom()
+        };
+        let response = egui::Popup::new(egui::Id::new("mcp-session-dropdown"), ctx.clone(), anchor, layer)
+            .kind(egui::PopupKind::Menu)
+            .open_bool(&mut open)
+            .align(if above { egui::emath::RectAlign::TOP_END } else { egui::emath::RectAlign::BOTTOM_END })
+            .align_alternatives(&[])
+            .gap(6.0)
+            .width(width)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| {
+                ui.set_width(width);
+                egui::ScrollArea::vertical().id_salt("mcp-session-scroll").max_height((height - 30.0).clamp(80.0, 570.0)).show(ui, |ui| {
+                    ui.heading("MCP session");
                     ui.label(RichText::new(self.summary()).strong());
                     ui.label("Use Claude or Codex to inspect and build the patch in this window. Connect in your client, then ask it to inspect the rack.");
                     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -337,6 +362,14 @@ impl Panel {
                     ui.small("Clients share this rack and its Undo history. Review changes in the rack; playback is controlled here.");
                 });
             });
+        if let Some(response) = response {
+            ctx.data_mut(|data| {
+                data.insert_temp(
+                    egui::Id::new("mcp-session-dropdown-rect"),
+                    response.response.rect,
+                )
+            });
+        }
         self.open = open;
         if self.session_id().is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(250));
