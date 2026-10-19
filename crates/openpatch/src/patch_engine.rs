@@ -12,6 +12,12 @@ mod instruments;
 use instruments::{choose, light_of, Role};
 
 #[cfg(test)]
+#[cfg(test)]
+thread_local! {
+    /// Designs a test pins (one per role), so rarely chosen designs still get built and validated.
+    static PINNED: std::cell::RefCell<Vec<&'static str>> = const { std::cell::RefCell::new(vec![]) };
+}
+
 #[path = "patch_engine_tests.rs"]
 mod tests;
 
@@ -215,6 +221,17 @@ fn quality(q: &str) -> &'static [i64] {
         _ => &[4, 7, 11, 18], // maj7#11
     }
 }
+/// Scale steps of a mood's mode, from the tonic.
+fn mode_steps(mode: &str) -> [i64; 7] {
+    match mode {
+        "minor" => [0, 2, 3, 5, 7, 8, 10],
+        "dorian" => [0, 2, 3, 5, 7, 9, 10],
+        "phrygian" => [0, 1, 3, 5, 7, 8, 10],
+        "lydian" => [0, 2, 4, 6, 7, 9, 11],
+        "mixolydian" => [0, 2, 4, 5, 7, 9, 10],
+        _ => [0, 2, 4, 5, 7, 9, 11],
+    }
+}
 fn qname(q: &str) -> &'static str {
     match q {
         "maj9" => "maj9",
@@ -398,7 +415,7 @@ fn genre_def(g: &str) -> GenreDef {
             bass: &["house", "gen", "sub"],
             voices: &["keys", "pluck", "organ", "pad_saw"],
             rhythm: &["stabs", "stabs", "syncop", "held"],
-            leads: &[("hook", 4.0), ("arp", 2.0), ("bells", 1.0), ("none", 3.0)],
+            leads: &[("hook", 2.0), ("arp", 2.0), ("bells", 2.0), ("none", 3.0)],
             counter: 0.3,
             perc: 0.75,
             perc2: 0.3,
@@ -476,8 +493,8 @@ fn genre_def(g: &str) -> GenreDef {
             voices: &["keys", "organ", "pluck", "pad_square"],
             rhythm: &["stabs", "held", "restrike"],
             leads: &[
-                ("hook", 4.0),
-                ("bells", 2.0),
+                ("hook", 2.0),
+                ("bells", 3.0),
                 ("counter", 1.0),
                 ("none", 3.0),
             ],
@@ -498,7 +515,7 @@ fn genre_def(g: &str) -> GenreDef {
             bass: &["octave", "gen"],
             voices: &["pad_saw", "pluck", "pad_square"],
             rhythm: &["held", "pulse8", "restrike"],
-            leads: &[("arp", 5.0), ("hook", 4.0), ("riff", 1.0)],
+            leads: &[("arp", 5.0), ("hook", 3.0), ("riff", 1.0)],
             counter: 0.3,
             perc: 0.4,
             perc2: 0.1,
@@ -517,8 +534,8 @@ fn genre_def(g: &str) -> GenreDef {
             voices: &["keys", "pad_saw", "pluck", "organ"],
             rhythm: &["held", "stabs", "syncop", "restrike"],
             leads: &[
-                ("hook", 4.0),
-                ("bells", 2.0),
+                ("hook", 2.0),
+                ("bells", 3.0),
                 ("counter", 2.0),
                 ("arp", 1.0),
                 ("none", 1.0),
@@ -564,7 +581,7 @@ fn genre_def(g: &str) -> GenreDef {
             bass: &["garage", "gen", "sub"],
             voices: &["organ", "stab", "keys", "pluck"],
             rhythm: &["stabs", "syncop"],
-            leads: &[("hook", 4.0), ("none", 4.0), ("arp", 1.0)],
+            leads: &[("hook", 3.0), ("none", 4.0), ("arp", 1.0)],
             counter: 0.2,
             perc: 0.5,
             perc2: 0.3,
@@ -662,7 +679,7 @@ fn trim_db(name: &str) -> f64 {
         "harmonic_organ" => -6.3,
         "wt_pad" => -14.6,
         "swarm_pad" => 2.4,
-        "glass" => 2.6,
+        "glass" => -1.4,
         "analog_pluck" => 6.0,
         "pad:wt_pad" => -3.8,
         "pad:swarm_pad" => 11.7,
@@ -840,7 +857,6 @@ struct Ctx {
     ohat: bool,
     break_shift: i64,
     drop2_shift: i64,
-    quals: Vec<&'static str>,
     glue: bool,
     light: bool,
     bass_design: &'static str,
@@ -1072,6 +1088,19 @@ impl Recipe {
         } else {
             (voice, bass_design, lead_design)
         };
+        #[cfg(test)]
+        let (voice, bass_design, lead_design) = PINNED.with(|p| {
+            let mut out = (voice, bass_design, lead_design);
+            for &n in p.borrow().iter() {
+                match instruments::design(n).map(|x| x.role) {
+                    Some(Role::Chords) => out.0 = n,
+                    Some(Role::Bass) => out.1 = n,
+                    Some(Role::Lead) => out.2 = n,
+                    None => {}
+                }
+            }
+            out
+        });
         // song form: the breakdown (and maybe the second drop) moves to a related key
         let shifts: &[i64] = match m.mode {
             "major" | "lydian" | "mixolydian" => &[5, -3, 0],
@@ -1123,7 +1152,6 @@ impl Recipe {
             ohat: !dropped("open hat"),
             break_shift,
             drop2_shift,
-            quals: prog.iter().map(|x| x.1).collect(),
             glue: !dropped("glue compressor"),
             light,
             bass_design,
@@ -1839,7 +1867,7 @@ impl Recipe {
                                 .map(|&s| {
                                     (
                                         s,
-                                        rng.weighted(&[(0, 6.0), (12, 1.5), (7, 1.5)]),
+                                        rng.weighted(&[(0, 8.0), (12, 0.8), (7, 1.2)]),
                                         rng.pick(&[0.65, 0.8, 0.95]),
                                         rng.pick(&[0.3, 0.45, 0.6]),
                                     )
@@ -1855,27 +1883,47 @@ impl Recipe {
                 templates[rng.idx(templates.len())].clone(),
             );
             let slides = matches!(bstyle, "house" | "lofi" | "gen" | "garage" | "broken");
+            let steps = mode_steps(c.m.mode);
+            let in_key = |x: i64| steps.contains(&(x - c.tonic).rem_euclid(12));
             for bar in 0..(64 / spb) {
                 let pat = if bar % 2 == 0 { &a } else { &b };
-                for &(s, iv, v, gt) in pat {
+                let mut octaves = 0;
+                for (j, &(s, iv, v, gt)) in pat.iter().enumerate() {
                     if s >= spb {
                         continue;
                     }
                     let step = bar * spb + s;
-                    let minorish = matches!(
-                        c.quals[chord_at(step)],
-                        "m9" | "m7" | "m11" | "m7sh" | "min_open" | "dom9"
-                    );
-                    let iv = if iv == 0 && rng.chance(0.12) {
-                        rng.pick(if minorish { &[7, 10, 12] } else { &[7, 12, 7] })
+                    let ci = chord_at(step);
+                    // one octave jump per bar at most; the odd fifth stays off the downbeats
+                    let iv = if iv == 12 {
+                        octaves += 1;
+                        if octaves > 1 {
+                            0
+                        } else {
+                            12
+                        }
+                    } else if iv == 0 && s % 4 != 0 && rng.chance(0.08) {
+                        7
                     } else {
                         iv
                     };
-                    // a note directly followed by another slides into it (the rubbery house/garage bass)
-                    let glide_on = slides && pat.iter().any(|x| x.0 == s + 1) && rng.chance(0.7);
+                    // the last note before a chord change can step into the next root from a scale tone
+                    let next = chord_at((bar + 1) * spb);
+                    let last = pat[j + 1..].iter().all(|x| x.0 >= spb);
+                    let note = if last && next != ci && s >= spb / 2 && rng.chance(0.4) {
+                        let to = roots[next];
+                        [to - 1, to + 1, to - 2, to + 2]
+                            .into_iter()
+                            .find(|&x| in_key(x) && x != roots[ci])
+                            .unwrap_or(roots[ci] + iv)
+                    } else {
+                        roots[ci] + iv
+                    };
+                    // a note directly followed by another sometimes slides into it
+                    let glide_on = slides && pat.iter().any(|x| x.0 == s + 1) && rng.chance(0.3);
                     bass.push(st(
                         step,
-                        &[roots[chord_at(step)] + iv],
+                        &[note],
                         v,
                         if glide_on { 1.0 } else { gt },
                         1.0,
@@ -1970,73 +2018,180 @@ impl Recipe {
                 self.note(format!("{n}-note riff"));
             }
             "hook" => {
-                // call (2 bars) and answer (2 bars): 3–5 notes within a fifth, one repeated note, a velocity contour;
-                // the answer keeps the rhythm, follows the next chord, and resolves its last note
-                let rhythms: [&[(i64, i64)]; 8] = [
-                    &[(2, 3), (6, 2), (8, 6)],
-                    &[(0, 2), (3, 3), (10, 4)],
-                    &[(4, 2), (6, 2), (8, 4), (14, 2)],
-                    &[(2, 2), (5, 3), (12, 3)],
-                    &[(0, 3), (4, 1), (6, 6)],
-                    &[(3, 2), (6, 2), (9, 2), (12, 4)],
-                    &[(0, 1), (2, 1), (4, 6), (12, 2)],
-                    &[(6, 2), (8, 2), (10, 6)],
-                ];
-                let rh = rhythms[rng.idx(rhythms.len())];
-                let contours: [&[i64]; 6] = [
-                    &[0, 1, 1, 2, 1],
-                    &[2, 1, 0, 0, 1],
-                    &[0, 2, 1, 1, 0],
-                    &[1, 1, 2, 0, 0],
-                    &[2, 2, 1, 0, 1],
-                    &[0, 0, 1, 2, 2],
-                ];
-                let contour = contours[rng.idx(contours.len())];
-                let home = rng.int(2, 7);
+                // a 3–5 note motif over two chords, developed over the next two: the same rhythm carried onto the new
+                // harmony, inverted, or thinned out. Pitches come from the mode bent to each chord; strong beats and
+                // phrase ends land on chord tones (3rd, 5th, 7th or 9th more often than the root), weak beats may pass
+                // through scale tones, and no note sits a semitone above a chord tone.
+                let span = 2 * spb * bpc;
+                let beat = 4 / div;
+                let n = rng.weighted(&[(3usize, 3.0), (4, 3.0), (5, 1.0)]);
+                let mut on: Vec<i64> = vec![];
+                for _ in 0..64 {
+                    if on.len() == n {
+                        break;
+                    }
+                    let slots: Vec<(i64, f64)> = (0..span * 3 / 4)
+                        .map(|t| {
+                            let w = if t == 0 {
+                                0.5
+                            } else if t % beat == 0 {
+                                0.7
+                            } else if t % 2 == 0 {
+                                1.2
+                            } else {
+                                0.5
+                            };
+                            (t, w)
+                        })
+                        .collect();
+                    let t = rng.weighted(&slots);
+                    if on.iter().all(|&o| (o - t).abs() >= 2) {
+                        on.push(t);
+                    }
+                }
+                on.sort();
+                let n = on.len();
+                let lens: Vec<i64> = (0..n)
+                    .map(|k| match on.get(k + 1) {
+                        Some(&nx) => (nx - on[k] - rng.pick(&[0, 0, 1])).max(1),
+                        None => rng.int(beat, 2 * beat).min(span - on[k] - 1).max(1),
+                    })
+                    .collect();
+                let mut offs = vec![0i64];
+                for _ in 1..n {
+                    let d = rng.weighted(&[
+                        (1, 3.0),
+                        (-1, 3.0),
+                        (2, 1.5),
+                        (-2, 1.5),
+                        (0, 1.0),
+                        (3, 0.4),
+                        (-3, 0.4),
+                    ]);
+                    offs.push((offs.last().unwrap() + d).clamp(-4, 4));
+                }
+                let steps = mode_steps(c.m.mode);
+                let tonic = c.tonic;
+                // the mode bent to chord `ci` (a chromatic chord tone replaces its scale neighbours), and the chord's
+                // pitch classes
+                let chord_scale = |ci: usize| -> (Vec<i64>, Vec<i64>) {
+                    let cpc: Vec<i64> = ch[ci].iter().map(|x| x.rem_euclid(12)).collect();
+                    let mut pcs: Vec<i64> =
+                        steps.iter().map(|x| (tonic + x).rem_euclid(12)).collect();
+                    for &q in &cpc {
+                        if !pcs.contains(&q) {
+                            pcs.retain(|&p| {
+                                (p - q).rem_euclid(12) != 1 && (q - p).rem_euclid(12) != 1
+                            });
+                            pcs.push(q);
+                        }
+                    }
+                    let sc = (-12..=26)
+                        .filter(|x: &i64| pcs.contains(&x.rem_euclid(12)))
+                        .collect();
+                    (sc, cpc)
+                };
+                let home = rng.int(4, 9);
+                let anchor = |rng: &mut Rng, ci: usize, home: i64| -> i64 {
+                    let (sc, cpc) = chord_scale(ci);
+                    let root = roots[ci].rem_euclid(12);
+                    let pool: Vec<(i64, f64)> = sc
+                        .iter()
+                        .filter(|x| cpc.contains(&x.rem_euclid(12)) && (*x - home).abs() <= 5)
+                        .map(|&x| {
+                            let w = 1.0 / (1.0 + (x - home).abs() as f64).powi(2);
+                            (x, if x.rem_euclid(12) == root { w * 0.3 } else { w })
+                        })
+                        .collect();
+                    rng.weighted(&pool)
+                };
+                let answer = rng.weighted(&[("carried", 3.0), ("inverted", 1.5), ("thinned", 1.5)]);
                 let liquid = c.texture == "Liquid";
-                let mut prev: Option<(usize, i64)> = None;
                 for phrase in 0..2i64 {
-                    let bar = phrase * 2 * bpc; // phrase start bar (call at 0, answer at 2)
-                    let ci = chord_at(bar * spb);
-                    let pool: Vec<i64> = tones(ci, home - 3, home + 4);
-                    let pool = if pool.len() < 2 {
-                        tones(ci, 0, 12)
+                    let base = phrase * span;
+                    let ci0 = chord_at(base);
+                    let (sc0, _) = chord_scale(ci0);
+                    let lift = if phrase == 1 {
+                        rng.pick(&[0, 0, 2, -2])
                     } else {
-                        pool
+                        0
                     };
-                    for (k, &(s, ln)) in rh.iter().enumerate() {
-                        let (s2, l2) = if div == 1 {
-                            (s, ln)
+                    let a = anchor(rng, ci0, home + lift);
+                    let a0 = sc0.iter().position(|&x| x == a).unwrap_or(0) as i64;
+                    let skip = if phrase == 1 && answer == "thinned" && n > 2 {
+                        Some(rng.int(1, n as i64 - 1) as usize)
+                    } else {
+                        None
+                    };
+                    let mut prev: Option<(usize, i64)> = None;
+                    let mut k = 0;
+                    while k < n {
+                        if Some(k) == skip {
+                            k += 1;
+                            continue;
+                        }
+                        let t = base + on[k];
+                        // a thinned note's time goes to the note before it
+                        let len = if skip == Some(k + 1) && k + 2 <= n {
+                            on.get(k + 2)
+                                .map_or(lens[k + 1] + on[k + 1] - on[k], |&x| x - on[k] - 1)
                         } else {
-                            (s / 2, (ln / 2).max(1))
+                            lens[k]
                         };
-                        let mut idx = contour[k % contour.len()] as usize % pool.len();
-                        if phrase == 1 && k == rh.len() - 1 {
-                            idx = 0;
-                        } // the answer comes home
-                        let note = pool[idx];
-                        let vel = [0.7, 0.85, 1.0, 0.8, 0.65][k % 5];
-                        let start = bar * spb + s2;
-                        if let (true, Some((i, p))) = (liquid, prev) {
-                            if (note - p).abs() <= 4 {
-                                if let Some(last) = lead.get_mut(i) {
-                                    last["slide"] = json!(true);
-                                    last["gate"] = json!(1.0);
+                        let off = if phrase == 1 && answer == "inverted" {
+                            -offs[k]
+                        } else {
+                            offs[k]
+                        };
+                        let p = sc0[(a0 + off).clamp(0, sc0.len() as i64 - 1) as usize];
+                        let ci = chord_at(t);
+                        let (sc, cpc) = chord_scale(ci);
+                        let p = *sc.iter().min_by_key(|&&x| ((x - p).abs(), x)).unwrap();
+                        let last = (k + 1..n).all(|j| Some(j) == skip);
+                        let strong = on[k] % beat == 0 || last;
+                        let root = roots[ci].rem_euclid(12);
+                        let note = if strong {
+                            let mut tones: Vec<i64> = sc
+                                .iter()
+                                .copied()
+                                .filter(|x| cpc.contains(&x.rem_euclid(12)))
+                                .collect();
+                            tones.sort_by_key(|&x| ((x - p).abs(), x));
+                            match tones.as_slice() {
+                                [r, alt, ..] if r.rem_euclid(12) == root && rng.chance(0.6) => *alt,
+                                [x, ..] => *x,
+                                [] => p,
+                            }
+                        } else {
+                            let avoid = |x: i64| {
+                                !cpc.contains(&x.rem_euclid(12))
+                                    && cpc.iter().any(|&q| (x - q).rem_euclid(12) == 1)
+                            };
+                            if avoid(p) {
+                                sc.iter()
+                                    .rev()
+                                    .copied()
+                                    .find(|&x| x < p && !avoid(x))
+                                    .unwrap_or(p)
+                            } else {
+                                p
+                            }
+                        };
+                        let vel = if strong { 0.85 } else { 0.68 } + rng.uni(-0.06, 0.06);
+                        if let (true, Some((i, q))) = (liquid, prev) {
+                            if (note - q).abs() <= 2 && rng.chance(0.5) {
+                                if let Some(x) = lead.get_mut(i) {
+                                    x["slide"] = json!(true);
+                                    x["gate"] = json!(1.0);
                                 }
                             }
                         }
-                        lead.extend(held(start, l2, &[note], vel, 0.9));
+                        lead.extend(held(t, len, &[note], vel, 0.85));
                         prev = Some((lead.len() - 1, note));
+                        k += 1;
                     }
-                    // second bar of each phrase: the last note rings, then a breath
-                    if let Some((i, _)) = prev {
-                        if let Some(last) = lead.get_mut(i) {
-                            last["gate"] = json!(0.9);
-                        }
-                    }
-                    prev = None;
                 }
-                self.note("hook: call and answer");
+                self.note(format!("hook: {n}-note motif, answer {answer}"));
             }
             "bells" => {
                 // one three-note figure (fifth → ninth → third of each chord), repeated and carried through the changes

@@ -17,8 +17,18 @@ Each voice role draws from a registry of designs that spans the catalog instead 
 | Lead | classic oscillator · FM bells, wavefold lead (percussive) · modal bells · swarm, harmonic, analog and wavetable leads (sustained) |
 
 Designs carry character tags (warm, glassy, metallic, analog, evolving, …). Genre, mood and texture weight the
-tags; the genre's classic voices get a bonus so a genre keeps its identity; the seed picks. Hooks and
+tags; the genre's classic voices get a bonus so a genre keeps its identity; each design's listening `rating`
+(one-variable swap tests: one design changed inside a patch the listener liked) scales its weight, so favourites lead
+and passed-over designs stay rare; the seed picks. Hooks and
 counter-lines only take sustaining designs. The pad layer avoids repeating the chord design.
+
+## Melody and bass lines
+
+- Hooks are a 3–5 note motif over two chords, developed over the next two (carried onto the new harmony, inverted
+  or thinned). Notes come from the mode bent to each chord: strong beats and phrase ends land on chord tones (3rd,
+  5th, 7th or 9th more than the root), weak beats may pass through scale tones, never a semitone above a chord tone.
+- Bass lines keep at most one octave jump per bar, put the odd fifth off the downbeats, slide less, and may step
+  into the next chord's root from a scale tone.
 
 ## CPU tiers and plan size
 

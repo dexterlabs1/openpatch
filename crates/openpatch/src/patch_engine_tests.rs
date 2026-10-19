@@ -293,6 +293,19 @@ fn builds_use_catalog_kinds_ports_and_parameter_ranges() {
             }
         }
     }
+    // rarely chosen designs: pin each one into builds until it appears (a lead needs a build that has a melody)
+    for d in instruments::DESIGNS {
+        PINNED.with(|p| *p.borrow_mut() = vec![d.name]);
+        for seed in 1..=40u64 {
+            let r = Recipe::new("Deep House", "Dreamy", "Liquid", seed).unwrap();
+            let hit = r.kinds.values().any(|v| v == d.name);
+            check(&r, &format!("pinned {} {seed}", d.name));
+            if hit {
+                break;
+            }
+        }
+        PINNED.with(|p| p.borrow_mut().clear());
+    }
     assert!(
         fails.is_empty(),
         "{} failures: {:?}",

@@ -428,6 +428,21 @@ pub(super) fn affinity(x: &Design, genre: &str, mood: &str, texture: &str) -> f6
     sum(genre_tags(genre)) + 0.7 * sum(mood_tags(mood)) + 0.5 * sum(texture_tags(texture))
 }
 
+/// How often a design is chosen, from one-variable listening tests (2026-10-19: each design swapped into a patch
+/// the listener liked). Great designs lead; ones the listener passed over stay possible but rare (and remain the
+/// light-mode stand-ins); struck glass works only sparingly.
+fn rating(name: &str) -> f64 {
+    match name {
+        "pluck" | "stab" | "swarm_pad" | "harmonic_lead" | "fold_bass" => 2.0,
+        "fm_bass" | "analog_pluck" | "fm_keys" => 1.3,
+        "organ" | "pad_saw" | "pad_square" | "piano" | "wt_pad" | "analog_lead" | "classic"
+        | "fold_lead" => 1.0,
+        "harmonic_organ" | "wt_lead" => 0.6,
+        "glass" => 0.3,
+        _ => 0.01,
+    }
+}
+
 /// Seeded, words-weighted choice among the designs of `role` that pass `fit`. Designs in `native` (the genre's own
 /// classic palette) get a bonus so a genre keeps its identity; designs in `avoid` (already used in this patch) are
 /// strongly discouraged so layers contrast.
@@ -448,7 +463,9 @@ pub(super) fn choose(
         .map(|x| {
             let a = affinity(x, genre, mood, texture)
                 + if native.contains(&x.name) { 1.5 } else { 0.0 };
-            let w = (0.5 + a).powi(2) * if avoid.contains(&x.name) { 0.1 } else { 1.0 };
+            let w = (0.5 + a).powi(2)
+                * rating(x.name)
+                * if avoid.contains(&x.name) { 0.1 } else { 1.0 };
             (x.name, w)
         })
         .collect();
