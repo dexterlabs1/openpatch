@@ -3785,12 +3785,13 @@ impl OpenPatch {
                 && !self.audio_performance_open
                 && !self.shader_open
                 && !self.mcp_session.is_open()
-                && !self.patch_engine.is_open()
                 && !self.cable_palette_ui.keyboard_active()
                 && !(self.browser_open && self.library.keyboard_active())
                 && self.preset_dialog.is_none()
                 && self.template_save.is_none(),
         );
+        // The Patch Engine panel types its words with letter/number keys; knobs, cables and dragging stay live.
+        self.rack.set_keyboard_enabled(!self.patch_engine.is_open());
         egui::CentralPanel::default()
             .frame(egui::Frame::new().inner_margin(0))
             .show(ctx, |ui| {

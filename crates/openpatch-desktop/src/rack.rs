@@ -811,6 +811,9 @@ pub struct Rack {
     requested_cable_menu: Option<CableEnd>,
     deferred_touch_menu: Option<(CableEnd, String, u64)>,
     shortcuts_enabled: bool,
+    /// Rack keyboard shortcuts only. A panel that takes typed keys (the Patch Engine's word keys) turns this off
+    /// while the rack's pointer controls keep working.
+    keyboard_enabled: bool,
     suppress_reveal_once: bool,
     gesture: u64,
     layout_revision: u64,
@@ -889,6 +892,7 @@ impl Default for Rack {
             requested_cable_menu: None,
             deferred_touch_menu: None,
             shortcuts_enabled: true,
+            keyboard_enabled: true,
             suppress_reveal_once: false,
             gesture: 0,
             layout_revision: 0,
@@ -1133,6 +1137,10 @@ impl Rack {
             self.cancel_module_drag();
         }
         self.shortcuts_enabled = enabled;
+    }
+
+    pub(crate) fn set_keyboard_enabled(&mut self, enabled: bool) {
+        self.keyboard_enabled = enabled;
     }
 
     pub(crate) fn select_only(&mut self, id: String) {
@@ -2170,7 +2178,7 @@ impl Rack {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         }
         // Arrow keys accelerate and glide to a stop while navigation remains available.
-        if navigation_enabled && !ui.input(|i| i.pointer.any_down()) {
+        if navigation_enabled && self.keyboard_enabled && !ui.input(|i| i.pointer.any_down()) {
             let input_dt = ui.input(|i| i.stable_dt.clamp(1.0 / 240.0, 0.1));
             let target = ui.input(keyboard_pan_delta) / input_dt;
             if target != Vec2::ZERO || self.key_velocity.length() > 2.0 {
@@ -2194,6 +2202,7 @@ impl Rack {
         }
         if interactive
             && self.shortcuts_enabled
+            && self.keyboard_enabled
             && self.navigation_idle()
             && !ui.ctx().wants_keyboard_input()
             && !egui::Popup::is_any_open(ui.ctx())
@@ -2206,6 +2215,7 @@ impl Rack {
         if interactive
             && !self.signal_path.enabled
             && self.shortcuts_enabled
+            && self.keyboard_enabled
             && ui.input(|i| i.focused)
             && !ui.ctx().wants_keyboard_input()
             && !egui::Popup::is_any_open(ui.ctx())
@@ -2287,6 +2297,7 @@ impl Rack {
         }
         if interactive
             && self.shortcuts_enabled
+            && self.keyboard_enabled
             && ui.input(|i| i.focused)
             && !ui.ctx().wants_keyboard_input()
             && !egui::Popup::is_any_open(ui.ctx())
