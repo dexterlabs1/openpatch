@@ -97,8 +97,10 @@ fn receiving_controls_scales_and_selector_survive_runtime_adoption() {
     let mut changed = p.clone();
     changed.nodes[2].params.insert("x_steps".into(), 1.);
     changed.nodes[2].params.insert("y_steps".into(), 1.);
-    let mut data = RecallRandomData::default();
-    data.active_slot = 5;
+    let mut data = RecallRandomData {
+        active_slot: 5,
+        ..Default::default()
+    };
     data.scales[5] = RecallRandomScale {
         base_interval: 1.,
         degrees: vec![
@@ -271,8 +273,10 @@ fn actual_engine_matches_genuine_cpp_all_t_models_and_six_weighted_scales_at_dec
     for case in fixture["cases"].as_array().unwrap() {
         let mut p = patch(32000);
         p.nodes[2].params = serde_json::from_value(case["params"].clone()).unwrap();
-        let mut data = RecallRandomData::default();
-        data.active_slot = case["active_slot"].as_u64().unwrap() as u8;
+        let data = RecallRandomData {
+            active_slot: case["active_slot"].as_u64().unwrap() as u8,
+            ..Default::default()
+        };
         p.nodes[2].content = Some(ModuleContent::RecallRandom(data.into()));
         let expected = case["source_gate_highs_and_cv_bits"].as_array().unwrap();
         let actual = render(&mut p.compile().unwrap(), expected.len() + 8);
@@ -301,8 +305,10 @@ fn actual_engine_matches_genuine_cpp_all_t_models_and_six_weighted_scales_at_dec
 fn randomize_and_initialize_keep_authored_weighted_scales_and_randomize_keeps_seed() {
     let actions = openpatch_core::ModuleParameterActions::new(48000);
     let mut p = patch(48000);
-    let mut data = RecallRandomData::default();
-    data.active_slot = 4;
+    let mut data = RecallRandomData {
+        active_slot: 4,
+        ..Default::default()
+    };
     data.scales[4].degrees[0].voltage = -0.02;
     p.nodes[2].content = Some(ModuleContent::RecallRandom(data.into()));
     let content = p.nodes[2].content.clone();

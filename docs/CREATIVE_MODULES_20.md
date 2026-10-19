@@ -1,6 +1,6 @@
 # Twenty creative module contracts
 
-Research/design checkpoint: 2026-10-17. **Tidal Functions, Frame Scene and Segment Garden passed the first family macOS CI gate; Event Fork and Rhythm Terrain are the fourth and fifth implemented development candidates. Fifteen entries remain proposed.** This is an implementation backlog with explicit source and behavior boundaries, not twenty additions to the shipped catalog. The [Tidal Functions](TIDAL_FUNCTIONS.md), [Frame Scene](FRAME_SCENE.md) and [Segment Garden](SEGMENT_GARDEN.md) development candidates are not installed; [PR #34](https://github.com/dexterlabs1/openpatch/pull/34) passed the first family macOS CI gate. Event Fork and [Rhythm Terrain](RHYTHM_TERRAIN.md) remain pending their family gate. Keep installed OpenPatch 0.2.7 build 9 stable until an authorized upgrade.
+Updated 2026-10-18. **The first five creative instruments ship in 0.3.0. Recall Random is the sixth native implementation candidate in PR #37; fourteen entries remain proposed.** This is a backlog with explicit source and behavior boundaries, not twenty additions to the shipped catalog. Keep the installed OpenPatch 0.3.0 build 10 stable; current source work does not install another app.
 
 ## Scope and existing instruments
 

@@ -118,8 +118,10 @@ fn capture(s: &mut Session, action: &str) -> Result<Value, String> {
     )
 }
 fn weighted_content() -> openpatch_core::ModuleContent {
-    let mut data = RecallRandomData::default();
-    data.active_slot = 2;
+    let mut data = RecallRandomData {
+        active_slot: 2,
+        ..Default::default()
+    };
     data.scales[2] = RecallRandomScale {
         base_interval: 1.25,
         degrees: vec![

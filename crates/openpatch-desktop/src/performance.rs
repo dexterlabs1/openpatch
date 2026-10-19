@@ -44,6 +44,7 @@ type ScopeCaptureBuffers<'a> = (
 );
 #[derive(Clone, Copy)]
 enum PerformanceAction {
+    Recall(RecallCaptureCommand),
     Module(ModuleAction),
     RackMcp {
         requests: [Option<RackMcpTransport>; 2],
@@ -57,6 +58,7 @@ impl PerformanceAction {
     fn apply(self, engine: &mut Engine, handle: ModuleHandle) -> bool {
         match self {
             Self::Module(action) => engine.handle_module_event(handle, action),
+            Self::Recall(command) => command.apply(engine, handle),
             Self::RackMcp {
                 requests,
                 content_fingerprint,
@@ -101,6 +103,7 @@ enum ModuleKind {
     Gates,
     RandomValues,
     RhythmTerrain,
+    RecallRandom,
     Random,
     ShiftRegister,
     AdsrEg,
@@ -144,6 +147,7 @@ impl ModuleKind {
             "gates" => Some(Self::Gates),
             "random_values" => Some(Self::RandomValues),
             "rhythm_terrain" => Some(Self::RhythmTerrain),
+            "recall_random" => Some(Self::RecallRandom),
             "random" => Some(Self::Random),
             "sh_asr" => Some(Self::ShiftRegister),
             "adsr_eg" => Some(Self::AdsrEg),
@@ -188,6 +192,7 @@ impl ModuleKind {
             Self::Gates => "gates",
             Self::RandomValues => "random_values",
             Self::RhythmTerrain => "rhythm_terrain",
+            Self::RecallRandom => "recall_random",
             Self::Random => "random",
             Self::ShiftRegister => "sh_asr",
             Self::AdsrEg => "adsr_eg",
@@ -282,6 +287,7 @@ impl ModuleKind {
                     | ModuleAction::ReleaseTap
                     | ModuleAction::Reset
             ),
+            Self::RecallRandom => action == ModuleAction::Reset,
             Self::MidiGate => action == ModuleAction::MidiPanic,
             Self::Push => matches!(
                 action,
@@ -377,6 +383,7 @@ struct Control {
     stock_click_releases: BTreeMap<String, StockClickRelease>,
     execution: ExecutionRequest,
     rackmcp_metadata: BTreeMap<String, ([u8; 32], Vec<String>)>,
+    recall_pending: BTreeMap<String, (u64, u64)>,
 }
 #[derive(Clone, Copy)]
 struct ModuleSnapshot {
@@ -846,7 +853,9 @@ impl Meter {
                             .then_some(automatic_channels as u8),
                         clock_frequency: (matches!(
                             entry.kind,
-                            ModuleKind::StockLfo | ModuleKind::RhythmTerrain
+                            ModuleKind::StockLfo
+                                | ModuleKind::RhythmTerrain
+                                | ModuleKind::RecallRandom
                         ) && clock_frequency.is_finite()
                             && clock_frequency > 0.0)
                             .then_some(clock_frequency),
@@ -988,6 +997,9 @@ struct Shared {
     emergency_release_requests: AtomicU64,
     emergency_release_applied: AtomicU64,
     meters: Box<[Meter; MAX_NODES]>,
+    recall_meters: Box<[RecallCaptureMeter]>,
+    recall_consumed: [AtomicU64; MAX_NODES],
+    recall_command_ok: [AtomicBool; MAX_NODES],
     saved_acknowledgments: Box<[StateAcknowledgment; MAX_NODES]>,
     sampled_sequence: AtomicU64,
     published_sample_rate: AtomicU32,
@@ -1562,6 +1574,12 @@ impl Performance {
             emergency_learn_cutoffs: std::array::from_fn(|_| AtomicU64::new(0)),
             emergency_release_requests: AtomicU64::new(0),
             emergency_release_applied: AtomicU64::new(0),
+            recall_consumed: std::array::from_fn(|_| AtomicU64::new(0)),
+            recall_command_ok: std::array::from_fn(|_| AtomicBool::new(false)),
+            recall_meters: (0..MAX_NODES)
+                .map(|_| RecallCaptureMeter::new())
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
             meters: (0..MAX_NODES)
                 .map(|_| Meter::new())
                 .collect::<Vec<_>>()
@@ -1623,6 +1641,7 @@ impl Performance {
                     stock_click_releases: BTreeMap::new(),
                     execution: ExecutionRequest::default(),
                     rackmcp_metadata: BTreeMap::new(),
+                    recall_pending: BTreeMap::new(),
                 }),
                 shared,
                 diagnostics,
@@ -2267,6 +2286,15 @@ impl Performance {
     }
 }
 impl LiveModuleEvents for Performance {
+    fn recall_random_capture(
+        &self,
+        id: &str,
+        action: &str,
+        slot: u8,
+        revision: u64,
+    ) -> Result<Value, String> {
+        self.recall_capture_command(id, action, slot, revision)
+    }
     fn start_listen_capture(
         &self,
         id: &str,
@@ -2633,6 +2661,7 @@ impl LiveModuleEvents for Performance {
         let dropped = shared.dropped.load(Ordering::Acquire);
         let available = self.execution_available();
         let mut snapshots = vec![None; control.entries.len()];
+        let mut recall_snapshots = vec![None; control.entries.len()];
         let mut coherent_frame = None;
         if available {
             for _ in 0..4 {
@@ -2641,10 +2670,30 @@ impl LiveModuleEvents for Performance {
                     continue;
                 }
                 let frame = shared.frame.load(Ordering::SeqCst);
-                for (snapshot, (_, entry)) in snapshots.iter_mut().zip(&control.entries) {
+                for ((snapshot, recall), (id, entry)) in snapshots
+                    .iter_mut()
+                    .zip(recall_snapshots.iter_mut())
+                    .zip(&control.entries)
+                {
                     *snapshot = shared.meters[entry.slot]
                         .read(*entry, control.revision)
                         .filter(|actual| actual.frame == frame);
+                    *recall = if entry.kind == ModuleKind::RecallRandom {
+                        self.shared.recall_meters[entry.slot]
+                            .read(entry.token, control.revision)
+                            .filter(|(observed, _, consumed, accepted)| {
+                                *observed == frame
+                                    && control
+                                        .recall_pending
+                                        .get(id)
+                                        .filter(|(token, _)| *token == entry.token)
+                                        .is_none_or(|(_, sequence)| {
+                                            *sequence == *consumed && *accepted
+                                        })
+                            })
+                    } else {
+                        None
+                    };
                 }
                 if shared.publish_serial.load(Ordering::SeqCst) == before {
                     coherent_frame = Some(frame);
@@ -2654,9 +2703,11 @@ impl LiveModuleEvents for Performance {
         }
         if coherent_frame.is_none() {
             snapshots.fill(None);
+            recall_snapshots.fill(None);
         }
-        let modules: serde_json::Map<String, Value> = control.entries.iter().zip(snapshots).map(|((id, entry), actual)| {
+        let modules: serde_json::Map<String, Value> = control.entries.iter().zip(snapshots).zip(recall_snapshots).map(|(((id, entry), actual), recall)| {
             (id.clone(), json!({"kind":entry.kind.name(),"bypassed":entry.bypassed,"available":actual.is_some(),
+                "recall_capture":recall.map(|(_, capture, _, _)| capture),
                 "instance":entry.token,"revision":actual.map(|snapshot| snapshot.revision),"frame":actual.map(|snapshot|snapshot.frame),
                 "parameters":entry.kind.parameter_names().iter().enumerate().filter_map(|(index, name)| {
                     actual.and_then(|snapshot| snapshot.parameters[index])
@@ -2775,6 +2826,15 @@ impl EventReader {
         }
     }
     /// Cancellation mutates held controls only; no audio clock or DSP processing.
+    fn ack_recall_command(&self, event: Event, accepted: bool) {
+        if matches!(event.action, PerformanceAction::Recall(_))
+            && self.shared.desired[event.slot].load(Ordering::Acquire) == event.token
+            && self.shared.recall_consumed[event.slot].load(Ordering::Acquire) <= event.sequence
+        {
+            self.shared.recall_command_ok[event.slot].store(accepted, Ordering::Release);
+            self.shared.recall_consumed[event.slot].store(event.sequence, Ordering::Release);
+        }
+    }
     pub(super) fn suspend(&mut self, engine: &mut Engine, plan: &mut ModulePlan) {
         self.release_pending(engine, plan, true);
         for _ in 0..EVENT_CAPACITY + 1 {
@@ -2787,6 +2847,7 @@ impl EventReader {
                     engine.release_module_controls(binding.handle);
                 }
             }
+            self.ack_recall_command(event, false);
             self.shared.dropped.fetch_add(1, Ordering::Relaxed);
             self.shared.rejected.fetch_add(1, Ordering::Relaxed);
         }
@@ -2813,12 +2874,14 @@ impl EventReader {
             let Some(event) = self.head else { break };
             if self.shared.closed.load(Ordering::Acquire) {
                 self.head = None;
+                self.ack_recall_command(event, false);
                 self.shared.dropped.fetch_add(1, Ordering::Relaxed);
                 self.shared.closed_dropped.fetch_add(1, Ordering::Relaxed);
                 *budget -= 1;
                 continue;
             }
             if self.shared.desired[event.slot].load(Ordering::Acquire) != event.token {
+                self.ack_recall_command(event, false);
                 let shared = &self.shared;
                 self.head = None;
                 shared.dropped.fetch_add(1, Ordering::Relaxed);
@@ -2828,6 +2891,7 @@ impl EventReader {
             }
             if self.shared.action_epochs[event.slot].load(Ordering::Acquire) != event.action_epoch {
                 self.head = None;
+                self.ack_recall_command(event, false);
                 self.shared.dropped.fetch_add(1, Ordering::Relaxed);
                 self.shared.rejected.fetch_add(1, Ordering::Relaxed);
                 *budget -= 1;
@@ -2835,6 +2899,7 @@ impl EventReader {
             }
             if frame > event.deadline {
                 self.head = None;
+                self.ack_recall_command(event, false);
                 self.shared.dropped.fetch_add(1, Ordering::Relaxed);
                 self.shared.expired.fetch_add(1, Ordering::Relaxed);
                 *budget -= 1;
@@ -2843,9 +2908,22 @@ impl EventReader {
             if revision < event.revision {
                 break;
             }
+            if matches!(
+                event.action,
+                PerformanceAction::Recall(RecallCaptureCommand::Begin { .. })
+            ) && event.revision != revision
+            {
+                self.ack_recall_command(event, false);
+                self.head = None;
+                self.shared.dropped.fetch_add(1, Ordering::Relaxed);
+                self.shared.rejected.fetch_add(1, Ordering::Relaxed);
+                *budget -= 1;
+                continue;
+            }
             let binding = plan.bindings[event.slot].filter(|binding| binding.token == event.token);
             let Some(binding) = binding else {
                 self.head = None;
+                self.ack_recall_command(event, false);
                 self.shared.dropped.fetch_add(1, Ordering::Relaxed);
                 self.shared.rejected.fetch_add(1, Ordering::Relaxed);
                 *budget -= 1;
@@ -2864,6 +2942,7 @@ impl EventReader {
             }
             if self.shared.action_epochs[event.slot].load(Ordering::Acquire) != event.action_epoch {
                 self.head = None;
+                self.ack_recall_command(event, false);
                 self.shared.dropped.fetch_add(1, Ordering::Relaxed);
                 self.shared.rejected.fetch_add(1, Ordering::Relaxed);
                 *budget -= 1;
@@ -2883,7 +2962,12 @@ impl EventReader {
                 let _ = self.shared.midi_learns[event.slot]
                     .cancel_armed_through(event.cancel_through_serial);
             }
-            if event.action.apply(active, binding.handle) {
+            let accepted = event.action.apply(active, binding.handle);
+            if matches!(event.action, PerformanceAction::Recall(_)) {
+                self.shared.recall_command_ok[event.slot].store(accepted, Ordering::Release);
+                self.shared.recall_consumed[event.slot].store(event.sequence, Ordering::Release);
+            }
+            if accepted {
                 if let Some((engine, plan)) = previous.as_mut() {
                     if let Some(old) =
                         plan.bindings[event.slot].filter(|old| old.token == event.token)
@@ -2900,6 +2984,7 @@ impl EventReader {
                     .last_applied_sequence
                     .store(event.sequence, Ordering::Release);
             } else {
+                self.ack_recall_command(event, false);
                 self.shared.dropped.fetch_add(1, Ordering::Relaxed);
                 self.shared.rejected.fetch_add(1, Ordering::Relaxed);
             }
@@ -2965,6 +3050,16 @@ impl EventReader {
                             .all(|(handle, value)| {
                                 handle.is_none() || value.is_some_and(|value| value.is_finite())
                             });
+                    if binding.kind == ModuleKind::RecallRandom {
+                        self.shared.recall_meters[slot].write(
+                            binding.token,
+                            revision,
+                            frame,
+                            engine.recall_random_capture(binding.handle),
+                            self.shared.recall_consumed[slot].load(Ordering::Acquire),
+                            self.shared.recall_command_ok[slot].load(Ordering::Acquire),
+                        );
+                    }
                     self.shared.meters[slot].write(
                         if valid { binding.token } else { 0 },
                         ModuleSnapshot {
@@ -2999,7 +3094,9 @@ impl EventReader {
                                     }
                                     if !matches!(
                                         binding.kind,
-                                        ModuleKind::StockLfo | ModuleKind::RhythmTerrain
+                                        ModuleKind::StockLfo
+                                            | ModuleKind::RhythmTerrain
+                                            | ModuleKind::RecallRandom
                                     ) {
                                         lights.clock_frequency = None;
                                     }
@@ -3021,6 +3118,7 @@ impl EventReader {
 }
 
 include!("guarded_manual.rs");
+include!("recall_capture_transport.rs");
 include!("midi_learn_performance.rs");
 #[cfg(test)]
 mod midi_cc_performance_tests;

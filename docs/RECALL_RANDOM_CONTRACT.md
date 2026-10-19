@@ -1,6 +1,7 @@
 # Recall Random: source and native contract
 
-Implementation in progress; no catalog entry or new installed module yet.
+Native implementation candidate for PR #37; not installed or in release 0.3.0.
+See [the user guide and qualification](RECALL_RANDOM.md).
 This is the sixth planned creative instrument, following the five candidates
 tracked in [WORKPLAN.md](WORKPLAN.md). It must implement coupled repeatable
 rhythms and voltage streams rather than rename independent random draws.
@@ -45,6 +46,7 @@ partition invariance. Input edge capture uses fixed bounded chronological
 snapshots; queue bandwidth, overflow recovery and physical connection changes
 are explicit. It cannot promise lossless arbitrary host-Nyquist pulses.
 CV and authored controls are sampled at the declared source block boundary.
+RESET applies once per completed block; multiple reset rises in one block coalesce.
 Outputs use ideal voltage scaling and host-rate resampling, not DAC circuitry.
 
 Compatible graph adoption keeps RNG, loops, PLL/ramp state, interpolation,

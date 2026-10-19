@@ -6100,6 +6100,7 @@ mod tests {
     include!("live_parameter_audio_tests.rs");
     include!("sequence_load_audio_tests.rs");
     include!("rackmcp_transport_audio_tests.rs");
+    include!("recall_capture_audio_tests.rs");
     include!("listen_audio_tests.rs");
     include!("listen_session_tests.rs");
     include!("rackmcp_transport_session_tests.rs");
