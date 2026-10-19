@@ -347,7 +347,11 @@ impl std::fmt::Debug for RecallRandom {
     }
 }
 impl RecallRandom {
-    pub(crate) fn build(node: &Node, rate: u32) -> Result<Self, String> {
+    // Keep large source-runtime construction out of the generic Model dispatcher:
+    // debug builds reserve that dispatcher's stack frame for every module kind.
+    // This control-thread boundary does not affect callback/adoption storage.
+    #[inline(never)]
+    pub(crate) fn build(node: &Node, rate: u32) -> Result<Box<Self>, String> {
         if !(8000..=192000).contains(&rate) {
             return Err("Recall Random host rate must be an integer8000..192000Hz".into());
         }
@@ -360,14 +364,14 @@ impl RecallRandom {
         let scales = std::array::from_fn(|i| data.scales[i].kernel());
         let params = Params::build(node, data.active_slot)?;
         let runtime = Runtime::new(params.seed, &scales);
-        Ok(Self {
+        Ok(Box::new(Self {
             params,
             sample_rate: rate,
             scales,
             pristine: runtime.clone(),
             runtime,
             pending_reset: false,
-        })
+        }))
     }
     pub(crate) fn initialize_state(&mut self) {
         let capture_id = self.runtime.capture_id;
@@ -666,7 +670,7 @@ fn same_scale(a: &Scale, b: &Scale) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn adapter(rate: u32) -> RecallRandom {
+    fn adapter(rate: u32) -> Box<RecallRandom> {
         let node: Node =
             serde_json::from_value(json!({"id":"recall","kind":"recall_random","params":{}}))
                 .unwrap();

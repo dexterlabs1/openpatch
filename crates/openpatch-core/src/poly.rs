@@ -1155,9 +1155,7 @@ impl Model {
             return Ok(Self::Rack264Vco(Box::new(Rack264Vco::build(node, rate)?)));
         }
         if node.kind == "recall_random" {
-            return Ok(Self::RecallRandom(Box::new(RecallRandom::build(
-                node, rate,
-            )?)));
+            return Ok(Self::RecallRandom(RecallRandom::build(node, rate)?));
         }
         if node.kind == "rhythm_terrain" {
             return Ok(Self::RhythmTerrain(Box::new(RhythmTerrain::build(
