@@ -25,6 +25,52 @@ fn command(action: Option<RackAction>, expected: &str) -> Value {
 }
 
 #[test]
+fn hosted_example_native_and_hosted_panels_are_contiguous_without_overlap() {
+    let (_, rack, patch) = fixture();
+    let mut panels: Vec<_> = patch
+        .nodes
+        .iter()
+        .map(|node| {
+            (
+                node.id.as_str(),
+                Rect::from_min_size(
+                    rack.positions[&node.id],
+                    vec2(panel_width(&node.kind), PANEL_HEIGHT),
+                ),
+            )
+        })
+        .chain(rack.unresolved_panels.iter().map(|panel| {
+            assert!(
+                panel.hosted,
+                "the example must retain its actual hosted panel"
+            );
+            (
+                panel.id.as_str(),
+                Rect::from_min_size(
+                    rack.positions[&panel.id],
+                    vec2(UNRESOLVED_WIDTH, PANEL_HEIGHT),
+                ),
+            )
+        }))
+        .collect();
+    panels.sort_by(|a, b| a.1.min.x.total_cmp(&b.1.min.x));
+    assert_eq!(
+        panels.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+        ["source", "binary", "amp"]
+    );
+    for pair in panels.windows(2) {
+        let (left_id, left) = pair[0];
+        let (right_id, right) = pair[1];
+        assert!(
+            !left.intersect(right).is_positive(),
+            "example panels {left_id} {left:?} and {right_id} {right:?} overlap"
+        );
+        assert_eq!(left.min.y, right.min.y, "example panels must share a row");
+        assert_eq!(left.max.x, right.min.x, "example panels must be contiguous");
+    }
+}
+
+#[test]
 fn hosted_shared_knob_has_hit_priority_grouped_history_and_revision_fence() {
     let (ctx, mut rack, patch) = fixture();
     let knob = point(&rack, pos2(55., 278.));
