@@ -2,7 +2,7 @@
   "schema": 1,
   "date": "2026-10-17",
   "platform": "macOS ARM64",
-  "status": "bounded shared Session live-parameter/history and actual plugin correctness pass; user-facing activation, coherent live save and device qualification remain open",
+  "status": "bounded original transport/mixed-graph receipts retained; current public application workflow in rack-binary-application-qualification.json",
   "profile": {
     "rate": 48000,
     "quantum_frames": 128,
@@ -581,5 +581,6 @@
     "public_activation": false,
     "installed": false,
     "evidence": "native-test-output/rack-control-import/capture-app-result-002.json"
-  }
+  },
+  "current_application_qualification": "rack-binary-application-qualification.json"
 }

@@ -29,7 +29,9 @@ Only two unfinished product lines need integration:
   integrated with current `main`, preserving released instruments, Patch Engine,
   rack tools and licenses. Explicit experimental activation/shared controls,
   coherent MCP save dispatch and ordinary graph/Scope continuity are implemented;
-  focused regression and real Mac device qualification remain in progress.
+  four focused Core/control regressions, 20 desktop hosted checks and the genuine
+  plugin public activation/history/Scope/MCP-save workflow pass. Real Mac device
+  and native-window qualification remain in progress.
   General binary/GUI compatibility and redistribution remain separate. It is
   excluded from the installed 0.3.0. [Current contract](BINARY_HOST_V1.md).
 

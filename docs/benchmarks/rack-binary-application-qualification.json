@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "platform": "macOS ARM64",
+  "status": "public experimental workflow and focused regressions pass; actual-device qualification in progress",
+  "source_commit": "5a4687100dcae10832d811a7e327d85839f94f9b",
+  "runtime_commit": "d58cfb4edfb9a67b754794e3c6e23883809cd8b2",
+  "fingerprints": {
+    "companion_sha256": "903faed075237e1f996856572e4aa09fbe00b4967a7653442ea89d40e82a7786",
+    "plugin_sha256": "264e55e1389274c3873439372c5c51f48f63168bd6c98fb2c6ffec170224b6f6",
+    "runtime_sha256": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c"
+  },
+  "source_manifest": "native-test-output/host-completion/frozen-source-sha256.json",
+  "source_manifest_sha256": "3552deb6e955506b3e3889af45b9444a44973f498f4023c11ddc6d21bc3bdbf9",
+  "scope": "one explicitly granted pinned Bogaudio OFFSET, genuine Rack SDK runtime, ordinary native and Scope continuity, shared revision/history and coherent MCP save; no general binary/GUI compatibility claim",
+  "validation": {
+    "all_target_check": {
+      "passed": true,
+      "owner": "root serial check",
+      "scope": "initial candidate; final desktop activation guard was subsequently compiled by the passing desktop hosted run"
+    },
+    "focused_core_and_control": {
+      "passed": 4,
+      "logs": [
+        "native-test-output/host-completion/core-executor.log",
+        "native-test-output/host-completion/core-adoption.log",
+        "native-test-output/host-completion/activation.log",
+        "native-test-output/host-completion/rebind.log"
+      ]
+    },
+    "desktop_hosted": {
+      "passed": 20,
+      "ignored": 10,
+      "log": "native-test-output/host-completion/desktop-hosted.log"
+    },
+    "actual_public_workflow": {
+      "receipt": "native-test-output/host-completion/capture/public-hosted-workflow-result.json",
+      "receipt_sha256": "2cce818d88cd8101902d3ad00a72bd2923e88b2ec0ce07b44d102e7c633978cd",
+      "result": {
+        "callback_heap_operations": 0,
+        "device_qualified": false,
+        "mcp_save_state_source": "live_hosted_barrier",
+        "passed": true,
+        "same_child_across_native_edits_and_scope": true,
+        "scope": "actual installed binary with public Session activation, native/Scope graph continuity, grouped hosted edit/history and MCP save dispatch; paced/no device/window",
+        "scope_generation": 4
+      }
+    }
+  },
+  "actual_device": {
+    "status": "pending",
+    "device_qualified": false
+  },
+  "native_window": {
+    "status": "pending"
+  },
+  "installation_changed": false,
+  "retained_initial_failures": [
+    "obsolete inactive panel captions",
+    "negative admission test assumed missing environment; deterministic missing companion now verifies silence/no native fallback"
+  ]
+}

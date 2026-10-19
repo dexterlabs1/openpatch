@@ -3,8 +3,9 @@
 Integration candidate, 2026-10-18. The experimental host now has explicit
 native/MCP activation, shared rack controls, coherent native/MCP save dispatch,
 and same-child continuity across ordinary native parameter and Scope rebuilds.
-The current branch includes released `main` features. Validation of this candidate
-is in progress; source implementation is not a device qualification receipt.
+The current branch includes released `main` features. Focused Core/control and
+shared-panel tests plus the actual-plugin public workflow pass. Device and native
+window qualification remain in progress; the paced workflow is not a device receipt.
 The installed OpenPatch 0.3.0 build 10 is unchanged. The full
 [compatibility obligation](COMPATIBILITY_DECISION.md#extensions-and-existing-vcv-binaries)
 and native Rust extension API remain separate.
@@ -61,6 +62,20 @@ playback timestamps. Numerical graph latency and predicted delivery are distinct
 from physical loopback latency; this gate does not measure a physical input/output
 loop. The device receipt must pass before this candidate is merged. Earlier
 paced/headless evidence below cannot substitute for it.
+
+## Current candidate evidence
+
+[The application qualification record](benchmarks/rack-binary-application-qualification.json)
+pins the tested source/runtime commits, source manifest and actual companion,
+plugin and SDK runtime fingerprints. Four focused Core/control regressions and
+20 desktop hosted checks pass. The genuine installed-plugin public workflow
+passes shared activation, two ordinary native edits, Scope rebinding without
+child/transport restart, native held-state continuity, grouped hosted edits and
+undo/redo, coherent MCP save/export, and resumed playback. All rendered callback
+invocations retain the allocation/deallocation guard. The saved document retains
+both OFFSET options and the effective native controls/state. That workflow used
+5 ms callback pacing and no native window/device; it is not sustained realtime
+qualification. Actual-device and native-window receipts are pending separately.
 
 ## Prior implementation checkpoints
 
