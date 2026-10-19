@@ -176,7 +176,7 @@ def main():
     parser.add_argument("--platform", required=True, choices=PLATFORMS)
     parser.add_argument("--binary-dir", required=True, help="Directory containing prebuilt desktop and CLI executables")
     parser.add_argument("--output", default="dist", help="Output archive path, or directory (default: dist)")
-    parser.add_argument("--build-number", default="10")
+    parser.add_argument("--build-number", default="11")
     parser.add_argument("--source", help="Corresponding source URL for the exact release revision")
     args = parser.parse_args()
     try:

@@ -1391,7 +1391,9 @@ impl Audio {
         for receipt in self.hosted_controller.service() {
             self.last_hosted_retirement = Some(receipt);
         }
-        if let Some(mut engine) = self.pending.take() {
+        if let Some(engine) = self.pending.take() {
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            let mut engine = engine;
             #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
             if let Some(mut donor) = self.capture.recovery.take() {
                 engine.resume_native_from(&mut donor);

@@ -1,6 +1,17 @@
 # Current work plan
 
-Updated 2026-10-18. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
+Updated 2026-10-19. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
+
+## All-platform release candidate: 0.3.1 build 11
+
+The user requested new builds for macOS ARM, Windows x64 and Steam Deck/Linux
+x64. This candidate includes the merged Recall Random and experimental Mac
+binary-host work, plus constructor-stack and telemetry-test corrections.
+Full platform CI, package identity/signatures, installer and MCP checks are the
+release gate. Publish verified archives with checksums and source provenance
+only after all targets pass. Do not install automatically. Windows audio and
+Deck hardware/game mode remain separate hands-on qualifications; the existing
+binary-host device result covers only the documented Mac profile.
 
 ## Installed Mac build
 
