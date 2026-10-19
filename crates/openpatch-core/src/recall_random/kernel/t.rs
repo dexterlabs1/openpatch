@@ -359,6 +359,8 @@ impl TGenerator {
         self.markov_history_ptr = (p + 16 - 1) % 16;
         bitmask
     }
+    // Keep the pinned source channel-index traversal and bitmask update order.
+    #[allow(clippy::needless_range_loop)]
     fn schedule_output_pulses(&mut self, x: &[f32; 6], mut bitmask: i32) {
         for i in 0..2 {
             let width = self.random_pulse_width(x[i]);
@@ -366,6 +368,8 @@ impl TGenerator {
             bitmask >>= 1;
         }
     }
+    // Keep source channel indexing aligned with its random-vector and ratio slots.
+    #[allow(clippy::needless_range_loop)]
     fn configure_slave_ramps(&mut self, x: &[f32; 6]) {
         match self.model {
             0 => {
@@ -416,6 +420,8 @@ impl TGenerator {
             _ => {} // Caller validates source model range.
         }
     }
+    // Preserve the pinned source branch layout and sample/channel operation order.
+    #[allow(clippy::needless_late_init, clippy::needless_range_loop)]
     pub fn process(
         &mut self,
         stream: &mut RandomStream,

@@ -551,8 +551,8 @@ impl RecallRandom {
             r.block[i][..3].copy_from_slice(&r.t_delay[r.delay_index]);
             r.t_delay[r.delay_index] = raw;
             r.delay_index = (r.delay_index + 1) % 2;
-            for j in 0..4 {
-                r.block[i][j + 3] = finite(voltages[i][j]);
+            for (output, voltage) in r.block[i][3..].iter_mut().zip(voltages[i]) {
+                *output = finite(voltage);
             }
             if r.capture
                 .is_some_and(|c| c.status == RecallRandomCaptureStatus::Recording)
