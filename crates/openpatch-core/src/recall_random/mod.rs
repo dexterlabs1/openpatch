@@ -347,6 +347,13 @@ impl std::fmt::Debug for RecallRandom {
     }
 }
 impl RecallRandom {
+    // Keep large source-runtime construction out of the generic Model dispatcher:
+    // debug builds reserve that dispatcher's stack frame for every module kind.
+    // This control-thread boundary does not affect callback/adoption storage.
+    #[inline(never)]
+    pub(crate) fn build_boxed(node: &Node, rate: u32) -> Result<Box<Self>, String> {
+        Self::build(node, rate).map(Box::new)
+    }
     pub(crate) fn build(node: &Node, rate: u32) -> Result<Self, String> {
         if !(8000..=192000).contains(&rate) {
             return Err("Recall Random host rate must be an integer8000..192000Hz".into());
