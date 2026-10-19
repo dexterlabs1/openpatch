@@ -482,6 +482,8 @@ impl Session {
             host_lifecycle: host_lifecycle::Publication::at_patch(&self.patch),
             midi_learn_worker: false,
             midi_learn_committed: BTreeSet::new(),
+            recall_captures_committed: BTreeSet::new(),
+            live_backend_epoch: self.live_backend_epoch,
             layout_rows: self.layout_rows.clone(),
             layout_placements: BTreeMap::new(),
         }

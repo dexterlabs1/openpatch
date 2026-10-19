@@ -21,13 +21,19 @@ branches have been removed after a verified recovery backup. Historical archived
 checkouts retain their source and ignored validation evidence. Dirty checkouts
 and Claude's working branch are preserved.
 
-Only two unfinished product lines need integration:
-- [Recall Random — draft PR #37](https://github.com/dexterlabs1/openpatch/pull/37):
-  synchronized with current `main`; native Engine/state/capture/UI/MCP integration
-  and focused macOS qualification remain.
-- [Rack binary hosting — draft PR #38](https://github.com/dexterlabs1/openpatch/pull/38):
-  historical experimental checkpoint; 21 merge-conflict paths and the public
-  activation/save/device/compatibility gates remain. It is excluded from 0.3.0.
+Two product candidates are now implemented and in final macOS review:
+- [Recall Random — PR #37](https://github.com/dexterlabs1/openpatch/pull/37):
+  native source-derived rhythms/CV, six weighted scales, revision-fenced recording,
+  shared panel/browser, MCP/history/presets and a quiet example. Source-reference,
+  focused Engine/callback/no-heap and workflow checks pass. [Guide](RECALL_RANDOM.md).
+- [Experimental Rack binary hosting — PR #38](https://github.com/dexterlabs1/openpatch/pull/38):
+  current main integrated, explicit activation, shared controls, coherent MCP save
+  and ordinary graph/Scope continuity. Actual public binary workflow and a
+  60-second physical Mac output-device gate pass for one pinned Bogaudio OFFSET.
+  This is a bounded experimental capability, not general Rack binary compatibility.
+
+Final milestone CI remains the merge gate. Neither candidate changes the
+installed 0.3.0 app or its published downloads.
 
 [Branch disposition and recovery](BRANCH_STATUS.md) records the remaining work,
 protected dirty checkouts and rules for the next milestone. Earlier sections
@@ -64,10 +70,9 @@ the small-screen startup panel so it cannot steal editor input. Normal startup
 behavior is unchanged. Portable Linux installation preserves user patches and
 settings. The new installer also installs the updated release-asset updater.
 
-Recall Random's source checkpoint remains separately preserved on
-`work/recall-random`; it is not a sixth catalog instrument. Continue its native
-state/capture/UI integration and the remaining fifteen creative instruments,
-while retaining all broader parity, compatibility and device requirements.
+Recall Random is the sixth creative instrument in the development candidate;
+five ship in 0.3.0 and fourteen remain after it. Broader parity, compatibility and
+device requirements remain open.
 
 ## User-requested rack workflow and creative expansion (2026-10-17)
 

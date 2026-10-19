@@ -3859,6 +3859,44 @@ class OpenPatchMCPTests(unittest.TestCase):
             "frequency": 0, "pulse_width": .5, "fm_amount": 0, "pwm_amount": 0, "linear_fm": 0, "soft_sync": 0})
         self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
 
+    def test_recall_random_weighted_scales_history_presets_and_saved_reopen(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["recall_random"]
+        self.assertEqual(descriptor["outputs"], ["t1", "t2", "t3", "x1", "x2", "x3", "y"])
+        self.assertIn("Custom", descriptor["tags"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "recall", "kind": "recall_random", "params": {"seed": 17}}],
+            "output": "recall", "output_port": "x1"}})
+        before = self.patch_snapshot()
+        for action in ["begin", "stop", "cancel", "inspect", "commit"]:
+            error = self.require_tool_error("capture_recall_random_scale", {"id": "recall", "action": action, "slot": 2})
+            self.assertIn("live audio backend", json.dumps(error))
+        self.assertEqual(self.patch_snapshot(), before)
+        scale = {"base_interval": 1, "degrees": [{"voltage": 0, "weight": 255},
+            {"voltage": 0.25, "weight": 128}, {"voltage": 0.5, "weight": 255}]}
+        content = {"type": "recall_random", "active_slot": 2, "scales": [scale] * 6}
+        self.require_tool_success("set_module_content", {"id": "recall", "content": content,
+            "expected_revision": before["revision"]})
+        changed = self.patch_snapshot()
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "recall"}))["preset"]
+        self.assertEqual(preset["content"], content)
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], before["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], changed["patch"])
+        invalid = json.loads(json.dumps(content))
+        invalid["scales"][2]["degrees"][0]["weight"] = 0
+        invalid["scales"][2]["degrees"][2]["weight"] = 0
+        before_invalid = self.patch_snapshot()
+        self.require_tool_error("set_module_content", {"id": "recall", "content": invalid})
+        self.assertEqual(self.patch_snapshot(), before_invalid)
+        trace = self.payload(self.require_tool_success("capture_signal", {
+            "id": "recall", "port": "x1", "seconds": .1, "points": 64}))
+        self.assertEqual(trace, self.payload(self.require_tool_success("capture_signal", {
+            "id": "recall", "port": "x1", "seconds": .1, "points": 64})))
+        self.require_tool_success("save_patch", {"filename": "recall-random.json"})
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": []}})
+        self.require_tool_success("load_patch", {"filename": "recall-random.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
+
     def test_rhythm_terrain_clock_taps_grouped_history_presets_and_saved_reopen(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         descriptor = modules["rhythm_terrain"]

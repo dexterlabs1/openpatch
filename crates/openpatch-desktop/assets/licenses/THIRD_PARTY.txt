@@ -973,3 +973,8 @@ corresponding source at crates/openpatch-core/src/rhythm_terrain.rs,
 crates/openpatch-core/src/rhythm_terrain/ and scripts/grids_reference/.
 Native timing, voltage/CV, tap and edge-capture policies are documented separately;
 AVR electrical/CPU timing equivalence is not claimed.
+
+Recall Random: MIT-licensed Marbles kernels/resources and required stmlib helpers,
+Copyright Emilie Gillet. See Marbles-algorithms.txt for the full grant and
+crates/openpatch-core/src/recall_random/ plus scripts/marbles_reference/ for
+corresponding source, pins, and explicit native endpoint/bridge boundaries.

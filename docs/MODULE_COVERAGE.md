@@ -413,3 +413,14 @@ functional discovery. [Contract and genuine source/Engine bounds](RHYTHM_TERRAIN
 This is the fifth new creative candidate and 91st development kind, not VCV
 binary compatibility or physical hardware qualification. Family macOS CI and
 installation remain pending.
+
+
+## Recall Random development candidate
+
+Distinct `recall_random`: coupled source rhythms/voltage loops, all seven T
+algorithms, six authored weighted scales, bounded recording and explicit native
+32 kHz/five-frame timing. Shared Signal Atlas panel/browser rendering, real output
+lamps and Custom plus functional categories are included. [Guide, source/Engine
+bounds and recording authority](RECALL_RANDOM.md). This is the sixth creative
+implementation and 92nd development kind; it is not in the 0.3.0 downloads.
+Final macOS CI remains the merge gate.

@@ -74,6 +74,9 @@ mod rackmcp_sequence_tests;
 mod rackmcp_transport;
 #[cfg(test)]
 mod rackmcp_transport_tests;
+mod recall_random;
+#[cfg(test)]
+mod recall_random_tests;
 #[cfg(test)]
 mod rhythm_terrain_tests;
 #[cfg(test)]
@@ -194,6 +197,17 @@ pub trait LiveModuleEvents: Send + Sync {
         _workspace: &Path,
     ) -> Result<Value, String> {
         Err("Listen capture unsupported by this backend".into())
+    }
+    /// Bounded Recall Random recording commands. Results are runtime telemetry;
+    /// only Session may commit a completed scale into authored content.
+    fn recall_random_capture(
+        &self,
+        _id: &str,
+        _action: &str,
+        _slot: u8,
+        _revision: u64,
+    ) -> Result<Value, String> {
+        Err("Recall Random capture unsupported by this backend".into())
     }
     /// Latest global capture, only when it belongs to this module. Lets native
     /// controls discover jobs started by an external MCP client.
@@ -401,6 +415,8 @@ pub struct Session {
     construction: construction::Construction,
     midi_learn_worker: bool,
     midi_learn_committed: BTreeSet<MidiLearnCommitKey>,
+    recall_captures_committed: BTreeSet<(u64, String, u64, u64, u64)>,
+    live_backend_epoch: u64,
     host_lifecycle: host_lifecycle::Publication,
     layout_rows: BTreeMap<String, u32>,
     layout_placements: BTreeMap<String, u32>,
@@ -434,6 +450,8 @@ impl Clone for Session {
             construction: construction::Construction::default(),
             midi_learn_worker: false,
             midi_learn_committed: self.midi_learn_committed.clone(),
+            recall_captures_committed: self.recall_captures_committed.clone(),
+            live_backend_epoch: self.live_backend_epoch,
             host_lifecycle: host_lifecycle::Publication::at_patch(&self.patch),
             layout_rows: self.layout_rows.clone(),
             layout_placements: BTreeMap::new(),
@@ -751,6 +769,8 @@ impl Session {
             construction: construction::Construction::default(),
             midi_learn_worker: false,
             midi_learn_committed: BTreeSet::new(),
+            recall_captures_committed: BTreeSet::new(),
+            live_backend_epoch: 0,
             host_lifecycle: host_lifecycle::Publication::default(),
             layout_rows: BTreeMap::new(),
             layout_placements: BTreeMap::new(),
@@ -770,6 +790,17 @@ impl Session {
                 backend.request_document_execution(self.revision, self.execution_disposition());
             }
             backend.sync_patch(&self.patch, self.revision);
+        }
+        let same_backend = match (&self.live_module_events, &backend) {
+            (Some(old), Some(new)) => Arc::ptr_eq(old, new),
+            (None, None) => true,
+            _ => false,
+        };
+        if !same_backend {
+            self.live_backend_epoch = self
+                .live_backend_epoch
+                .checked_add(1)
+                .ok_or("Live backend generation exhausted")?;
         }
         self.live_module_events = backend;
         self.midi_learn_committed.clear();
@@ -1454,6 +1485,7 @@ impl Session {
                     | "rotate_sequence"
                     | "trigger_module"
                     | "rackmcp_transport"
+                    | "capture_recall_random_scale"
                     | "start_listen_capture"
                     | "cancel_listen_capture"
                     | "learn_midi_cc"
@@ -1551,6 +1583,7 @@ impl Session {
             }
             "rackmcp_transport" => return self.rackmcp_transport_tool(&args),
             "inspect_rackmcp_sequence" => return self.inspect_rackmcp_sequence_tool(&args),
+            "capture_recall_random_scale" => return self.recall_random_capture_tool(&args),
             "inspect_listen" => return self.inspect_listen_tool(&args),
             "inspect_bridge" => return self.inspect_bridge_tool(&args),
             "start_listen_capture" => return self.start_listen_capture_tool(&args),
@@ -1607,6 +1640,7 @@ impl Session {
                             | ModuleAction::ResetPress
                             | ModuleAction::ResetRelease
                     ),
+                    "recall_random" => action == ModuleAction::Reset,
                     "rhythm_terrain" => matches!(
                         action,
                         ModuleAction::TapPress
@@ -2904,7 +2938,8 @@ pub fn tools() -> Value {
         tool("promote_cables","Promote 1..1024 unique existing cable plugs at the input or output end, preserving their current relative plug order. Only chosen-end rank metadata changes; IDs, colors, array order, opposite ranks, and DSP state are preserved. Already-top selections are validated no-ops preserving revision/history/redo. Supports preview and batches; exact ranks restore through undo/redo.",json!({"cable_ids":cable_ids,"end":{"type":"string","enum":["input","output"]},"expected_revision":rev}),&["cable_ids","end"],false),
         tool("clear_cables","Remove every cable atomically, preserving modules, parameters, output selection, and live module state. One revision and undo step restores exact cable IDs and order. Supports preview_edits/apply_edits and the full patch cable limit. A direct call on an empty patch validates expected_revision but does not change history or revision; an empty subedit follows normal transaction history semantics.",json!({"expected_revision":rev}),&[],false),
         tool("edit_frame_scene","Add, update, remove or clear authored Frame Scene keyframes. Up to 64 sorted timestamps, four 16-bit levels and stable IDs. Update/remove address IDs, never sorted indices or live CV position. Collisions/capacity/stale IDs reject atomically. Revision guarded, undoable, usable in atomic edits/construction; optional history_group merges one update gesture on one keyframe. Does not capture live signal values.",json!({"id":s,"edit":openpatch_core::FrameSceneEdit::schema(),"expected_revision":rev,"history_group":{"type":"string","minLength":1,"maxLength":128}}),&["id","edit"],false),
-        tool("set_module_content","Replace typed Notes, Blank, wavetable or Frame Scene content. Notes permits multiline Unicode bounded to 8192 UTF-8 bytes; Blank width is 3..96 HP. Rejects mismatched kinds and version 1. Revision guarded, undoable, and valid in atomic edits and construction. Width changes preserve the left position; layout collision handling belongs to the host.",json!({"id":s,"content":preset_tools::content_schema(),"expected_revision":rev}),&["id","content"],false),
+        tool("capture_recall_random_scale","Record a weighted Recall Random scale from REGISTER CV. Begin remembers the current revision and target slot; stop/cancel queue runtime commands, inspect polls actual callback status, and commit applies a completed scale through shared undo history only if its starting revision is still current. Does not start playback. Playback must be running to apply queued commands. Any authored edit after begin makes commit stale; inspect/cancel remain available.",json!({"id":s,"action":{"enum":["begin","stop","cancel","inspect","commit"]},"slot":{"type":"integer","minimum":0,"maximum":5},"expected_revision":rev}),&["id","action"],false),
+        tool("set_module_content","Replace typed Notes, Blank, wavetable, Frame Scene or Recall Random weighted-scale content. Notes permits multiline Unicode bounded to 8192 UTF-8 bytes; Blank width is 3..96 HP. Rejects mismatched kinds and version 1. Revision guarded, undoable, and valid in atomic edits and construction. Width changes preserve the left position; layout collision handling belongs to the host.",json!({"id":s,"content":preset_tools::content_schema(),"expected_revision":rev}),&["id","content"],false),
         tool("set_rackmcp_sequence","Replace RackMCP source patterns and explicit native automation bindings atomically. Preserves transport; each native transaction loads its final sequence state once per module, including equal data. Reloads selection and lane caches. Undoable; valid in apply_edits and preview_edits. Only rackmcp_sequencer accepts this state; consult its catalog schema.",json!({"id":s,"rackmcp_sequence":{"type":"object"},"expected_revision":rev}),&["id","rackmcp_sequence"],false),
         tool("set_score","Replace structured score patterns and automation atomically. Only score_sequencer accepts score data; consult its catalog score_schema. Changed score data resets its transport; unrelated edits preserve playback. Undoable and valid in apply_edits.",json!({"id":s,"score":{"type":"object"},"expected_revision":rev}),&["id","score"],false),
         tool("set_parameter","Set a finite parameter within catalog limits. An optional history_group (1..128 UTF-8 bytes) merges consecutive changes to the same parameter into one undo step when saved-state coverage and control-release obligations match, including apply_edits with matching history_parameter; use a new unique group for each gesture.",json!({"id":s,"parameter":s,"value":{"type":"number"},"expected_revision":rev,"history_group":history_group}),&["id","parameter","value"],false),

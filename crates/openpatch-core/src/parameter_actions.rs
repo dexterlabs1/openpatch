@@ -57,6 +57,14 @@ fn policy(kind: &str, name: &str) -> Randomization {
         ("stock_vco", _) => Disabled,
         ("frame_scene", "offset" | "easing1" | "easing2" | "easing3" | "easing4") => Enum,
         ("frame_scene", _) => Linear,
+        ("recall_random", "seed") => Disabled,
+        ("recall_random", "length") => InclusiveInteger,
+        (
+            "recall_random",
+            "t_model" | "t_range" | "t_repeat" | "x_repeat" | "x_clock" | "x_control_mode"
+            | "x_range" | "x_register" | "y_control_mode" | "y_range" | "y_ratio",
+        ) => Enum,
+        ("recall_random", _) => Linear,
         ("rhythm_terrain", "seed") => Disabled,
         ("rhythm_terrain", "tempo") => InclusiveInteger,
         (

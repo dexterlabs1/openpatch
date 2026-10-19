@@ -18,23 +18,17 @@ and the old workflow checkpoint also remain in the recovery bundle. Clean
 historical worktrees were detached from deleted branches. Their files and ignored
 source-reference/build evidence were retained in OpenPatch Archive.
 
-## Unfinished product work
+## Product candidates
 
-| Work | Review location | Remaining merge requirements |
+| Work | Review location | Status |
 | --- | --- | --- |
-| Recall Random | [Draft #37](https://github.com/dexterlabs1/openpatch/pull/37), `work/recall-random` | Native 32 kHz/five-frame bridge, explicit latency and state adoption, six weighted scale slots, revision-fenced capture, shared panel/telemetry/UI/MCP/history/preset/reopen and callback no-heap checks, then macOS milestone CI. |
-| Existing-binary Rack host | [Draft #38](https://github.com/dexterlabs1/openpatch/pull/38), `work/rack-binary-feasibility` | Extract host-only work onto current main, resolve 21 merge-conflict paths, public activation and MCP save dispatch, ordinary graph/Scope continuity, stale/crash/ownership/no-heap checks, actual Mac device deadlines and compatibility/redistribution decisions. |
+| Recall Random | [#37](https://github.com/dexterlabs1/openpatch/pull/37), `work/recall-random` | Native Engine, six weighted slots, revision-fenced capture, shared panel/telemetry/MCP/history/presets/reopen and callback no-heap checks implemented. Genuine source comparison passes 26 cases / 288,485 observations. Final macOS milestone CI remains the merge gate. |
+| Experimental Rack binary host | [#38](https://github.com/dexterlabs1/openpatch/pull/38), `work/rack-binary-feasibility` | Current main integrated; explicit activation/shared controls, coherent MCP save and native/Scope continuity implemented. Public real-binary workflow and sustained physical Mac output-device tests pass. Final native-window review and macOS CI pending. Qualified for one pinned OFFSET and fixed audio profile; wider compatibility remains separate. |
 
-Recall Random is synchronized with the audited `main`. Its bounded input check
-accepts 26 cases and three source-negative cases; this audit did not rerun DSP
-qualification. It is not yet a registered module. The draft's automatic full CI
-was canceled because native integration is incomplete; rerun the milestone gate
-when it is ready. The Rack-host draft intentionally preserves its historical
-checkpoint rather than guessing at unsafe conflict resolutions. Neither draft
-is a release candidate.
-
-The remaining fifteen creative instruments and the larger parity roadmap still
-apply. MIDI/live performance remain last; routine validation remains macOS first.
+Both candidates preserve the installed 0.3.0 build. Fourteen further creative
+instruments and the larger parity roadmap remain; MIDI/live performance stay
+last. Delete the finished feature branches after their PRs merge, while retaining
+local evidence and protected work below.
 
 ## Protected local work
 

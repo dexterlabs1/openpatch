@@ -94,7 +94,7 @@ impl Category {
             }
             "lfo" | "multi_lfo" | "stock_lfo" | "wavetable_lfo" | "gate" | "random"
             | "random_values" | "sh_asr" | "tidal_functions" | "frame_scene" | "segment_garden"
-            | "event_fork" => Self::Modulation,
+            | "event_fork" | "recall_random" => Self::Modulation,
             "gain"
             | "mixer"
             | "analog_vca"

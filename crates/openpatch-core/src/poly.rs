@@ -26,6 +26,7 @@ use crate::rackmcp_listen::{self, ListenSink, ListenStatus, RackMcpListen};
 use crate::rackmcp_sequence::{self, RackMcpSequencer, ResolvedTarget};
 use crate::random_modulation::{self, Random};
 use crate::random_values::{self, RandomValues};
+use crate::recall_random::{self, RecallRandom};
 use crate::rhythm_terrain::{self, RhythmTerrain};
 use crate::routing::{self, Routing};
 use crate::scope::{self, Scope};
@@ -153,6 +154,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "tidal_functions"
                 | "frame_scene"
                 | "rhythm_terrain"
+                | "recall_random"
                 | "event_fork"
                 | "segment_garden"
                 | "random_values"
@@ -224,6 +226,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "stock_lfo" => stock_lfo::INPUTS.iter().position(|port| *port == name),
         "frame_scene" => frame_scene::INPUTS.iter().position(|port| *port == name),
         "rhythm_terrain" => rhythm_terrain::INPUTS.iter().position(|port| *port == name),
+        "recall_random" => recall_random::INPUTS.iter().position(|port| *port == name),
         "event_fork" => event_fork::INPUTS.iter().position(|port| *port == name),
         "segment_garden" => segment_garden::INPUTS.iter().position(|port| *port == name),
         "tidal_functions" => tidal_functions::INPUTS
@@ -354,6 +357,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
             .position(|port| *port == name)
     } else if matches!(kind, "stock_vco" | "rack264_vco") {
         stock_vco::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "recall_random" {
+        recall_random::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "rhythm_terrain" {
         rhythm_terrain::OUTPUTS
             .iter()
@@ -597,6 +602,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect::<Vec<_>>()
+    } else if kind == "recall_random" {
+        recall_random::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
     } else if kind == "rhythm_terrain" {
         rhythm_terrain::OUTPUTS
             .iter()
@@ -848,6 +858,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "frame_scene" {
         frame_scene::annotate(module);
     }
+    if kind == "recall_random" {
+        recall_random::annotate(module);
+    }
     if kind == "rhythm_terrain" {
         rhythm_terrain::annotate(module);
     }
@@ -973,6 +986,7 @@ enum Model {
     SegmentGarden(Box<SegmentGarden>),
     EventFork(EventFork),
     RhythmTerrain(Box<RhythmTerrain>),
+    RecallRandom(Box<RecallRandom>),
     StockVco(Box<StockVco>),
     Rack264Vco(Box<Rack264Vco>),
     StockNoise(Box<StockNoise>),
@@ -1138,6 +1152,9 @@ impl Model {
         }
         if node.kind == "rack264_vco" {
             return Ok(Self::Rack264Vco(Box::new(Rack264Vco::build(node, rate)?)));
+        }
+        if node.kind == "recall_random" {
+            return Ok(Self::RecallRandom(RecallRandom::build(node, rate)?));
         }
         if node.kind == "rhythm_terrain" {
             return Ok(Self::RhythmTerrain(Box::new(RhythmTerrain::build(
@@ -2073,6 +2090,7 @@ impl PolyEngine {
             Some(Model::RandomValues(p)) => Some(p.controls()),
             Some(Model::Gates(g)) => Some(g.controls()),
             Some(Model::RhythmTerrain(r)) => Some(r.controls()),
+            Some(Model::RecallRandom(_)) => Some(ModuleControlState::default()),
             Some(Model::StockSeq3(seq)) => Some(seq.controls()),
             _ => None,
         }
@@ -2104,6 +2122,7 @@ impl PolyEngine {
             Some(Model::SegmentGarden(s)) => Some(s.lights()),
             Some(Model::EventFork(s)) => Some(s.lights()),
             Some(Model::RhythmTerrain(r)) => Some(r.lights()),
+            Some(Model::RecallRandom(r)) => Some(r.lights()),
             Some(Model::StockVco(s)) => Some(s.lights()),
             Some(Model::Rack264Vco(s)) => Some(s.lights()),
             Some(Model::StockQuantizer(q)) => Some(q.lights()),
@@ -2168,7 +2187,49 @@ impl PolyEngine {
                 r.release();
                 true
             }
+            Some(Model::RecallRandom(r)) => {
+                r.release();
+                true
+            }
             _ => false,
+        }
+    }
+    pub(crate) fn begin_recall_random_capture(
+        &mut self,
+        index: usize,
+        slot: u8,
+        revision: u64,
+    ) -> bool {
+        let Some(node) = self.nodes.get_mut(index) else {
+            return false;
+        };
+        if node.bypassed {
+            return false;
+        }
+        match &mut node.model {
+            Model::RecallRandom(r) => r.begin_capture(slot, revision),
+            _ => false,
+        }
+    }
+    pub(crate) fn stop_recall_random_capture(&mut self, index: usize) -> bool {
+        match self.nodes.get_mut(index).map(|n| &mut n.model) {
+            Some(Model::RecallRandom(r)) => r.stop_capture(),
+            _ => false,
+        }
+    }
+    pub(crate) fn cancel_recall_random_capture(&mut self, index: usize) -> bool {
+        match self.nodes.get_mut(index).map(|n| &mut n.model) {
+            Some(Model::RecallRandom(r)) => r.cancel_capture(),
+            _ => false,
+        }
+    }
+    pub(crate) fn recall_random_capture(
+        &self,
+        index: usize,
+    ) -> Option<crate::RecallRandomCaptureState> {
+        match self.nodes.get(index).map(|n| &n.model) {
+            Some(Model::RecallRandom(r)) => r.capture(),
+            _ => None,
         }
     }
     pub(crate) fn supports_module_action(&self, index: usize, action: ModuleAction) -> bool {
@@ -2189,6 +2250,7 @@ impl PolyEngine {
             Some(Model::RandomValues(_)) => RandomValues::supports(action),
             Some(Model::Gates(_)) => Gates::supports(action),
             Some(Model::RhythmTerrain(_)) => RhythmTerrain::supports(action),
+            Some(Model::RecallRandom(_)) => action == ModuleAction::Reset,
             Some(Model::MidiGate(_)) => action == ModuleAction::MidiPanic,
             _ => false,
         }
@@ -2333,6 +2395,7 @@ impl PolyEngine {
             Some(Model::RandomValues(p)) => p.enqueue(action),
             Some(Model::Gates(g)) => g.enqueue(action),
             Some(Model::RhythmTerrain(r)) => r.enqueue(action),
+            Some(Model::RecallRandom(r)) => r.enqueue(action),
             _ => false,
         }
     }
@@ -2391,6 +2454,10 @@ impl PolyEngine {
             return true;
         }
         let count = match &mut node.model {
+            Model::RecallRandom(r) => {
+                r.initialize_state();
+                recall_random::OUTPUTS.len()
+            }
             Model::MidiGate(m) => {
                 m.reset_state();
                 16
@@ -2616,6 +2683,7 @@ impl PolyEngine {
             Model::SegmentGarden(garden) => garden.initialize_state(),
             Model::EventFork(fork) => fork.initialize_state(),
             Model::RhythmTerrain(r) => r.initialize_state(),
+            Model::RecallRandom(r) => r.initialize_state(),
             Model::StockVco(vco) => vco.initialize_state(),
             Model::Rack264Vco(vco) => vco.initialize_state(),
             Model::StockNoise(noise) => noise.initialize_state(),
@@ -2833,6 +2901,7 @@ impl PolyEngine {
                     "segment_garden" => segment_garden::OUTPUTS.len(),
                     "event_fork" => event_fork::OUTPUTS.len(),
                     "rhythm_terrain" => rhythm_terrain::OUTPUTS.len(),
+                    "recall_random" => recall_random::OUTPUTS.len(),
                     "stock_vco" => stock_vco::OUTPUTS.len(),
                     "rack264_vco" => rack264_vco::OUTPUTS.len(),
                     "stock_noise" => stock_noise::OUTPUTS.len(),
@@ -3681,6 +3750,21 @@ impl PolyEngine {
                             [node.output_start..node.output_start + rack264_vco::OUTPUTS.len()],
                     );
                 }
+                Model::RecallRandom(r) => {
+                    let mut inputs = [PortFrame::default(); 11];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    r.process(
+                        &inputs,
+                        node.physical_input_mask,
+                        node.connected_mask as u16,
+                        &mut self.outputs
+                            [node.output_start..node.output_start + recall_random::OUTPUTS.len()],
+                    );
+                }
                 Model::RhythmTerrain(r) => {
                     let mut inputs = [PortFrame::default(); 8];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -4331,6 +4415,7 @@ impl PolyEngine {
                 (Model::FrameScene(s), Model::FrameScene(old)) => s.adopt(old),
                 (Model::SegmentGarden(s), Model::SegmentGarden(old)) => s.adopt(old),
                 (Model::EventFork(s), Model::EventFork(old)) => s.adopt(old),
+                (Model::RecallRandom(s), Model::RecallRandom(old)) => s.adopt(old),
                 (Model::RhythmTerrain(s), Model::RhythmTerrain(old)) => {
                     s.adopt(old);
                     if bypass_changed {

@@ -1,0 +1,130 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "guide",
+      "kind": "notes",
+      "content": {
+        "type": "notes",
+        "text": "RECALL RANDOM\nREPEATING PHRASE\nX1 chooses the pitch.\nT1 opens the envelope.\nRHYTHM selects a clock.\nDEJA VU recalls choices.\nLOOP LENGTH sets a cycle.\nSCALES edits the tuning.\nSEED repeats the phrase."
+      }
+    },
+    {
+      "id": "console",
+      "kind": "studio_mixer",
+      "params": {
+        "channels": 1,
+        "level1": 0.55,
+        "master": 0.5
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 1,
+        "dc_block": 1
+      }
+    },
+    {
+      "id": "recall",
+      "kind": "recall_random",
+      "params": {
+        "seed": 17,
+        "t_rate": 12,
+        "t_range": 1,
+        "length": 8,
+        "t_repeat": 1,
+        "x_repeat": 1,
+        "deja_vu": 0.65,
+        "x_range": 0,
+        "x_steps": 1
+      }
+    },
+    {
+      "id": "vco1",
+      "kind": "analog_vco",
+      "params": {
+        "frequency": 65.4064
+      }
+    },
+    {
+      "id": "filter1",
+      "kind": "ladder_vcf",
+      "params": {
+        "cutoff": 380,
+        "resonance": 0.15,
+        "drive": 0.8
+      }
+    },
+    {
+      "id": "env1",
+      "kind": "adsr",
+      "params": {
+        "attack": 0.012,
+        "decay": 0.12,
+        "sustain": 0.3,
+        "release": 0.16
+      }
+    },
+    {
+      "id": "vca1",
+      "kind": "analog_vca",
+      "params": {
+        "gain": 0.7
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": "recall",
+      "output": "x1",
+      "to": "vco1",
+      "input": "pitch"
+    },
+    {
+      "from": "recall",
+      "output": "t1",
+      "to": "env1",
+      "input": "gate"
+    },
+    {
+      "from": "vco1",
+      "output": "out",
+      "to": "filter1",
+      "input": "signal"
+    },
+    {
+      "from": "filter1",
+      "output": "out",
+      "to": "vca1",
+      "input": "signal"
+    },
+    {
+      "from": "env1",
+      "output": "out",
+      "to": "vca1",
+      "input": "cv"
+    },
+    {
+      "from": "vca1",
+      "output": "out",
+      "to": "console",
+      "input": "in1"
+    },
+    {
+      "from": "console",
+      "output": "left",
+      "to": "out",
+      "input": "left"
+    },
+    {
+      "from": "console",
+      "output": "right",
+      "to": "out",
+      "input": "right"
+    }
+  ],
+  "output": "out"
+}
