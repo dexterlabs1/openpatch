@@ -45,6 +45,14 @@ fn policy(kind: &str, name: &str) -> Randomization {
     use Randomization::{Disabled, Enum, InclusiveInteger, Linear, Log2};
     match (kind, name) {
         ("random_values" | "sh_asr", _) => Disabled,
+        ("rack_plaits", "engine") => Enum,
+        ("rack_plaits", _) => Linear,
+        ("braids", "model") => Enum,
+        ("braids", "frequency") => Log2,
+        ("braids", _) => Linear,
+        ("macro_voice", "engine") => Enum,
+        ("macro_voice", "frequency") => Log2,
+        ("macro_voice", _) => Linear,
         ("stock_vca", "level") => Linear,
         ("stock_vca", "response") => Enum,
         ("adsr_eg", "attack" | "decay" | "sustain" | "release") => Linear,

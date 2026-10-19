@@ -22,6 +22,23 @@ the window's `Arc<Mutex<Session>>`. Audio never acquires that mutex. Separate
 processes have separate patches; there is no listener for attaching to an
 existing application window.
 
+Native modules share the Studio material and rotary-control renderer in both
+the rack and library previews. Knobs use relative movement, precision modifiers,
+revision-checked edits, keyboard focus and per-gesture undo. Lit module screens
+show actual pre-master output traces, or explicitly labeled configuration guides
+for cutoff/envelope shape. The passive capture is limited to 64 module screens,
+128 points per lane and two lanes per module, with fixed callback storage and
+control-thread tap resolution. UI readers reject obsolete graph revisions and
+captures older than 250 ms. Stereo effects sample their separate L/R ports.
+
+Third-party artwork is independent of Studio. The original Plaits faceplate,
+Rogan knobs, switches, screws and sockets are loaded from the configured local
+Rack installation, rasterized once per UI context with resvg and cached as
+textures. No original plugin assets are copied into the OpenPatch distribution.
+Existing bridge parameters use their original control locations; CV trim knobs
+scale the existing FM/timbre/morph input frames before forwarding them. Original
+model-CV routing and custom NanoVG widgets remain outside this prototype bridge.
+
 An edit clones the control graph, applies the command, compiles it to validate
 the complete candidate, then commits patch plus revision. Compilation occurs
 outside DSP processing. GUI and MCP edits use the same transaction and revision
@@ -106,7 +123,19 @@ voice mixing. Polyphonic processing does not itself add hardware channels.
    dead-node elimination, SIMD and parallelism where they improve measured
    latency/throughput without changing the signal contract.
 
-A VCV C++ plugin compatibility layer would be a separate substantial project.
+A VCV C++ plugin compatibility layer is a separate substantial project. The
+[experimental Rack worker](../scripts/rack_host/README.md) qualifies loading
+original Fundamental VCO and Audible Instruments Plaits binaries in a separate
+offline process, including polyphonic samples and Rack module-preset round trips.
+The optional `rack_plaits` graph module attaches a live endpoint only on the
+desktop control thread. Its callback writes bounded atomic CV frames and reads
+timestamped returned audio with 4,096 samples of latency. A background service
+exchanges binary blocks with the original plugin worker; JSON/file/pipe/process
+operations stay outside the callback. Endpoint ownership follows graph changes,
+and retired crossfade graphs use independent cursors to read matching timestamped
+audio frames instead of consuming the stream twice. Worker errors and frame
+misses are reported separately from callback CPU
+timing. The synchronous CLI protocol is not used for realtime sample traffic.
 Platform CI validates the portable headless core; hardware audio and native UI
 require actual device testing before a platform can be called production-ready.
 

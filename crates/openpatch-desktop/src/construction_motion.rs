@@ -348,7 +348,7 @@ mod tests;
 
 #[derive(Clone, Debug)]
 pub(crate) enum Marker {
-    VerticalSlider {
+    Rotary {
         rect: eframe::egui::Rect,
         old: f32,
         new: f32,

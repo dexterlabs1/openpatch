@@ -48,6 +48,11 @@ mod midi_learn;
 pub use midi_cc::{initial_midi_cc_state, MidiCcLearnCompletion};
 pub use midi_gate::initial_midi_gate_state;
 pub use midi_learn::{MidiLearnCompletion, MidiLearnKind};
+mod braids;
+mod macro_voice;
+mod rack_plaits;
+mod studio_mixer;
+pub use rack_plaits::{RackPlaitsEndpoint, RACK_PLAITS_INPUTS, RACK_PLAITS_LATENCY};
 mod mixing;
 mod modal_resonator;
 mod multi_lfo;
@@ -282,6 +287,22 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(multi_vco::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(macro_voice::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(braids::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(studio_mixer::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(rack_plaits::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
@@ -1173,6 +1194,18 @@ enum EngineKind {
     Poly(Box<poly::PolyEngine>),
 }
 impl Engine {
+    /// Attach optional original Rack audio on the control thread. Compiling or
+    /// validating a patch never starts external code.
+    pub fn attach_rack_plaits(
+        &mut self,
+        id: &str,
+        endpoint: Box<dyn RackPlaitsEndpoint>,
+    ) -> Result<(), String> {
+        match &mut self.inner {
+            EngineKind::Poly(engine) => engine.attach_rack_plaits(id, endpoint),
+            _ => Err("Original Rack modules require patch version 2".into()),
+        }
+    }
     fn port_light_observer(&self) -> &port_lights::Observer {
         match &self.inner {
             EngineKind::Legacy(engine) => &engine.port_lights,
@@ -1686,11 +1719,11 @@ impl Engine {
     /// host gain/crossfade. Storage is supplied by the caller; no allocation.
     /// Tap and audio slices must have equal length. Handles from another engine
     /// (including a recompiled graph) produce inactive samples.
-    pub fn process_audio_block_with_taps(
+    pub fn process_audio_block_with_taps<const N: usize>(
         &mut self,
         output: &mut [[f32; 2]],
-        taps: &[Option<ResolvedTap>; 2],
-        samples: &mut [[TapSample; 2]],
+        taps: &[Option<ResolvedTap>; N],
+        samples: &mut [[TapSample; N]],
     ) {
         assert_eq!(output.len(), samples.len());
         let identity = self.identity;
@@ -2007,6 +2040,9 @@ pub fn render_audio_with_performance_events(
 ) -> Result<RenderedAudio, String> {
     if !seconds.is_finite() || !(0.0..=30.0).contains(&seconds) {
         return Err("seconds must be finite and in 0..=30".into());
+    }
+    if patch.nodes.iter().any(|n| n.kind == "rack_plaits") {
+        return Err("Original Rack Plaits requires the desktop live worker; use the Rack host renderer for offline export".into());
     }
     let mut engine = patch.compile()?;
     let count = (seconds * patch.sample_rate as f64).round() as usize;

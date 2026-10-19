@@ -130,16 +130,7 @@ fn resonator_slider_drag_groups_one_gesture_and_is_keyboard_adjustable() {
         }
         _ => panic!("expected slider edit"),
     };
-    let (press_group, pressed_value) = grouped(frame(
-        &ctx,
-        &mut rack,
-        &patch,
-        1.0,
-        vec![egui::Event::PointerMoved(start), button(start, true)],
-    ));
-    patch.nodes[0]
-        .params
-        .insert("stiffness".into(), pressed_value);
+    assert!(frame(&ctx,&mut rack,&patch,1.0,vec![egui::Event::PointerMoved(start),button(start,true)]).is_none(),"press only focuses a rotary control");
     let (group, first) = grouped(frame(
         &ctx,
         &mut rack,
@@ -156,7 +147,6 @@ fn resonator_slider_drag_groups_one_gesture_and_is_keyboard_adjustable() {
         vec![egui::Event::PointerMoved(start + vec2(30.0, 0.0))],
     ));
     assert_eq!(group, same);
-    assert_eq!(press_group, group);
     assert!(second > first && first > 0.2);
     patch.nodes[0].params.insert("stiffness".into(), second);
     frame(

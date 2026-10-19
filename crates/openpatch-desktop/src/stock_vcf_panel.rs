@@ -16,20 +16,13 @@ fn stock_vcf_frequency_hz(raw: f32) -> f32 {
     STOCK_VCF_C4 * 2.0_f32.powf(raw * 10.0 - 5.0)
 }
 fn stock_vcf_slider_rect(index: usize) -> Rect {
-    let depth = index >= 3;
-    Rect::from_center_size(
-        pos2(
-            if depth { 123.0 } else { 95.0 },
-            105.0 + (index % 3) as f32 * 80.0 + if depth { 31.0 } else { 0.0 },
-        ),
-        vec2(if depth { 82.0 } else { 138.0 }, 20.0),
-    )
+    Rect::from_center_size(pos2(45.0+(index%3) as f32*90.0,112.0+(index/3) as f32*93.0),vec2(48.0,48.0))
 }
 fn stock_vcf_value_rect(index: usize) -> Rect {
     Rect::from_center_size(
         pos2(
-            213.0,
-            105.0 + (index % 3) as f32 * 80.0 + if index >= 3 { 31.0 } else { 0.0 },
+            45.0+(index%3) as f32*90.0,
+            148.0+(index/3) as f32*93.0,
         ),
         vec2(68.0, 18.0),
     )
@@ -118,36 +111,20 @@ impl Rack {
         let mut action = None;
         for (row, label) in ["CUTOFF", "RESONANCE", "DRIVE"].iter().enumerate() {
             painter.text(
-                p(26.0, 83.0 + row as f32 * 80.0),
-                Align2::LEFT_CENTER,
+                p(45.0+row as f32*90.0,80.0),
+                Align2::CENTER_CENTER,
                 label,
                 font(10.0),
                 INK,
             );
             painter.text(
-                p(26.0, 136.0 + row as f32 * 80.0),
-                Align2::LEFT_CENTER,
+                p(45.0+row as f32*90.0,173.0),
+                Align2::CENTER_CENTER,
                 "CV DEPTH",
                 font(8.0),
                 MUTED,
             );
-            if row < 2 {
-                painter.line_segment(
-                    [
-                        p(25.0, 151.0 + row as f32 * 80.0),
-                        p(245.0, 151.0 + row as f32 * 80.0),
-                    ],
-                    Stroke::new(0.5 * z, Color32::from_rgb(175, 173, 165)),
-                );
-            }
         }
-        painter.text(
-            p(245.0, 83.0),
-            Align2::RIGHT_CENTER,
-            "8 Hz – 22 kHz",
-            font(8.0),
-            MUTED,
-        );
         for (i, name) in STOCK_VCF_PARAMS.iter().enumerate() {
             let min = if i == 0 {
                 stock_vcf_frequency_raw(8.0)
@@ -179,7 +156,7 @@ impl Rack {
                     ui.spacing_mut().interact_size.y = slider_rect.height();
                     ui.put(
                         slider_rect,
-                        egui::Slider::new(&mut raw, min..=max).show_value(false),
+                        crate::panel_skin::StudioDial::new(&mut raw, min..=max, slider_rect.size(), crate::panel_skin::luminous_accent(&node.kind), z, &self.lighting),
                     )
                 })
                 .inner;

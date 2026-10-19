@@ -81,12 +81,15 @@ impl Category {
     fn of_kind(kind: &str) -> Self {
         match kind {
             "oscillator" | "analog_vco" | "multi_vco" | "white_noise" | "drum_voice"
-            | "modal_resonator" | "colored_noise" => Self::Oscillators,
+            | "modal_resonator" | "colored_noise" | "macro_voice" | "rack_plaits" | "braids" => {
+                Self::Oscillators
+            }
             "lowpass" | "ladder_vcf" | "svf_filter" | "stock_vcf" => Self::Filters,
             "adsr" | "adsr_eg" => Self::Envelopes,
             "seq3" | "score_sequencer" => Self::Sequencers,
             "lfo" | "multi_lfo" | "gate" | "random_values" | "sh_asr" => Self::Modulation,
-            "gain"
+            "studio_mixer"
+            | "gain"
             | "mixer"
             | "analog_vca"
             | "stock_vca"
@@ -95,6 +98,10 @@ impl Category {
             | "vca_mix"
             | "fade"
             | "crossfade"
+            | "diffuse_reverb"
+            | "tape_delay"
+            | "stereo_ensemble"
+            | "bass_glitch"
             | "stereo_delay"
             | "stereo_reverb"
             | "sidechain_compressor" => Self::Mixing,

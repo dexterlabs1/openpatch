@@ -17,12 +17,15 @@ mod library;
 mod lighting;
 mod mcp_session_ui;
 mod midi;
+mod panel_screens;
 mod panel_skin;
 mod port_light_transport;
 mod project;
 #[cfg(test)]
 mod project_acceptance_tests;
 mod rack;
+mod rack_runtime;
+mod rack_vendor;
 mod scope;
 mod scope_transport;
 mod startup;
@@ -54,9 +57,10 @@ fn run() -> Result<(), String> {
         match arg.as_str() {
             "--third-party-licenses" => {
                 println!(
-                    "{}\n{}",
+                    "{}\n{}\n{}",
                     include_str!("../assets/licenses/THIRD_PARTY.txt"),
-                    include_str!("../assets/licenses/triple_buffer-MPL-2.0.txt")
+                    include_str!("../assets/licenses/triple_buffer-MPL-2.0.txt"),
+                    include_str!("../assets/licenses/Plaits-algorithms.txt")
                 );
                 return Ok(());
             }

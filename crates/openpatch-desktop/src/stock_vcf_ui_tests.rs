@@ -324,7 +324,7 @@ fn stock_vcf_rack_and_shared_browser_have_identical_fitting_faceplates_at_all_sc
                 "IN",
                 "LP",
                 "HP",
-                "8 Hz – 22 kHz",
+                "CUTOFF GUIDE",
                 "262 Hz",
                 "0%",
                 "100%",

@@ -19,6 +19,10 @@ include!("parameter_fader_input.rs");
 include!("parameter_choice.rs");
 include!("cable_autopan.rs");
 include!("port_signal.rs");
+include!("studio_screens.rs");
+include!("rack_plaits_panel.rs");
+include!("studio_mixer_panel.rs");
+include!("braids_panel.rs");
 
 const HP: f32 = 15.0;
 const ROW: f32 = 420.0;
@@ -403,6 +407,7 @@ pub struct Rack {
     performance_available: bool,
     module_lights: BTreeMap<String, ModuleLightState>,
     port_lights: Option<Arc<crate::audio::PortLightFrame>>,
+    panel_screen_frame: Option<Arc<crate::panel_screens::Frame>>,
     cable_presentation: crate::cable_presentation::CablePresentation,
     module_controls: BTreeMap<String, ModuleControlState>,
     held_manual: Option<HeldManual>,
@@ -458,6 +463,7 @@ impl Default for Rack {
             performance_available: false,
             module_lights: BTreeMap::new(),
             port_lights: None,
+            panel_screen_frame: None,
             cable_presentation: crate::cable_presentation::CablePresentation::default(),
             module_controls: BTreeMap::new(),
             held_manual: None,
@@ -2254,6 +2260,9 @@ impl Rack {
                 ));
             }
             for (index, port) in ports.iter().filter_map(Value::as_str).enumerate() {
+                if !studio_mixer_input_visible(node, port) {
+                    continue;
+                }
                 let location = point_from_port(
                     rect.min,
                     self.zoom,
@@ -2287,6 +2296,7 @@ impl Rack {
                     &painter,
                     rect,
                     node,
+                    module,
                     self.selection.contains(&node.id),
                     patch.output.as_ref() == Some(&node.id),
                     self.zoom,
@@ -2294,7 +2304,17 @@ impl Rack {
                 );
             }
             if mode.is_interactive() {
-                let header_rect = Rect::from_min_max(point(15.0, 19.0), point(width - 15.0, 69.0));
+                let header_rect = Rect::from_min_max(
+                    point(15.0, 19.0),
+                    point(
+                        width - 15.0,
+                        if matches!(node.kind.as_str(), "rack_plaits" | "braids") {
+                            36.0
+                        } else {
+                            69.0
+                        },
+                    ),
+                );
                 if interactive
                     && !popup_open_at_frame_start
                     && !egui::Popup::is_any_open(ui.ctx())
@@ -2371,12 +2391,13 @@ impl Rack {
                     &painter,
                     rect,
                     node,
+                    module,
                     self.selection.contains(&node.id),
                     patch.output.as_ref() == Some(&node.id),
                     self.zoom,
                     &self.lighting,
                 );
-                let header = Rect::from_min_max(point(15.0, 19.0), point(width - 15.0, 69.0));
+                let header = header_rect;
                 let header_response = ui.interact(
                     header,
                     ui.id().with(("module-header", &node.id)),
@@ -2549,8 +2570,40 @@ impl Rack {
                     .unwrap_or("mono");
                 header_response.on_hover_text(format!("{} · {description}\nModel: {model}\nChannel policy: {policy}\nDrag to move the selection. Shift-click headers to toggle modules. Cmd/Ctrl+A selects the rack. Panels snap together to free rack rows.", node.id));
             }
+            if node.kind == "studio_mixer" {
+                if let Some(edit) = self.studio_mixer_panel(
+                    ui,
+                    node,
+                    module,
+                    patch,
+                    rect,
+                    revision,
+                    mode.is_interactive(),
+                ) {
+                    action = Some(edit);
+                }
+            }
             if node.kind == "scope" {
                 if let Some(edit) = self.scope_panel(ui, node, module, rect) {
+                    action = Some(edit);
+                }
+            }
+            if node.kind == "braids" {
+                if let Some(edit) =
+                    self.braids_panel(ui, node, module, rect, revision, mode.is_interactive())
+                {
+                    action = Some(edit);
+                }
+            }
+            if node.kind == "rack_plaits" {
+                if let Some(edit) = self.original_plaits_panel(
+                    ui,
+                    node,
+                    module,
+                    rect,
+                    revision,
+                    mode.is_interactive(),
+                ) {
                     action = Some(edit);
                 }
             }
@@ -2819,7 +2872,9 @@ impl Rack {
                 );
             }
             for (index, (name, spec)) in parameters.iter().enumerate() {
-                if node.kind == "scope"
+                if node.kind == "studio_mixer"
+                    || node.kind == "scope"
+                    || matches!(node.kind.as_str(), "rack_plaits" | "braids")
                     || node.kind == "modal_resonator"
                     || node.kind == "colored_noise"
                     || node.kind == "random_values"
@@ -2968,7 +3023,7 @@ impl Rack {
                     } else {
                         "±5 V"
                     };
-                    let button = ui.put(rect, egui::Button::new(label).selected(enabled));
+                    let button = scaled_panel_toggle(ui, rect, label, enabled, self.zoom);
                     if button.clicked() {
                         self.select_primary(node.id.clone());
                         action = Some(RackAction::Command(
@@ -2994,14 +3049,16 @@ impl Rack {
                         point(x, 199.0),
                         vec2(width * 0.5 - 25.0, 26.0) * self.zoom,
                     );
-                    let button = ui.put(
+                    let button = scaled_panel_toggle(
+                        ui,
                         rect,
-                        egui::Button::new(if *name == "average" {
+                        if *name == "average" {
                             "Average"
                         } else {
                             "Invert"
-                        })
-                        .selected(value >= 0.5),
+                        },
+                        value >= 0.5,
+                        self.zoom,
                     );
                     if button.clicked() {
                         self.select_primary(node.id.clone());
@@ -3015,6 +3072,36 @@ impl Rack {
                     } else {
                         "Reverse the output polarity."
                     });
+                    continue;
+                }
+                if matches!(node.kind.as_str(), "macro_voice" | "rack_plaits") && *name == "engine"
+                {
+                    painter.text(
+                        point(25.0, 88.0),
+                        Align2::LEFT_CENTER,
+                        "ENGINE",
+                        crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
+                        INK,
+                    );
+                    let choices = spec["labels"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|s| s.as_str().unwrap())
+                        .collect::<Vec<_>>();
+                    if let Some(edit) = self.choice_parameter(
+                        ui,
+                        node,
+                        name,
+                        spec,
+                        Rect::from_min_size(
+                            point(100.0, 75.0),
+                            vec2(width - 125.0, 27.0) * self.zoom,
+                        ),
+                        &choices,
+                    ) {
+                        action = Some(edit);
+                    }
                     continue;
                 }
                 let min = spec["min"].as_f64().unwrap_or(0.0) as f32;
@@ -3055,27 +3142,54 @@ impl Rack {
                         17.0,
                     )
                 } else if node.kind == "audio_stereo" {
-                    (pos2(width * 0.5, 130.0 + index as f32 * 120.0), 30.0)
+                    (
+                        pos2(width * 0.5, if index == 0 { 130.0 } else { 258.0 }),
+                        if index == 0 { 30.0 } else { 12.0 },
+                    )
                 } else if node.kind == "score_sequencer" {
                     (pos2(60.0 + index as f32 * 120.0, 130.0), 24.0)
-                } else if node.kind == "stereo_delay" {
+                } else if matches!(node.kind.as_str(), "macro_voice" | "rack_plaits") {
+                    (
+                        pos2(
+                            width * ((index - 1) % 3) as f32 / 3.0 + width / 6.0,
+                            154.0 + ((index - 1) / 3) as f32 * 83.0,
+                        ),
+                        20.0,
+                    )
+                } else if node.kind == "bass_glitch" {
                     (
                         pos2(
                             width * ((index % 4) as f32 + 0.5) / 4.0,
-                            110.0 + (index / 4) as f32 * 80.0,
+                            104.0 + (index / 4) as f32 * 70.0,
+                        ),
+                        15.0,
+                    )
+                } else if matches!(
+                    node.kind.as_str(),
+                    "stereo_delay" | "tape_delay" | "diffuse_reverb"
+                ) {
+                    (
+                        pos2(
+                            width * ((index % 5) as f32 + 0.5) / 5.0,
+                            118.0 + (index / 5) as f32 * 80.0,
                         ),
                         17.0,
                     )
                 } else if matches!(
                     node.kind.as_str(),
-                    "stereo_reverb" | "sidechain_compressor" | "drum_voice"
+                    "stereo_ensemble" | "stereo_reverb" | "sidechain_compressor" | "drum_voice"
                 ) {
+                    let columns = if node.kind == "sidechain_compressor" {
+                        4
+                    } else {
+                        3
+                    };
                     (
                         pos2(
-                            width * ((index % 3) as f32 + 0.5) / 3.0,
-                            110.0 + (index / 3) as f32 * 80.0,
+                            width * ((index % columns) as f32 + 0.5) / columns as f32,
+                            118.0 + (index / columns) as f32 * 90.0,
                         ),
-                        17.0,
+                        21.0,
                     )
                 } else if node.kind == "vca_mix" {
                     (
@@ -3118,9 +3232,9 @@ impl Rack {
                     (
                         pos2(
                             width * (if index.is_multiple_of(2) { 0.25 } else { 0.75 }),
-                            125.0 + (index / 2) as f32 * 100.0,
+                            115.0 + (index / 2) as f32 * 84.0,
                         ),
-                        23.0,
+                        20.0,
                     )
                 } else if node.kind == "mid_side" {
                     (pos2(width * (0.25 + index as f32 * 0.5), 133.0), 27.0)
@@ -3250,11 +3364,20 @@ impl Rack {
                 let value_center = center + vec2(0.0, (radius + value_offset) * self.zoom);
                 let readout_width = if node.kind == "score_sequencer" {
                     96.0
-                } else if node.kind == "stereo_delay" {
+                } else if matches!(
+                    node.kind.as_str(),
+                    "stereo_delay" | "tape_delay" | "diffuse_reverb"
+                ) {
+                    width / 5.0 - 10.0
+                } else if node.kind == "bass_glitch" {
+                    width / 4.0 - 10.0
+                } else if node.kind == "macro_voice" {
+                    width / 3.0 - 12.0
+                } else if node.kind == "sidechain_compressor" {
                     width / 4.0 - 12.0
                 } else if matches!(
                     node.kind.as_str(),
-                    "stereo_reverb" | "sidechain_compressor" | "drum_voice"
+                    "stereo_ensemble" | "stereo_reverb" | "sidechain_compressor" | "drum_voice"
                 ) {
                     width / 3.0 - 12.0
                 } else if node.kind == "vca_mix" {
@@ -3263,7 +3386,7 @@ impl Rack {
                     54.0
                 } else if node.kind == "gates" {
                     110.0
-                } else if count >= 4
+                } else if count >= 3
                     || node.kind == "mid_side"
                     || (index > 0 && matches!(node.kind.as_str(), "analog_vco" | "ladder_vcf"))
                 {
@@ -3279,17 +3402,11 @@ impl Rack {
                 };
                 let fader_track =
                     crate::panel_skin::parameter_fader_track(center, radius, self.zoom);
-                // Keep the fader target inside its own cell and above the value well.
+                // A cap-sized target is independent of its separate numeric entry.
                 let knob_rect = if choices.is_some() {
                     Rect::from_center_size(center, vec2(readout_width, 24.0) * self.zoom)
                 } else {
-                    Rect::from_center_size(
-                        center,
-                        vec2(
-                            (radius * 1.4).clamp(32.0, 50.0) * self.zoom,
-                            fader_track.height() + 7.0 * self.zoom,
-                        ),
-                    )
+                    Rect::from_center_size(center, Vec2::splat((radius * 2.0 - 2.0) * self.zoom))
                 };
                 let mut knob_highlighted = false;
                 if mode.is_interactive() {
@@ -3381,7 +3498,11 @@ impl Rack {
                     let input = if choices.is_some() {
                         FaderInput::default()
                     } else {
-                        self.parameter_fader_input(ui, &knob, fader_track, normalized, enabled)
+                        if node.kind == "vca_mix" {
+                            self.parameter_strip_input(ui, &knob, fader_track, normalized, enabled)
+                        } else {
+                            self.parameter_rotary_input(ui, &knob, fader_track, normalized, enabled)
+                        }
                     };
                     if interactive
                         && self.shortcuts_enabled
@@ -3452,9 +3573,10 @@ impl Rack {
                         ));
                     } else {
                         knob.on_hover_cursor(egui::CursorIcon::ResizeVertical).on_hover_text(format!(
-                        "{}: {}\n{}\nClick or drag the fader to set its position. Cmd/Ctrl-drag for fine adjustment; add Shift for finer. Up/Down adjusts, Home/End selects limits. Double-click resets; click the number or right-click to type.",
+                        "{}: {}\n{}\nDrag up or down to {}. Cmd/Ctrl-drag for fine adjustment; add Shift for finer. Up/Down adjusts, Home/End selects limits. Double-click resets; click the number or right-click to type.",
                         name, display_value,
                         if clock_ratio { "Multiplier of measured clock frequency. Free-runs until two rising edges arrive; clock changes speed without resetting phase." } else { description }
+                        , if node.kind == "vca_mix" { "move the fader" } else { "turn the knob" }
                     ));
                     }
                 }
@@ -3468,18 +3590,39 @@ impl Rack {
                         crate::panel_skin::family_accent(&node.kind),
                         self.zoom,
                     );
-                } else {
+                } else if node.kind == "vca_mix" {
                     crate::panel_skin::parameter_fader(
                         &painter,
                         fader_track,
                         normalized,
                         knob_highlighted,
-                        crate::panel_skin::family_accent(&node.kind),
+                        crate::panel_skin::luminous_accent(&node.kind),
                         self.zoom,
+                    );
+                } else {
+                    crate::panel_skin::parameter_rotary(
+                        &painter,
+                        center,
+                        radius,
+                        normalized,
+                        knob_highlighted,
+                        crate::panel_skin::luminous_accent(&node.kind),
+                        self.zoom,
+                        &self.lighting,
                     );
                 }
                 painter.text(
-                    center - vec2(0.0, (radius + 13.0) * self.zoom),
+                    center
+                        - vec2(
+                            0.0,
+                            (radius
+                                + if node.kind == "bass_glitch" {
+                                    9.0
+                                } else {
+                                    13.0
+                                })
+                                * self.zoom,
+                        ),
                     Align2::CENTER_BOTTOM,
                     if node.kind == "seq3" {
                         ""
@@ -3496,7 +3639,14 @@ impl Rack {
                     } else {
                         parameter_label(name)
                     },
-                    crate::panel_skin::heading_font(painter.ctx(), 11.0 * self.zoom),
+                    crate::panel_skin::heading_font(
+                        painter.ctx(),
+                        if node.kind == "bass_glitch" {
+                            9.0 * self.zoom
+                        } else {
+                            11.0 * self.zoom
+                        },
+                    ),
                     INK,
                 );
                 crate::panel_skin::readout(
@@ -3555,8 +3705,8 @@ impl Rack {
                                 old_text,
                                 new_text: display_value.clone(),
                                 marker: step.is_none().then_some(
-                                    crate::construction_motion::Marker::VerticalSlider {
-                                        rect: fader_track,
+                                    crate::construction_motion::Marker::Rotary {
+                                        rect: knob_rect,
                                         old: old_normalized,
                                         new: normalized,
                                     },
@@ -3583,7 +3733,8 @@ impl Rack {
                         .on_hover_text("Click to type a value or expression. With multiple type-entry controls, Tab applies and moves to the next one.");
                 }
             }
-            if count == 0 && matches!(node.kind.as_str(), "mixer" | "output" | "audio_out") {
+            self.studio_screen(&painter, node, rect);
+            if count == 0 && node.kind == "mixer" {
                 paint_center_mark(
                     &painter,
                     rect,
@@ -3593,6 +3744,9 @@ impl Rack {
                 );
             }
             for port in ports.iter().filter_map(Value::as_str) {
+                if !studio_mixer_input_visible(node, port) {
+                    continue;
+                }
                 let location = inputs[&(node.id.clone(), port.to_string())];
                 let cables = input_groups
                     .get(&(node.id.as_str(), port))
@@ -3600,10 +3754,15 @@ impl Rack {
                     .unwrap_or(&[]);
                 let connected = !cables.is_empty();
                 if !mode.is_interactive() {
+                    if matches!(node.kind.as_str(), "rack_plaits" | "braids") {
+                        continue;
+                    }
                     paint_jack(
                         &painter,
                         location,
-                        if node.kind == "stock_vca" {
+                        if node.kind == "studio_mixer" {
+                            studio_mixer_port_label(port)
+                        } else if node.kind == "stock_vca" {
                             stock_vca_port_label(port)
                         } else if node.kind == "stock_vcf" {
                             stock_vcf_port_label(port)
@@ -3622,7 +3781,9 @@ impl Rack {
                     &painter,
                     location,
                     ui.id().with(("input", &node.id, port)),
-                    if node.kind == "stock_vca" {
+                    if node.kind == "studio_mixer" {
+                        studio_mixer_port_label(port)
+                    } else if node.kind == "stock_vca" {
                         stock_vca_port_label(port)
                     } else if node.kind == "stock_vcf" {
                         stock_vcf_port_label(port)
@@ -3634,6 +3795,7 @@ impl Rack {
                     self.zoom,
                     is_voltage_utility(&node.kind) || node.kind == "sh_asr",
                     if node.kind == "sh_asr" { 12.0 } else { 18.0 },
+                    matches!(node.kind.as_str(), "rack_plaits" | "braids"),
                 );
                 if drag_interactive {
                     self.cable_jack(
@@ -3721,11 +3883,16 @@ impl Rack {
                     .iter()
                     .any(|c| c.from == node.id && c.output == *port);
                 if !mode.is_interactive() {
+                    if matches!(node.kind.as_str(), "rack_plaits" | "braids") {
+                        continue;
+                    }
                     paint_jack(
                         &painter,
                         output_point,
                         if node.kind == "adsr_eg" {
                             "ENV"
+                        } else if node.kind == "studio_mixer" {
+                            studio_mixer_port_label(port)
                         } else if node.kind == "stock_vca" {
                             stock_vca_port_label(port)
                         } else if node.kind == "stock_vcf" {
@@ -3757,6 +3924,8 @@ impl Rack {
                     ui.id().with(("output", &node.id, port)),
                     if node.kind == "adsr_eg" {
                         "ENV"
+                    } else if node.kind == "studio_mixer" {
+                        studio_mixer_port_label(port)
                     } else if node.kind == "stock_vca" {
                         stock_vca_port_label(port)
                     } else if node.kind == "stock_vcf" {
@@ -3785,6 +3954,7 @@ impl Rack {
                     } else {
                         18.0
                     },
+                    matches!(node.kind.as_str(), "rack_plaits" | "braids"),
                 );
                 if drag_interactive {
                     self.cable_jack(
@@ -4080,15 +4250,17 @@ impl Rack {
                     );
                     if !reduced {
                         match &anchor.marker {
-                            Some(Marker::VerticalSlider { rect, old, new }) => {
-                                let y = rect.bottom()
-                                    - rect.height() * (old + (new - old) * ease(t)).clamp(0.0, 1.0);
+                            Some(Marker::Rotary { rect, old, new }) => {
+                                let angle = std::f32::consts::PI
+                                    * (0.75 + 1.5 * (old + (new - old) * ease(t)).clamp(0.0, 1.0));
+                                let direction = vec2(angle.cos(), angle.sin());
+                                let radius = rect.width().min(rect.height()) * 0.45;
                                 painter.line_segment(
                                     [
-                                        pos2(rect.left() - 5.0 * self.zoom, y),
-                                        pos2(rect.right() + 5.0 * self.zoom, y),
+                                        rect.center() + direction * radius * 0.65,
+                                        rect.center() + direction * radius,
                                     ],
-                                    Stroke::new(1.3 * self.zoom, gold.gamma_multiply(fade)),
+                                    Stroke::new(1.6 * self.zoom, gold.gamma_multiply(fade)),
                                 );
                             }
                             Some(Marker::Slider { rect, old, new }) => {
@@ -4911,10 +5083,15 @@ impl Rack {
                         ui.style_mut().visuals.handle_shape =
                             egui::style::HandleShape::Rect { aspect_ratio: 0.5 };
                         ui.add(
-                            egui::Slider::new(&mut next, min..=max)
-                                .show_value(false)
-                                .logarithmic(matches!(name, "frequency" | "decay"))
-                                .smart_aim(false),
+                            crate::panel_skin::StudioDial::new(
+                                &mut next,
+                                min..=max,
+                                slider_rect.size(),
+                                crate::panel_skin::luminous_accent(&node.kind),
+                                zoom,
+                                &self.lighting,
+                            )
+                            .logarithmic(matches!(name, "frequency" | "decay")),
                         )
                     },
                 )
@@ -5206,10 +5383,15 @@ impl Rack {
                         ui.style_mut().visuals.handle_shape =
                             egui::style::HandleShape::Rect { aspect_ratio: 0.5 };
                         ui.add(
-                            egui::Slider::new(&mut next, min..=max)
-                                .show_value(false)
-                                .logarithmic(matches!(name, "frequency" | "decay"))
-                                .smart_aim(false),
+                            crate::panel_skin::StudioDial::new(
+                                &mut next,
+                                min..=max,
+                                slider_rect.size(),
+                                crate::panel_skin::luminous_accent(&node.kind),
+                                zoom,
+                                &self.lighting,
+                            )
+                            .logarithmic(matches!(name, "frequency" | "decay")),
                         )
                     },
                 )
@@ -6745,14 +6927,23 @@ impl Rack {
         ui.scope_builder(
             egui::UiBuilder::new()
                 .max_rect(rect)
+                .layout(egui::Layout::left_to_right(egui::Align::Center))
                 .id_salt((&node.id, parameter)),
             |ui| {
                 *ui.visuals_mut() = egui::Visuals::light();
                 crate::panel_skin::control_style(ui, self.zoom);
                 let font = crate::panel_skin::print_font(ui.ctx(), 12.0 * self.zoom);
                 ui.style_mut().override_font_id = Some(font);
+                let spacing = ui.spacing_mut();
+                spacing.button_padding = vec2(6.0, 3.0) * self.zoom;
+                spacing.icon_width = 14.0 * self.zoom;
+                spacing.icon_width_inner = 8.0 * self.zoom;
+                spacing.icon_spacing = 4.0 * self.zoom;
+                spacing.interact_size = vec2(40.0, 18.0) * self.zoom;
+                spacing.item_spacing = vec2(8.0, 3.0) * self.zoom;
                 egui::ComboBox::from_id_salt("choice")
                     .width(rect.width())
+                    .wrap_mode(egui::TextWrapMode::Truncate)
                     .selected_text(choices[value])
                     .show_ui(ui, |ui| {
                         for (index, label) in choices.iter().enumerate() {
@@ -7235,6 +7426,9 @@ impl Rack {
                     continue;
                 };
                 for (index, port) in ports.iter().filter_map(Value::as_str).enumerate() {
+                    if input && !studio_mixer_input_visible(node, port) {
+                        continue;
+                    }
                     let center = canvas.min
                         + self.pan
                         + (self.positions[&node.id].to_vec2()
@@ -8250,12 +8444,46 @@ fn utility_menu(ui: &mut egui::Ui, node: &Node, action: &mut Option<RackAction>)
     }
 }
 
+fn scaled_panel_toggle(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    label: &str,
+    selected: bool,
+    zoom: f32,
+) -> egui::Response {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+        *ui.visuals_mut() = egui::Visuals::light();
+        crate::panel_skin::control_style(ui, zoom);
+        ui.spacing_mut().button_padding = vec2(3.0, 2.0) * zoom;
+        ui.spacing_mut().interact_size = rect.size();
+        ui.put(
+            rect,
+            egui::Button::new(
+                egui::RichText::new(label)
+                    .font(crate::panel_skin::print_font(ui.ctx(), 12.0 * zoom)),
+            )
+            .selected(selected)
+            .truncate(),
+        )
+    })
+    .inner
+}
+
 fn point_from_port(origin: Pos2, zoom: f32, point: Pos2) -> Pos2 {
     origin + point.to_vec2() * zoom
 }
 
 fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32) -> Pos2 {
     match kind {
+        "studio_mixer" => return studio_mixer_port(input, index, width),
+        "braids" => return crate::rack_vendor::braids_port(input, index),
+        "rack_plaits" => return crate::rack_vendor::port_position(input, index),
+        "macro_voice" => {
+            return pos2(
+                width * (index + 1) as f32 / (count + 1) as f32,
+                if input { 337.0 } else { 378.0 },
+            )
+        }
         "midi_cc" if !input => return midi_cc_output_position(index),
         "midi_gate" if !input => return midi_assignment_output_position(index),
         "stock_vca" => {
@@ -8326,7 +8554,14 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
         }
         "poly_viz" => return pos2(width * 0.5, 367.0),
         "poly_sum" => return pos2(if input { 45.0 } else { 105.0 }, 367.0),
-        "stereo_delay" | "stereo_reverb" | "sidechain_compressor" | "drum_voice" => {
+        "diffuse_reverb"
+        | "tape_delay"
+        | "bass_glitch"
+        | "stereo_delay"
+        | "stereo_ensemble"
+        | "stereo_reverb"
+        | "sidechain_compressor"
+        | "drum_voice" => {
             return pos2(
                 width * (index + 1) as f32 / (count + 1) as f32,
                 if input { 342.0 } else { 382.0 },
@@ -9350,6 +9585,9 @@ fn panel_button(
 }
 
 pub(crate) fn module_width(node: &Node) -> f32 {
+    if node.kind == "studio_mixer" {
+        return studio_mixer_channels(node) as f32 * 72.0 + 228.0;
+    }
     node.effective_blank_width_hp()
         .map_or_else(|| panel_width(&node.kind), |hp| f32::from(hp) * HP)
 }
@@ -9362,11 +9600,17 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "sh_asr" => HP * 26.0,
         "colored_noise" => HP * 16.0,
         "modal_resonator" => HP * 32.0,
+        "braids" => HP * 16.0,
+        "diffuse_reverb" | "tape_delay" | "bass_glitch" => HP * 30.0,
+        "stereo_ensemble" => HP * 24.0,
+        "macro_voice" => HP * 20.0,
+        "rack_plaits" => HP * 12.0,
         "scope" => HP * 42.0,
         "score_sequencer" => HP * 40.0,
         "stereo_delay" | "sidechain_compressor" => HP * 28.0,
         "stereo_reverb" | "drum_voice" => HP * 24.0,
         "svf_filter" => HP * 18.0,
+        "studio_mixer" => 804.0,
         "vca_mix" => HP * 26.0,
         "fade" => HP * 16.0,
         "logic" | "compare" | "process" | "rescale" => HP * 16.0,
@@ -9404,6 +9648,13 @@ pub(crate) fn title(kind: &str) -> &str {
         "notes" => "NOTES",
         "blank" => "BLANK",
         "modal_resonator" => "MODAL RESONATOR",
+        "braids" => "BRAIDS",
+        "diffuse_reverb" => "DIFFUSE SPACE",
+        "tape_delay" => "TAPE ECHO",
+        "stereo_ensemble" => "ENSEMBLE",
+        "bass_glitch" => "BASS GLITCH",
+        "macro_voice" => "MACRO VOICE",
+        "rack_plaits" => "RACK PLAITS",
         "scope" => "SCOPE",
         "score_sequencer" => "SCORE",
         "stereo_delay" => "STEREO DELAY",
@@ -9411,6 +9662,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "sidechain_compressor" => "DUCK",
         "drum_voice" => "DRUM",
         "svf_filter" => "STATE VARIABLE",
+        "studio_mixer" => "STUDIO MIXER",
         "vca_mix" => "VCA MIX",
         "fade" => "FADE",
         "logic" => "LOGIC",
@@ -9471,6 +9723,10 @@ pub(crate) fn title(kind: &str) -> &str {
 pub(crate) fn parameter_label(name: &str) -> &str {
     match name {
         "tempo" => "TEMPO",
+        "engine" => "ENGINE",
+        "harmonics" => "HARMONICS",
+        "timbre" => "TIMBRE",
+        "morph" => "MORPH",
         "dc_block" => "DC FILTER",
         "swing" => "SWING",
         "running" => "RUN",
@@ -9509,6 +9765,16 @@ pub(crate) fn parameter_label(name: &str) -> &str {
         "slew" => "SLEW",
         "min" => "MINIMUM",
         "max" => "MAXIMUM",
+        "grain_ms" => "LENGTH",
+        "repeats" => "REPEATS",
+        "reverse" => "REVERSE",
+        "bits" => "BITS",
+        "reduction" => "RATE REDUCE",
+        "freeze" => "FREEZE",
+        "diffusion" => "DIFFUSION",
+        "motion" => "MOTION",
+        "width" => "WIDTH",
+        "wow" => "WOW",
         "frequency" => "FREQUENCY",
         "amplitude" => "LEVEL",
         "offset" => "OFFSET",
@@ -9543,6 +9809,7 @@ pub(crate) fn parameter_label(name: &str) -> &str {
 }
 fn port_label(name: &str) -> &str {
     match name {
+        "harmonics" => "HARM",
         "complement" => "COMP",
         "mix_cv" => "MIX CV",
         "not_a" => "NOT A",
@@ -9586,6 +9853,15 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         return Vec::new();
     };
     let order: &[&str] = match node.kind.as_str() {
+        "macro_voice" | "rack_plaits" => &[
+            "engine",
+            "frequency",
+            "harmonics",
+            "timbre",
+            "morph",
+            "decay",
+            "level",
+        ],
         "modal_resonator" => &[
             "frequency",
             "stiffness",
@@ -9598,6 +9874,45 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         ],
         "score_sequencer" => &["tempo", "swing", "running"],
         "drum_voice" => &["mode", "pitch", "decay", "tone", "drive", "level"],
+        "diffuse_reverb" => &[
+            "size",
+            "decay",
+            "damping",
+            "predelay",
+            "diffusion",
+            "motion",
+            "low_cut",
+            "width",
+            "dry",
+            "wet",
+        ],
+        "tape_delay" => &[
+            "time_left",
+            "time_right",
+            "feedback",
+            "drive",
+            "wow",
+            "crossfeed",
+            "low_cut",
+            "high_cut",
+            "dry",
+            "wet",
+        ],
+        "stereo_ensemble" => &["rate", "depth", "width", "low_cut", "dry", "wet"],
+        "bass_glitch" => &[
+            "grain_ms",
+            "repeats",
+            "pitch",
+            "reverse",
+            "bits",
+            "reduction",
+            "feedback",
+            "drive",
+            "low_cut",
+            "high_cut",
+            "freeze",
+            "mix",
+        ],
         "stereo_delay" => &[
             "time_left",
             "time_right",
@@ -10078,11 +10393,11 @@ fn paint_resonator_configuration(
 
 fn voice_parameter_position(index: usize, width: f32) -> (Pos2, f32) {
     if index == 0 {
-        (pos2(width * 0.5, 138.0), 38.0)
+        (pos2(width * 0.5, 122.0), 28.0)
     } else {
         (
-            pos2(width * if index == 1 { 0.25 } else { 0.75 }, 252.0),
-            23.0,
+            pos2(width * if index == 1 { 0.25 } else { 0.75 }, 220.0),
+            20.0,
         )
     }
 }
@@ -10090,14 +10405,25 @@ fn voice_parameter_position(index: usize, width: f32) -> (Pos2, f32) {
 fn parameter_position(count: usize, index: usize, width: f32) -> (Pos2, f32) {
     match count {
         1 => (pos2(width * 0.5, 183.0), 42.0),
-        2 => (pos2(width * 0.5, 135.0 + index as f32 * 110.0), 32.0),
-        3 => (pos2(width * 0.5, 114.0 + index as f32 * 78.0), 18.0),
+        2 => (pos2(width * 0.5, 120.0 + index as f32 * 94.0), 20.0),
+        3 => (
+            pos2(
+                width
+                    * if index < 2 {
+                        0.25 + index as f32 * 0.5
+                    } else {
+                        0.5
+                    },
+                if index < 2 { 115.0 } else { 204.0 },
+            ),
+            23.0,
+        ),
         _ => (
             pos2(
                 width * (if index.is_multiple_of(2) { 0.25 } else { 0.75 }),
-                139.0 + (index / 2) as f32 * (113.0 / (count.div_ceil(2) - 1).max(1) as f32),
+                120.0 + (index / 2) as f32 * (88.0 / (count.div_ceil(2) - 1).max(1) as f32),
             ),
-            if count > 4 { 16.0 } else { 24.0 },
+            if count > 4 { 16.0 } else { 22.0 },
         ),
     }
 }
@@ -10338,15 +10664,33 @@ fn paint_background(painter: &egui::Painter, canvas: Rect, pan: Vec2, zoom: f32)
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint_panel(
     painter: &egui::Painter,
     rect: Rect,
     node: &Node,
+    module: Option<&Value>,
     selected: bool,
     master: bool,
     zoom: f32,
     lighting: &crate::lighting::RoomLighting,
 ) {
+    if matches!(node.kind.as_str(), "rack_plaits" | "braids") {
+        if node.kind == "braids" {
+            crate::rack_vendor::braids_background(painter, rect);
+        } else {
+            crate::rack_vendor::background(painter, rect);
+        }
+        if selected {
+            painter.rect_stroke(
+                rect.shrink(0.5 * zoom),
+                0.0,
+                Stroke::new(zoom, Color32::from_rgb(201, 137, 54)),
+                egui::StrokeKind::Inside,
+            );
+        }
+        return;
+    }
     crate::panel_skin::metal(painter, rect, zoom);
     if node.bypassed {
         painter.rect_stroke(
@@ -10424,28 +10768,40 @@ fn paint_panel(
         node.kind.as_str(),
         "pulses" | "svf_filter" | "audio_stereo" | "modal_resonator" | "random_values" | "sh_asr"
     ) {
-        let studio_footer = matches!(
-            node.kind.as_str(),
-            "drum_voice" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor"
-        );
-        painter.text(
-            point(
-                if studio_footer {
-                    width - 24.0
-                } else {
-                    width * 0.5
-                },
-                PANEL_HEIGHT - 7.0,
-            ),
-            if studio_footer {
-                Align2::RIGHT_CENTER
-            } else {
-                Align2::CENTER_CENTER
-            },
-            "OPENPATCH",
-            FontId::proportional(7.0 * zoom),
-            MUTED,
-        );
+        // Keep the maker's mark in actual free space between sockets. At
+        // overview zoom, font pixel rounding can otherwise reach a jack even
+        // when the nominal logical rectangles barely clear each other.
+        let sockets: Vec<_> = [true, false]
+            .into_iter()
+            .flat_map(|input| {
+                let count = module
+                    .and_then(|m| m[if input { "inputs" } else { "outputs" }].as_array())
+                    .map_or(usize::from(!input), Vec::len);
+                (0..count).map(move |index| {
+                    let p = port_position(&node.kind, input, index, count, width);
+                    Rect::from_center_size(point(p.x, p.y), Vec2::splat(28.0 * zoom))
+                })
+            })
+            .collect();
+        'brand: for brand in ["OPENPATCH", "OP"] {
+            let galley =
+                painter.layout_no_wrap(brand.to_owned(), FontId::proportional(6.0 * zoom), MUTED);
+            let half = galley.size().x * 0.5;
+            for x in [
+                rect.center().x,
+                rect.right() - 24.0 * zoom - half,
+                rect.left() + 24.0 * zoom + half,
+            ] {
+                let center = pos2(x, point(0.0, PANEL_HEIGHT - 5.0).y);
+                let bounds = Rect::from_center_size(center, galley.size());
+                if rect.contains_rect(bounds)
+                    && sockets.iter().all(|socket| !socket.intersects(bounds))
+                {
+                    painter.galley(bounds.min, galley, MUTED);
+                    break 'brand;
+                }
+            }
+        }
     }
     if master {
         paint_jack_light(
@@ -10525,6 +10881,7 @@ fn jack_with_minimum_target(
     zoom: f32,
     compact: bool,
     minimum_target: f32,
+    original_panel: bool,
 ) -> egui::Response {
     let response = ui.interact(
         Rect::from_center_size(center, Vec2::splat((29.0 * zoom).max(minimum_target))),
@@ -10543,7 +10900,9 @@ fn jack_with_minimum_target(
             ),
         )
     });
-    paint_jack(painter, center, label, connected, output, zoom, compact);
+    if !original_panel {
+        paint_jack(painter, center, label, connected, output, zoom, compact);
+    }
     if response.hovered() {
         painter.circle_stroke(
             center,
@@ -11200,7 +11559,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            64,
+            72,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -11293,6 +11652,13 @@ mod tests {
         }
         let catalog = openpatch_core::catalog();
         for kind in [
+            "analog_vco",
+            "ladder_vcf",
+            "gate",
+            "adsr",
+            "macro_voice",
+            "mix6",
+            "multi_lfo",
             "poly_viz",
             "score_sequencer",
             "drum_voice",
@@ -11312,7 +11678,7 @@ mod tests {
                 .iter()
                 .find(|m| m["kind"] == kind)
                 .unwrap();
-            for scale in [0.42, 0.85, 1.0] {
+            for scale in [0.25, 0.42, 0.85, 1.0] {
                 let ctx = egui::Context::default();
                 crate::panel_skin::install_fonts(&ctx);
                 let mut preview = ModulePreview::new(module);
@@ -11337,6 +11703,12 @@ mod tests {
                         collect(&shape.shape, &mut texts);
                     }
                     for (name, _) in ordered_parameters(&preview.patch.nodes[0], Some(module)) {
+                        if matches!(
+                            (kind, name),
+                            ("mix6", "average" | "invert") | ("multi_lfo", "unipolar" | "invert")
+                        ) {
+                            continue;
+                        }
                         assert!(
                             texts.iter().any(|(text, _)| text == parameter_label(name)
                                 || (kind == "sh_asr"
@@ -11345,7 +11717,9 @@ mod tests {
                             "{kind}: missing parameter label {name}"
                         );
                     }
-                    if let Some((_, footer)) = texts.iter().find(|(text, _)| text == "OPENPATCH") {
+                    if let Some((_, footer)) = texts.iter().find(|(text, _)| {
+                        text == "OPENPATCH" && !matches!(kind, "mix6" | "multi_lfo")
+                    }) {
                         for shape in &output.shapes {
                             if let egui::Shape::Circle(circle) = &shape.shape {
                                 assert!(
@@ -11447,23 +11821,17 @@ mod tests {
             );
         }
         for (index, (name, position)) in [
-            ("frequency", pos2(99.0, 137.0)),
-            ("pulse_width", pos2(249.0, 137.0)),
-            ("fm_amount", pos2(99.0, 237.0)),
-            ("pwm_amount", pos2(249.0, 237.0)),
+            ("frequency", pos2(99.0, 127.0)),
+            ("pulse_width", pos2(249.0, 127.0)),
+            ("fm_amount", pos2(99.0, 207.0)),
+            ("pwm_amount", pos2(249.0, 207.0)),
         ]
         .into_iter()
         .enumerate()
         {
             let time = 12.0 + index as f64;
-            let track = crate::panel_skin::parameter_fader_track(position, 23.0, rack.zoom);
-            // Start farther down the track to cross egui's drag threshold;
-            // the final absolute position is one octave above its midpoint.
-            let pressed = if name == "frequency" {
-                position + vec2(0.0, track.height() / 4.0)
-            } else {
-                position
-            };
+            // Rotary travel spans nine octaves over 160 screen points.
+            let pressed = position;
             frame(
                 &ctx,
                 &mut rack,
@@ -11475,7 +11843,7 @@ mod tests {
                 - vec2(
                     0.0,
                     if name == "frequency" {
-                        track.height() / 9.0
+                        160.0 * rack.zoom / 9.0
                     } else {
                         10.0
                     },
@@ -11494,7 +11862,7 @@ mod tests {
             if name == "frequency" {
                 assert!(
                     (args["value"].as_f64().unwrap() - 523.25116).abs() < 0.02,
-                    "One-ninth of the painted nine-octave fader travel must double Hz"
+                    "One-ninth of the rotary drag range must double Hz"
                 );
             } else {
                 assert!(
@@ -11535,10 +11903,10 @@ mod tests {
     #[test]
     fn multi_vco_value_editors_use_hz_and_percentages_without_clock_ratio_conversion() {
         for (name, position, text, scale, expected) in [
-            ("frequency", pos2(99.0, 169.0), "440", 1.0, 440.0),
-            ("pulse_width", pos2(249.0, 169.0), "35", 100.0, 0.35),
-            ("fm_amount", pos2(99.0, 269.0), "-25", 100.0, -0.25),
-            ("pwm_amount", pos2(249.0, 269.0), "75", 100.0, 0.75),
+            ("frequency", pos2(99.0, 159.0), "440", 1.0, 440.0),
+            ("pulse_width", pos2(249.0, 159.0), "35", 100.0, 0.35),
+            ("fm_amount", pos2(99.0, 239.0), "-25", 100.0, -0.25),
+            ("pwm_amount", pos2(249.0, 239.0), "75", 100.0, 0.75),
         ] {
             let ctx = egui::Context::default();
             let mut rack = Rack::default();
@@ -11642,7 +12010,7 @@ mod tests {
         .unwrap();
         frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 7);
         rack.select_only("other".into());
-        let output = right_click_parameter(&ctx, &mut rack, &patch, 7, pos2(99.0, 137.0), 1.0);
+        let output = right_click_parameter(&ctx, &mut rack, &patch, 7, pos2(99.0, 127.0), 1.0);
         assert_eq!(rack.selected_ids(), vec!["other"]);
         let edit = rack.editing.as_ref().expect("knob popup editor");
         assert_eq!(edit.id, "vco");
@@ -11715,7 +12083,7 @@ mod tests {
         let ctx = egui::Context::default();
         let mut rack = Rack::default();
         frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 4);
-        right_click_parameter(&ctx, &mut rack, &patch, 4, pos2(99.0, 137.0), 1.0);
+        right_click_parameter(&ctx, &mut rack, &patch, 4, pos2(99.0, 127.0), 1.0);
         rack.editing.as_mut().unwrap().text = "not a number".into();
         let enter = egui::Event::Key {
             key: egui::Key::Enter,
@@ -11752,7 +12120,7 @@ mod tests {
         .is_none());
         assert!(rack.editing.is_none());
 
-        right_click_parameter(&ctx, &mut rack, &patch, 4, pos2(99.0, 137.0), 2.0);
+        right_click_parameter(&ctx, &mut rack, &patch, 4, pos2(99.0, 127.0), 2.0);
         rack.editing.as_mut().unwrap().text = "880".into();
         assert!(
             frame_revision_state(&ctx, &mut rack, &patch, 2.3, vec![], true, true, 5)
@@ -15461,7 +15829,7 @@ mod tests {
                 });
             }
             frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-            let value = pos2(99.0, 169.0);
+            let value = pos2(99.0, 159.0);
             for (time, pressed) in [(1.0, true), (1.04, false)] {
                 frame(
                     &ctx,
@@ -15809,9 +16177,9 @@ mod tests {
                     "nodes":[{"id":"voice","kind":kind}]}))
                 .unwrap();
                 frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 17);
-                let target = [pos2(129.0, 150.0), pos2(76.5, 264.0), pos2(181.5, 264.0)][index];
+                let target = [pos2(129.0, 134.0), pos2(76.5, 232.0), pos2(181.5, 232.0)][index];
                 if readout {
-                    let target = target + vec2(0.0, if index == 0 { 47.0 } else { 32.0 });
+                    let target = target + vec2(0.0, if index == 0 { 37.0 } else { 29.0 });
                     for (time, pressed) in [(1.0, true), (1.04, false), (1.08, true), (1.12, false)]
                     {
                         frame_revision_state(
@@ -15847,7 +16215,7 @@ mod tests {
             "nodes":[{"id":"vco","kind":"analog_vco"}]}))
         .unwrap();
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-        let pulse = pos2(99.75, 264.0);
+        let pulse = pos2(99.75, 232.0);
         frame(
             &ctx,
             &mut rack,
@@ -16908,7 +17276,7 @@ mod tests {
             .unwrap();
             frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 7);
             rack.select_only("other".into());
-            let output = right_click_parameter(&ctx, &mut rack, &patch, 7, pos2(99.0, 137.0), 1.0);
+            let output = right_click_parameter(&ctx, &mut rack, &patch, 7, pos2(99.0, 127.0), 1.0);
             let input_point =
                 numeric_popup_label_center(&output, &rack.editing.as_ref().unwrap().text);
             for (time, pressed) in [(1.23, true), (1.24, false)] {
@@ -17004,7 +17372,7 @@ mod tests {
                 {"id":"vco","kind":"multi_vco"}]}))
             .unwrap();
             frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 7);
-            right_click_parameter(&ctx, &mut rack, &patch, 7, pos2(99.0, 137.0), 1.0);
+            right_click_parameter(&ctx, &mut rack, &patch, 7, pos2(99.0, 127.0), 1.0);
             rack.editing.as_mut().unwrap().text = "880".into();
             match change {
                 "removed" => patch.nodes.clear(),
@@ -17079,7 +17447,7 @@ mod tests {
                 {"id":"vco","kind":"multi_vco"}]}))
             .unwrap();
             frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 17);
-            right_click_parameter(&ctx, &mut rack, &patch, 17, pos2(99.0, 137.0), 1.0);
+            right_click_parameter(&ctx, &mut rack, &patch, 17, pos2(99.0, 127.0), 1.0);
             assert!(frame_revision_state(
                 &ctx,
                 &mut rack,
@@ -17152,9 +17520,9 @@ mod tests {
             .unwrap();
             frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 17);
             let target = if step.is_some() {
-                pos2(76.5, 264.0)
+                pos2(76.5, 232.0)
             } else {
-                pos2(99.0, 137.0)
+                pos2(99.0, 127.0)
             };
             right_click_parameter(&ctx, &mut rack, &patch, 17, target, 1.0);
             if step.is_some() {
@@ -17229,7 +17597,7 @@ mod tests {
             ),
             (
                 "multi_vco",
-                pos2(249.0, 169.0),
+                pos2(249.0, 159.0),
                 "25 + 10",
                 "pulse_width",
                 0.35,
@@ -17245,7 +17613,7 @@ mod tests {
             ),
             (
                 "multi_lfo",
-                pos2(99.0, 169.0),
+                pos2(99.0, 159.0),
                 "1 + 1",
                 "frequency",
                 4.0,

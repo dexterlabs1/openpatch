@@ -15,16 +15,13 @@ fn adsr_eg_time_edit(edit: &ParameterEdit) -> bool {
 }
 fn adsr_eg_slider_rect(index: usize) -> Rect {
     let row = index / 4;
-    Rect::from_min_size(
-        pos2(23.0 + (index % 4) as f32 * 80.0, 168.0 + row as f32 * 74.0),
-        vec2(70.0, 22.0),
-    )
+    Rect::from_center_size(pos2(58.0+(index%4) as f32*80.0,if row==0{178.0}else{250.0}),Vec2::splat(if row==0{40.0}else{28.0}))
 }
 fn adsr_eg_value_rect(index: usize) -> Rect {
     Rect::from_center_size(
         pos2(
             58.0 + (index % 4) as f32 * 80.0,
-            201.0 + (index / 4) as f32 * 73.0,
+            if index<4 {209.0}else{274.0},
         ),
         vec2(64.0, 18.0),
     )
@@ -83,18 +80,18 @@ impl Rack {
         let p = |x, y| rect.min + vec2(x, y) * z;
         let screen = |r: Rect| Rect::from_min_max(p(r.min.x, r.min.y), p(r.max.x, r.max.y));
         let painter = ui.painter().clone();
-        let accent = crate::panel_skin::family_accent("adsr_eg");
         let ctx = ui.ctx().clone();
         let font = |size| crate::panel_skin::print_font(&ctx, size * z);
         let mut action = None;
         let guide = Rect::from_min_max(p(24.0, 77.0), p(336.0, 130.0));
-        painter.rect_filled(guide, 3.0 * z, Color32::from_rgb(204, 205, 196));
+        painter.rect_filled(guide, 3.0 * z, Color32::from_rgb(10,17,20));
+        let screen_emission=crate::lighting::next(&painter);
         painter.text(
             p(32.0, 86.0),
             Align2::LEFT_CENTER,
             "NOMINAL SHAPE",
             font(8.0),
-            MUTED,
+            crate::panel_skin::luminous_accent("adsr_eg"),
         );
         let sustain = node
             .params
@@ -109,7 +106,8 @@ impl Rack {
             p(245.0, 121.0 - 24.0 * sustain),
             p(324.0, 121.0),
         ];
-        painter.add(egui::Shape::line(points, Stroke::new(1.5 * z, accent)));
+        painter.add(egui::Shape::line(points, Stroke::new(1.5 * z, crate::panel_skin::luminous_accent("adsr_eg"))));
+        self.lighting.preserve(&painter,screen_emission);
         // Stage LEDs are aggregate DSP state across polyphonic lanes; no clock,
         // button state or nominal drawing is used to infer an active stage.
         for (i, label) in ["ATTACK", "DECAY", "SUSTAIN", "RELEASE"].iter().enumerate() {
@@ -128,7 +126,7 @@ impl Rack {
             let depth = i >= 4;
             if depth {
                 painter.text(
-                    p(58.0 + (i % 4) as f32 * 80.0, 235.0),
+                    p(58.0 + (i % 4) as f32 * 80.0, 226.0),
                     Align2::CENTER_CENTER,
                     "CV DEPTH",
                     font(8.0),
@@ -150,7 +148,7 @@ impl Rack {
                     ui.spacing_mut().interact_size.y = slider_rect.height();
                     ui.put(
                         slider_rect,
-                        egui::Slider::new(&mut raw, min..=1.0).show_value(false),
+                        crate::panel_skin::StudioDial::new(&mut raw, min..=1.0, slider_rect.size(), crate::panel_skin::luminous_accent(&node.kind), z, &self.lighting),
                     )
                 })
                 .inner;

@@ -10,7 +10,7 @@ enum Position {
 }
 #[derive(Debug)]
 enum Presentation {
-    Fader,
+    Rotary,
     Choices {
         labels: Vec<String>,
         selected: usize,
@@ -34,7 +34,7 @@ struct PaintedText {
 struct PaintedSurface {
     bounds: Rect,
     scale: f32,
-    thumbs: Vec<Rect>,
+    caps: Vec<Rect>,
     choices: Vec<Rect>,
     readouts: Vec<Rect>,
     fills: Vec<(Rect, Color32)>,
@@ -51,9 +51,9 @@ fn collect(shape: &egui::Shape, surface: &mut PaintedSurface) {
         }
         egui::Shape::Rect(rect) => {
             surface.fills.push((rect.rect, rect.fill));
-            // Thumb fill excludes its transparent stroke and displaced shadow.
             if rect.fill == Color32::from_rgb(235, 231, 216) {
-                surface.thumbs.push(rect.rect);
+                // Mixer strips use a rectangular thumb in place of a rotary cap.
+                surface.caps.push(rect.rect);
             }
             if rect.fill == Color32::from_rgb(237, 233, 222) {
                 // Choice backgrounds share the numeric well material. Their
@@ -68,6 +68,9 @@ fn collect(shape: &egui::Shape, surface: &mut PaintedSurface) {
                     panic!("unclassified shared entry material at height {height}");
                 }
             }
+        }
+        egui::Shape::Circle(circle) if circle.fill == Color32::from_rgb(17, 23, 24) => {
+            surface.caps.push(Rect::from_center_size(circle.center,Vec2::splat(circle.radius*2.0)));
         }
         egui::Shape::Text(text) if !text.galley.text().is_empty() => {
             surface.texts.push(PaintedText {
@@ -118,7 +121,7 @@ fn paint(module: &Value, position: Position, scale: f32, browser: bool) -> Paint
     let mut surface = PaintedSurface {
         bounds: fitted,
         scale: fitted_scale,
-        thumbs: vec![],
+        caps: vec![],
         choices: vec![],
         readouts: vec![],
         fills: vec![],
@@ -170,7 +173,7 @@ fn paint(module: &Value, position: Position, scale: f32, browser: bool) -> Paint
                                         panic!("{}: missing numeric target for {name}", node.kind)
                                     });
                                     let presentation = ParameterChoices::from_spec(spec).map_or(
-                                        Presentation::Fader,
+                                        Presentation::Rotary,
                                         |choices| Presentation::Choices {
                                             labels: choices
                                                 .labels
@@ -194,7 +197,7 @@ fn paint(module: &Value, position: Position, scale: f32, browser: bool) -> Paint
                     });
             },
         );
-        surface.thumbs.clear();
+        surface.caps.clear();
         surface.choices.clear();
         surface.readouts.clear();
         surface.fills.clear();
@@ -223,7 +226,7 @@ fn own_choice_label(control: &ControlGeometry, text: &PaintedText) -> bool {
         Presentation::Choices { labels, .. } => {
             labels.contains(&text.text) && control.painted_area.contains_rect(text.bounds)
         }
-        Presentation::Fader => false,
+        Presentation::Rotary => false,
     }
 }
 
@@ -231,10 +234,14 @@ fn own_choice_label(control: &ControlGeometry, text: &PaintedText) -> bool {
 fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_separate() {
     let catalog = openpatch_core::catalog();
     // Exact continuous/choice counts prevent missing paint, accidental fallback
-    // to a thumb, or missing actual response registration from passing.
-    for (kind, faders, choices) in [
+    // to a cap, or missing actual response registration from passing.
+    for (kind, knobs, choices) in [
         ("seq3", 24, &[][..]),
         ("stereo_delay", 10, &[][..]),
+        ("tape_delay",10,&[][..]),
+        ("diffuse_reverb",10,&[][..]),
+        ("bass_glitch",12,&[][..]),
+        ("stereo_ensemble",6,&[][..]),
         ("analog_vco", 2, &["waveform"][..]),
         ("ladder_vcf", 3, &[][..]),
         ("vca_mix", 5, &[][..]),
@@ -254,7 +261,7 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                 let rack = paint(module, position, scale, false);
                 let browser = paint(module, position, scale, true);
                 let context = format!("{kind} scale={scale} position={position:?}");
-                let count = faders + choices.len();
+                let count = knobs + choices.len();
                 assert_eq!(
                     rack.controls.len(),
                     count,
@@ -272,9 +279,9 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                 );
                 for (name, surface) in [("rack", &rack), ("browser", &browser)] {
                     assert_eq!(
-                        surface.thumbs.len(),
-                        faders,
-                        "{context}: {name} continuous thumbs"
+                        surface.caps.len(),
+                        knobs,
+                        "{context}: {name} continuous caps"
                     );
                     assert_eq!(
                         surface.choices.len(),
@@ -286,7 +293,7 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                         "{context}: {name} numeric wells missing"
                     );
                 }
-                assert_rects_near(&rack.thumbs, &browser.thumbs, &context);
+                assert_rects_near(&rack.caps, &browser.caps, &context);
                 assert_rects_near(&rack.choices, &browser.choices, &context);
                 assert_rects_near(&rack.readouts, &browser.readouts, &context);
                 assert_eq!(
@@ -307,21 +314,21 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                     );
                 }
                 for (surface_name, surface) in [("rack", &rack), ("browser", &browser)] {
-                    for (index, thumb) in surface.thumbs.iter().enumerate() {
+                    for (index, cap) in surface.caps.iter().enumerate() {
                         assert!(
-                            surface.bounds.contains_rect(*thumb),
-                            "{context} {surface_name}: thumb {index} escapes panel"
+                            surface.bounds.contains_rect(*cap),
+                            "{context} {surface_name}: cap {index} escapes panel"
                         );
                         for well in surface.readouts.iter().chain(&surface.choices) {
-                            assert!(!thumb.intersects(*well), "{context} {surface_name}: thumb {index} {thumb:?} overlaps entry/choice paint {well:?}");
+                            assert!(!cap.intersects(*well), "{context} {surface_name}: cap {index} {cap:?} overlaps entry/choice paint {well:?}");
                         }
                         for text in &surface.texts {
-                            assert!(!thumb.intersects(text.bounds), "{context} {surface_name}: thumb {index} overlaps label/readout {:?}",text);
+                            assert!(!cap.intersects(text.bounds), "{context} {surface_name}: cap {index} overlaps label/readout {:?}",text);
                         }
-                        for other in &surface.thumbs[index + 1..] {
+                        for other in &surface.caps[index + 1..] {
                             assert!(
-                                !thumb.intersects(*other),
-                                "{context} {surface_name}: adjacent thumbs overlap"
+                                !cap.intersects(*other),
+                                "{context} {surface_name}: adjacent caps overlap"
                             );
                         }
                     }
@@ -401,19 +408,19 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                         control.name
                     );
                     match &control.presentation {
-                        Presentation::Fader => {
+                        Presentation::Rotary => {
                             assert!(
                                 control.senses_drag,
                                 "{context}: {} continuous target lost drag sense",
                                 control.name
                             );
                             assert_eq!(
-                                rack.thumbs
+                                rack.caps
                                     .iter()
-                                    .filter(|thumb| thumb.intersects(control.hit))
+                                    .filter(|cap| cap.intersects(control.hit))
                                     .count(),
                                 1,
-                                "{context}: {} target must have one actual thumb",
+                                "{context}: {} target must have one actual cap",
                                 control.name
                             );
                         }
@@ -439,10 +446,10 @@ fn generic_fader_rectangles_and_targets_keep_dense_labels_and_numeric_entry_sepa
                             );
                             assert!(
                                 !rack
-                                    .thumbs
+                                    .caps
                                     .iter()
-                                    .any(|thumb| thumb.intersects(control.hit)),
-                                "{context}: {} categorical control retains an unexpected thumb",
+                                    .any(|cap| cap.intersects(control.hit)),
+                                "{context}: {} categorical control retains an unexpected cap",
                                 control.name
                             );
                         }

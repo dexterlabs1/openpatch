@@ -26,6 +26,7 @@ fn audio_callback(patch: &Patch, enabled: bool) -> (Audio, Callback) {
         .unwrap();
     let audio = Audio {
         _stream: None,
+            rack_workers: crate::rack_runtime::Manager::default(),
         incoming,
         retired,
         pending: None,
@@ -41,6 +42,7 @@ fn audio_callback(patch: &Patch, enabled: bool) -> (Audio, Callback) {
         performance: callback.performance.clone(),
         submitted_revision: 0,
         port_light_reader: reader(&callback),
+        panel_screen_reader: callback.graphs.active.panel_screen_reader.as_ref().unwrap().clone(),
     };
     (audio, callback)
 }

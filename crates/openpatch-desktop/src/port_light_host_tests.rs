@@ -306,6 +306,7 @@ mod port_light_host {
         let (mut callback, incoming, retired) = callback_for(&patch);
         let mut audio = Audio {
             _stream: None,
+            rack_workers: crate::rack_runtime::Manager::default(),
             incoming,
             retired,
             pending: None,
@@ -321,6 +322,7 @@ mod port_light_host {
             performance: callback.performance.clone(),
             submitted_revision: 0,
             port_light_reader: reader(&callback),
+        panel_screen_reader: callback.graphs.active.panel_screen_reader.as_ref().unwrap().clone(),
         };
         render(&mut callback, 64);
         let old = audio.port_lights(0).unwrap();

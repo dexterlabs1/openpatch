@@ -100,20 +100,13 @@ fn noise_level_drag_and_keyboard_use_normal_history_commands() {
         }
         _ => panic!("expected level parameter command"),
     };
-    let (first_group, pressed) = grouped(frame(
-        &ctx,
-        &mut rack,
-        &patch,
-        1.0,
-        vec![egui::Event::PointerMoved(start), button(start, true)],
-    ));
-    patch.nodes[0].params.insert("level".into(), pressed);
+    assert!(frame(&ctx,&mut rack,&patch,1.0,vec![egui::Event::PointerMoved(start),button(start,true)]).is_none(),"press only focuses a rotary control");
     let (group, first) = grouped(frame(
         &ctx,
         &mut rack,
         &patch,
         1.1,
-        vec![egui::Event::PointerMoved(start + vec2(5.0, 0.0))],
+        vec![egui::Event::PointerMoved(start + vec2(15.0, 0.0))],
     ));
     patch.nodes[0].params.insert("level".into(), first);
     let (same, second) = grouped(frame(
@@ -121,18 +114,17 @@ fn noise_level_drag_and_keyboard_use_normal_history_commands() {
         &mut rack,
         &patch,
         1.2,
-        vec![egui::Event::PointerMoved(start + vec2(10.0, 0.0))],
+        vec![egui::Event::PointerMoved(start + vec2(30.0, 0.0))],
     ));
-    assert_eq!(first_group, group);
     assert_eq!(group, same);
-    assert!(second > first && first > pressed);
+    assert!(second > first && first > 0.2);
     patch.nodes[0].params.insert("level".into(), second);
     frame(
         &ctx,
         &mut rack,
         &patch,
         1.3,
-        vec![button(start + vec2(10.0, 0.0), false)],
+        vec![button(start + vec2(30.0, 0.0), false)],
     );
     let action = frame(
         &ctx,

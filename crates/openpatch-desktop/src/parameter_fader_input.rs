@@ -1,4 +1,4 @@
-// Shared fader input. Pointer state is local UI state, never a graph mutation.
+// Shared Studio rotary input. Pointer state is local UI state, never a graph mutation.
 #[derive(Default)]
 struct FaderInput {
     normalized: Option<f32>,
@@ -8,13 +8,35 @@ struct FaderInput {
     history_group: Option<String>,
 }
 impl Rack {
-    fn parameter_fader_input(
+    fn parameter_rotary_input(
         &mut self,
         ui: &egui::Ui,
         response: &egui::Response,
         track: Rect,
         normalized: f32,
         enabled: bool,
+    ) -> FaderInput {
+        self.parameter_control_input(ui, response, track, normalized, enabled, false)
+    }
+    fn parameter_strip_input(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        track: Rect,
+        normalized: f32,
+        enabled: bool,
+    ) -> FaderInput {
+        self.parameter_control_input(ui, response, track, normalized, enabled, true)
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn parameter_control_input(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        track: Rect,
+        normalized: f32,
+        enabled: bool,
+        strip: bool,
     ) -> FaderInput {
         let mut result = FaderInput::default();
         let id = response.id;
@@ -29,9 +51,10 @@ impl Rack {
             });
             return result;
         }
+        let completed_motion = crate::panel_skin::completed_pointer_drag(ui, response);
         let pressed = response.is_pointer_button_down_on()
             && ui.input(|i| i.pointer.button_pressed(PointerButton::Primary));
-        if pressed || response.drag_started_by(PointerButton::Primary) {
+        if pressed || response.drag_started_by(PointerButton::Primary) || completed_motion.is_some() {
             response.request_focus();
             if ui.data(|d| d.get_temp::<String>(id)).is_none() {
                 self.gesture = self.gesture.wrapping_add(1);
@@ -45,20 +68,14 @@ impl Rack {
         let modifiers = ui.input(|i| i.modifiers);
         if response.dragged_by(PointerButton::Primary)
             || response.drag_stopped_by(PointerButton::Primary)
-            || response.clicked_by(PointerButton::Primary)
+            || completed_motion.is_some()
         {
-            if let Some(pointer) = response
+            if let Some(_pointer) = response
                 .interact_pointer_pos()
                 .or_else(|| ui.input(|i| i.pointer.interact_pos()))
             {
-                let fine = (modifiers.command || modifiers.ctrl)
-                    && !response.clicked_by(PointerButton::Primary);
-                // Once fine adjustment introduces an offset from the pointer,
-                // retain it until release. Returning to full speed must not
-                // snap the value back to the absolute cursor position.
-                let relative =
-                    fine || ui.data(|d| d.get_temp::<bool>(relative_id).unwrap_or(false));
-                let next = if relative {
+                let fine = modifiers.command || modifiers.ctrl;
+                let next = {
                     let prior = ui.data(|d| d.get_temp::<f32>(id)).unwrap_or(normalized);
                     let speed = if fine {
                         if modifiers.shift {
@@ -69,14 +86,19 @@ impl Rack {
                     } else {
                         1.0
                     };
-                    prior - response.drag_motion().y / track.height() * speed
-                } else {
-                    (track.bottom() - pointer.y) / track.height()
+                    // Follow screen points: native integrations may provide a zero raw
+                    // mouse delta alongside real PointerMoved events.
+                    let motion = completed_motion.unwrap_or_else(|| response.drag_delta());
+                    if strip {
+                        prior - motion.y / track.height().max(self.zoom) * speed
+                    } else {
+                        prior + (motion.x * 0.35 - motion.y) / (160.0 * self.zoom) * speed
+                    }
                 }
                 .clamp(0.0, 1.0);
                 ui.data_mut(|d| {
                     d.insert_temp(id, next);
-                    d.insert_temp(relative_id, relative);
+                    d.insert_temp(relative_id, true);
                 });
                 result.normalized = Some(next);
                 result.history_group = ui.data(|d| d.get_temp::<String>(id));

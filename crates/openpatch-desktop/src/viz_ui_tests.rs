@@ -71,7 +71,7 @@ fn retired_viz_voice_keeps_its_release_tail_but_dims_number() {
     for shape in &painted.shapes {
         visit(&shape.shape,&mut texts);
         if let egui::Shape::Circle(circle) = &shape.shape {
-            if circle.center == pos2(159.0,300.0) && circle.radius == 3.0 {
+            if circle.center == pos2(159.0,300.0) && circle.radius == crate::lighting::lamp_radius(3.0) {
                 assert_eq!(circle.fill, Color32::from_rgb(65,174,102).gamma_multiply(0.15+0.75*0.85));
                 tail = true;
             }

@@ -384,6 +384,8 @@ struct PreparedGraph {
     port_lights: Option<PortLightProducer>,
     port_light_reader: Option<PortLightReader>,
     port_light_control: u64,
+    panel_screens: Option<crate::panel_screens::Capture>,
+    panel_screen_reader: Option<crate::panel_screens::Reader>,
 }
 impl From<Engine> for PreparedGraph {
     fn from(engine: Engine) -> Self {
@@ -395,6 +397,8 @@ impl From<Engine> for PreparedGraph {
             port_lights: None,
             port_light_reader: None,
             port_light_control: 1,
+            panel_screens: None,
+            panel_screen_reader: None,
         }
     }
 }
@@ -414,6 +418,9 @@ impl PreparedGraph {
         self.port_light_control = control;
         self.port_lights = Some(producer);
         self.port_light_reader = Some(reader);
+        let (capture, reader) = crate::panel_screens::prepare(patch, &self.engine);
+        self.panel_screens = Some(capture);
+        self.panel_screen_reader = Some(reader);
         Ok(())
     }
     /// A missed OFF→ON transition must clear old detector history even when the
@@ -480,6 +487,8 @@ fn prepare_graph_for_control(
         port_lights: None,
         port_light_reader: None,
         port_light_control,
+        panel_screens: None,
+        panel_screen_reader: None,
     };
     graph.prepare_port_lights_for_control(&device_patch, port_light_control)?;
     Ok(graph)
@@ -491,6 +500,7 @@ pub struct Audio {
     // Drop the stream before its control-side queue endpoints. CPAL shuts down the
     // callback before returning from Stream::drop; graph teardown is not rendering.
     _stream: Option<cpal::Stream>,
+    rack_workers: crate::rack_runtime::Manager,
     incoming: Producer<PreparedGraph>,
     retired: Consumer<PreparedGraph>,
     pending: Option<PreparedGraph>,
@@ -506,6 +516,7 @@ pub struct Audio {
     performance: Arc<Performance>,
     submitted_revision: u64,
     port_light_reader: PortLightReader,
+    panel_screen_reader: crate::panel_screens::Reader,
 }
 
 impl Audio {
@@ -549,7 +560,9 @@ impl Audio {
         }
         let mut device_patch = patch.clone();
         device_patch.sample_rate = sample_rate;
-        let engine = device_patch.compile()?;
+        let mut engine = device_patch.compile()?;
+        let mut rack_workers = crate::rack_runtime::Manager::default();
+        rack_workers.attach(&device_patch, &mut engine, sample_rate)?;
         let (incoming, updates) = RingBuffer::new(QUEUE_SIZE);
         let (recycle, retired) = RingBuffer::new(QUEUE_SIZE);
         let shared = Arc::new(Shared::new());
@@ -563,6 +576,13 @@ impl Audio {
             .graphs
             .active
             .port_light_reader
+            .as_ref()
+            .unwrap()
+            .clone();
+        let panel_screen_reader = callback
+            .graphs
+            .active
+            .panel_screen_reader
             .as_ref()
             .unwrap()
             .clone();
@@ -591,6 +611,7 @@ impl Audio {
             .map_err(|error| format!("Could not start audio stream: {error}"))?;
         Ok(Self {
             _stream: Some(stream),
+            rack_workers,
             incoming,
             retired,
             pending: None,
@@ -606,6 +627,7 @@ impl Audio {
             performance,
             submitted_revision: 0,
             port_light_reader,
+            panel_screen_reader,
         })
     }
 
@@ -627,9 +649,12 @@ impl Audio {
             false,
             self.shared.port_light_control.load(Ordering::SeqCst),
         )?;
+        self.rack_workers
+            .attach(patch, &mut graph.engine, self.sample_rate)?;
         graph.modules = self.performance.plan(patch, &graph.engine, revision)?;
         graph.revision = revision;
         self.port_light_reader = graph.port_light_reader.as_ref().unwrap().clone();
+        self.panel_screen_reader = graph.panel_screen_reader.as_ref().unwrap().clone();
         self.pending = Some(graph);
         self.submitted_revision = revision;
         self.scope_generation = generation;
@@ -713,6 +738,9 @@ impl Audio {
     pub fn set_port_lights_enabled(&self, enabled: bool) {
         self.shared.set_port_lights_enabled(enabled);
     }
+    pub(crate) fn panel_screens(&self, revision: u64) -> Option<Arc<crate::panel_screens::Frame>> {
+        self.panel_screen_reader.read(revision)
+    }
 
     pub fn module_lights(&self, id: &str) -> Option<openpatch_core::ModuleLightState> {
         self.performance.module_lights(id)
@@ -740,11 +768,14 @@ impl Audio {
             true,
             self.shared.port_light_control.load(Ordering::SeqCst),
         )?;
+        self.rack_workers
+            .attach(patch, &mut graph.engine, self.sample_rate)?;
         graph.modules = self
             .performance
             .plan(patch, &graph.engine, self.submitted_revision)?;
         graph.revision = self.submitted_revision;
         self.port_light_reader = graph.port_light_reader.as_ref().unwrap().clone();
+        self.panel_screen_reader = graph.panel_screen_reader.as_ref().unwrap().clone();
         self.pending = Some(graph);
         self.scope_binding = binding;
         self.scope_generation = generation;
@@ -761,7 +792,12 @@ impl Audio {
         (0..SCOPE_QUEUE_SIZE).map_while(|_| self.scope_packets.pop().ok())
     }
 
+    pub fn rack_status(&self) -> Option<String> {
+        self.rack_workers.status()
+    }
+
     pub fn service(&mut self) {
+        self.rack_workers.service();
         while let Ok(engine) = self.retired.pop() {
             drop(engine);
         }
@@ -1122,6 +1158,8 @@ impl Callback {
         let mut current = [[0.0_f32; 2]; BLOCK_SIZE];
         let mut previous = [[0.0_f32; 2]; BLOCK_SIZE];
         let mut taps = [[TapSample::default(); 2]; BLOCK_SIZE];
+        let mut panel_taps =
+            [[TapSample::default(); crate::panel_screens::TAPS]; crate::panel_screens::SPAN];
         if channels == 0 {
             return (adopted, false);
         }
@@ -1199,8 +1237,33 @@ impl Callback {
                     (at.saturating_sub(self.frame_clock) as usize).clamp(1, remaining)
                 });
                 let count = if one_frame { 1 } else { count };
+                let screens_enabled = self
+                    .graphs
+                    .active
+                    .panel_screens
+                    .as_ref()
+                    .is_some_and(|capture| capture.enabled());
+                let count = if screens_enabled {
+                    count.min(crate::panel_screens::SPAN)
+                } else {
+                    count
+                };
                 let active = &mut self.graphs.active;
-                if active.scope.enabled {
+                if screens_enabled {
+                    let capture = active.panel_screens.as_mut().unwrap();
+                    capture.taps[..2].copy_from_slice(&active.scope.taps);
+                    active.engine.process_audio_block_with_taps(
+                        &mut current[..count],
+                        &capture.taps,
+                        &mut panel_taps[..count],
+                    );
+                    capture.observe(&panel_taps[..count]);
+                    if active.scope.enabled {
+                        for index in 0..count {
+                            taps[index].copy_from_slice(&panel_taps[index][..2]);
+                        }
+                    }
+                } else if active.scope.enabled {
                     active.engine.process_audio_block_with_taps(
                         &mut current[..count],
                         &active.scope.taps,
@@ -1275,6 +1338,9 @@ impl Callback {
             .active
             .modules
             .publish_scope(&self.graphs.active.engine, self.frame_clock);
+        if let Some(capture) = self.graphs.active.panel_screens.as_mut() {
+            capture.publish(self.graphs.active.revision, self.frame_clock);
+        }
         self.module_events.publish(
             &self.graphs.active.engine,
             &self.graphs.active.modules,
@@ -1458,6 +1524,19 @@ mod tests {
         }
     }
 
+    #[test]
+    fn original_rack_endpoint_first_callback_full_queue_and_late_audio_use_no_heap() {
+        let mut endpoint = crate::rack_runtime::callback_test_endpoint();
+        let inputs = [openpatch_core::PortFrame::mono(1.0); 7];
+        let mut outputs = [openpatch_core::PortFrame::default(); 2];
+        without_heap_activity(|| {
+            endpoint.activate();
+            for _ in 0..9000 {
+                endpoint.process(&[4.0, 0.0, 0.3, 0.4, 0.5, 0.6], &inputs, &mut outputs);
+            }
+        });
+    }
+
     fn without_heap_activity(operation: impl FnOnce()) {
         ALLOCATIONS.with(|count| count.set(0));
         DEALLOCATIONS.with(|count| count.set(0));
@@ -1577,6 +1656,141 @@ mod tests {
             assert!((frames[0][0] - frames[1][0]).abs() < 0.01);
         }
         assert!(disposal.pop().is_ok());
+    }
+
+    #[test]
+    fn original_plaits_control_edits_preserve_audio_through_block_crossfades_without_heap() {
+        let mut patch: Patch = serde_json::from_value(serde_json::json!({
+            "version":2,"sample_rate":48000,
+            "nodes":[{"id":"voice","kind":"rack_plaits","params":{"level":1.0}}],
+            "cables":[],"output":"voice"
+        }))
+        .unwrap();
+        let endpoint = crate::rack_runtime::callback_test_stream();
+        let mut initial = patch.compile().unwrap();
+        initial.attach_rack_plaits("voice", endpoint()).unwrap();
+        let (mut updates, incoming) = RingBuffer::new(2);
+        let (retired, mut disposal) = RingBuffer::new(2);
+        let shared = Arc::new(Shared::new());
+        shared.playing.store(true, Ordering::Relaxed);
+        shared.volume.store(1.0_f32.to_bits(), Ordering::Relaxed);
+        let mut callback = Callback::new(initial, incoming, retired, shared, 48000);
+        callback.graphs.active.prepare_port_lights(&patch).unwrap();
+        callback.gain.value = 1.0;
+        let mut sequence = 0;
+        let mut level = 1.0;
+        for (edit, parameter) in [
+            "engine",
+            "frequency",
+            "harmonics",
+            "timbre",
+            "morph",
+            "decay",
+            "level",
+        ]
+        .into_iter()
+        .cycle()
+        .take(28)
+        .enumerate()
+        {
+            let value = if parameter == "engine" {
+                (edit / 7) as f32
+            } else if parameter == "level" {
+                0.25 + (edit % 4) as f32 * 0.25
+            } else {
+                (edit % 4) as f32 * 0.2
+            };
+            patch.nodes[0].params.insert(parameter.into(), value);
+            let previous_level = level;
+            level = patch.nodes[0].params["level"];
+            let mut replacement = patch.compile().unwrap();
+            replacement.attach_rack_plaits("voice", endpoint()).unwrap();
+            assert!(updates.push(replacement.into()).is_ok());
+            let mut output = [0.0_f32; 257];
+            without_heap_activity(|| callback.render(&mut output, 1));
+            for (frame, actual) in output.iter().enumerate() {
+                let mix = (frame as f32 / callback.fade_length as f32).min(1.0);
+                let expected = ((sequence + frame) as f32 * 0.13).sin()
+                    * 0.2
+                    * (previous_level * (1.0 - mix) + level * mix);
+                assert!(
+                    (actual - expected).abs() < 0.000_001,
+                    "{parameter} edit {edit}, frame {frame}: {actual} vs {expected}"
+                );
+            }
+            sequence += output.len();
+            while disposal.pop().is_ok() {}
+        }
+    }
+
+    #[test]
+    fn studio_screens_capture_actual_pre_gain_signals_without_heap_or_audio_changes() {
+        let patch = openpatch_core::analog_demo_patch();
+        let (mut measured, _, _retired) = callback_for(&patch);
+        let (mut reference, _, _raw_retired) = callback_for(&patch);
+        reference.graphs.active.panel_screens = None;
+        let reader = measured
+            .graphs
+            .active
+            .panel_screen_reader
+            .as_ref()
+            .unwrap()
+            .clone();
+        assert!(reader.read(0).is_none());
+        for length in [1, 7, 128, 259, 1024] {
+            let mut actual = vec![0.0_f32; length];
+            let mut expected = actual.clone();
+            without_heap_activity(|| measured.render(&mut actual, 1));
+            without_heap_activity(|| reference.render(&mut expected, 1));
+            assert_eq!(
+                actual, expected,
+                "passive screens must preserve device audio at length {length}"
+            );
+        }
+        // Refresh immediately before reading, independent of scheduling delays
+        // in the parallel reference render and the deliberate 250 ms UI lease.
+        without_heap_activity(|| measured.render(&mut [0.0_f32; 8], 1));
+        let frame = reader.read(0).unwrap();
+        assert!(
+            reader.read(1).is_none(),
+            "stale graph revision must never reach a screen"
+        );
+        let trace = frame.traces.get("vco").unwrap();
+        assert_eq!(trace.count, crate::panel_screens::POINTS);
+        assert!(trace.active[0]);
+        assert!(trace.values[0].iter().any(|v| v.abs() > 1.0));
+    }
+
+    #[test]
+    fn studio_stereo_screens_sample_both_effect_ports_independently() {
+        let patch: Patch = serde_json::from_value(serde_json::json!({"version":2,
+            "nodes":[{"id":"a","kind":"constant","params":{"value":2}},
+                     {"id":"b","kind":"constant","params":{"value":-3}},
+                     {"id":"fx","kind":"stereo_delay","params":{"dry":1,"wet":0}}],
+            "cables":[{"from":"a","to":"fx","input":"left"},{"from":"b","to":"fx","input":"right"}],
+            "output":"fx","output_port":"left"}))
+        .unwrap();
+        let (mut callback, _, _retired) = callback_for(&patch);
+        let reader = callback
+            .graphs
+            .active
+            .panel_screen_reader
+            .as_ref()
+            .unwrap()
+            .clone();
+        callback
+            .shared
+            .volume
+            .store(0.0_f32.to_bits(), Ordering::Relaxed);
+        callback.gain.value = 0.0;
+        let mut output = [0.0_f32; 1024];
+        without_heap_activity(|| callback.render(&mut output, 1));
+        assert!(output.iter().all(|s| *s == 0.0));
+        let frame = reader.read(0).unwrap();
+        let trace = &frame.traces["fx"];
+        assert_eq!(trace.active, [true, true]);
+        assert!(trace.values[0].iter().all(|s| *s == 2.0));
+        assert!(trace.values[1].iter().all(|s| *s == -3.0));
     }
 
     #[test]

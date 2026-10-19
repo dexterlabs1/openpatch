@@ -30,7 +30,7 @@ fn emissions(output: &egui::FullOutput) -> Vec<(Pos2, Color32)> {
             egui::Shape::Circle(ref circle)
                 if circle.fill.a() == 0
                     && circle.fill != Color32::TRANSPARENT
-                    && (circle.radius - 2.0).abs() < 0.001 =>
+                    && (circle.radius - crate::lighting::port_lamp_radius(1.0)).abs() < 0.001 =>
             {
                 Some((circle.center, circle.fill))
             }
@@ -39,9 +39,11 @@ fn emissions(output: &egui::FullOutput) -> Vec<(Pos2, Color32)> {
         .collect()
 }
 fn without_emissions(output: &egui::FullOutput) -> Vec<String> {
-    output.shapes.iter().filter(|shape| !matches!(shape.shape,
-        egui::Shape::Circle(ref circle) if circle.fill.a() == 0 && circle.fill != Color32::TRANSPARENT
-            && (circle.radius - 2.0).abs() < 0.001)).map(|shape| format!("{shape:?}")).collect()
+    output.shapes.iter().filter(|shape| match &shape.shape {
+        egui::Shape::Circle(circle) => circle.fill.a() != 0 || circle.fill == Color32::TRANSPARENT,
+        egui::Shape::Mesh(mesh) => !mesh.vertices.iter().all(|v| v.color.a() == 0),
+        _ => true,
+    }).map(|shape| format!("{shape:?}")).collect()
 }
 
 #[test]
@@ -153,7 +155,7 @@ fn port_light_emission_keeps_original_paint_order_under_later_cap_occlusion() {
         .iter()
         .position(|s| {
             matches!(s.shape, egui::Shape::Circle(ref c)
-        if c.fill.a() == 0 && c.fill.g() > 50 && c.radius == 2.0)
+        if c.fill.a() == 0 && c.fill.g() > 50 && c.radius == crate::lighting::port_lamp_radius(1.0))
         })
         .unwrap();
     let top_lens = output

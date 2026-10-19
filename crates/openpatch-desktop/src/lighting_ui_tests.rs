@@ -128,7 +128,7 @@ fn darkroom_live_lamps_survive_while_inactive_and_missing_lamps_dim() {
                 .find_map(|shape| match &shape.shape {
                     egui::Shape::Circle(circle)
                         if circle.center.distance(pos2(24.0 + x, 12.0 + y)) < 0.01
-                            && (circle.radius - radius).abs() < 0.01 =>
+                            && (circle.radius - crate::lighting::lamp_radius(radius)).abs() < 0.01 =>
                     {
                         Some(circle.fill)
                     }
@@ -149,7 +149,7 @@ fn darkroom_live_lamps_survive_while_inactive_and_missing_lamps_dim() {
         assert_eq!(
             active.shapes.len(),
             inactive.shapes.len() + 2,
-            "exactly two halo rings: {kind}"
+            "one bloom mesh and one bright core per active lamp: {kind}"
         );
         // A later UI time alone cannot make an unavailable lamp flash.
         rack.module_lights.clear();
@@ -291,7 +291,7 @@ fn darkroom_numeric_editor_and_selection_remain_readable_and_controls_keep_targe
         let mut rack = Rack::default();
         rack.set_room_brightness(amount);
         frame(&ctx, &mut rack, &patch, 0.0, vec![]);
-        let field = pos2(99.0, 169.0);
+        let field = pos2(99.0, 159.0);
         frame(
             &ctx,
             &mut rack,

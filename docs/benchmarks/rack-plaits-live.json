@@ -1,0 +1,79 @@
+{
+  "format": "openpatch-original-plaits-live-qualification",
+  "version": 1,
+  "date": "2026-10-15",
+  "platform": "macOS arm64",
+  "plugin": "AudibleInstruments",
+  "model": "Plaits",
+  "plugin_version": "2.0.0",
+  "latency_samples": 4096,
+  "latency_ms_at_48000": 85.33333333333333,
+  "paced_live_test": {
+    "rate": 48000,
+    "frames": 96000,
+    "polyphony": 4,
+    "engine_change_during_playback": true,
+    "late_samples": 0,
+    "dropped_frames": 0
+  },
+  "workspace_tests_passed": 1484,
+  "latest_desktop_tests_passed": 747,
+  "worker_tests_passed": 9,
+  "worker_source_sha256": "65782c75f8031ece55861dafd23933783651b802a7ab0965695496133f9b036a",
+  "native_transport_sha256": "a43439d10652392e5688ea9a8abefe118d7fb1e80bd3dd5c5e9e2f6fc52c2a55",
+  "live_ui_verified": {
+    "project": "Original-Plaits-Live.openpatch",
+    "playing": true,
+    "four_output_voices": true,
+    "late_samples": 0,
+    "dropped_frames": 0,
+    "observed_callback_budget_percent": 7.1
+  },
+  "limitations": [
+    "Native OpenPatch controls; original NanoVG panels are not embedded",
+    "Only original Plaits is integrated with the desktop live bridge",
+    "4096-sample bridge latency; low-latency performance is not claimed",
+    "Newly activated Plaits lanes are muted for 256 samples while old-width buffered frames retire",
+    "Plugin runtime and executable configured locally; automatic remote installation is not implemented"
+  ],
+  "control_edit_regression": {
+    "cause": "Retiring graph repeated the last active sample for the entire block during control-edit crossfades",
+    "fix": "Independent endpoint cursors replay matching timestamped audio history with one active producer",
+    "transport_test_failed_before_fix": true,
+    "transport_test_passed_after_fix": true,
+    "callback_edits": 28,
+    "callback_frames_per_edit": 257,
+    "controls": [
+      "engine",
+      "frequency",
+      "harmonics",
+      "timbre",
+      "morph",
+      "decay",
+      "level"
+    ],
+    "sample_comparison_tolerance": 1e-06,
+    "callback_heap_allocations": 0,
+    "callback_heap_deallocations": 0,
+    "paced_original_plugin_test": {
+      "frames": 96000,
+      "rate": 48000,
+      "polyphony": 4,
+      "late_samples": 0,
+      "dropped_frames": 0
+    },
+    "desktop_tests": {
+      "passed": 747,
+      "failed": 0,
+      "ignored": 4
+    },
+    "installed_app": "/Users/dbrewer/Applications/OpenPatch.app",
+    "live_ui": {
+      "project": "Original-Plaits-Live.openpatch",
+      "output": "System default / MacBook Pro Speakers",
+      "playing": true,
+      "observed_startup_late_samples": 512,
+      "dropped_frames": 0
+    }
+  }
+}

@@ -1,10 +1,10 @@
 // Shared rack/browser faceplate. Only a coherent DSP snapshot illuminates gains.
 const STOCK_VCA_PARAMS: [&str; 2] = ["level", "response"];
 fn stock_vca_slider_rect() -> Rect {
-    Rect::from_min_max(pos2(25.0, 109.0), pos2(55.0, 273.0))
+    Rect::from_center_size(pos2(40.0,175.0),vec2(56.0,56.0))
 }
 fn stock_vca_value_rect() -> Rect {
-    Rect::from_center_size(pos2(40.0, 295.0), vec2(54.0, 22.0))
+    Rect::from_center_size(pos2(40.0, 221.0), vec2(54.0, 22.0))
 }
 fn stock_vca_mode_rect() -> Rect {
     Rect::from_min_max(pos2(77.0, 284.0), pos2(160.0, 306.0))
@@ -77,7 +77,7 @@ impl Rack {
         let response_mode = node.params.get("response").copied().unwrap_or(1.0);
         let mut action = None;
         painter.text(
-            p(40.0, 91.0),
+            p(40.0, 136.0),
             Align2::CENTER_CENTER,
             "LEVEL",
             font(10.0),
@@ -118,15 +118,17 @@ impl Rack {
             if ui.data(|d| d.get_temp::<String>(id)).is_none() {
                 self.gesture = self.gesture.wrapping_add(1);
                 ui.data_mut(|d| {
-                    d.insert_temp(id, format!("rack-stock-vca-slider-{}", self.gesture))
+                    d.insert_temp(id, format!("rack-stock-vca-slider-{}", self.gesture));
+                    d.insert_temp(id,level);
                 });
             }
         }
         let old_level = level;
-        if (slider.dragged() || slider.is_pointer_button_down_on()) && ui.is_enabled() {
-            if let Some(pointer) = slider.interact_pointer_pos() {
-                level = ((slider_rect.bottom() - pointer.y) / slider_rect.height()).clamp(0.0, 1.0);
-            }
+        if slider.dragged() && ui.is_enabled() {
+            let fine=ui.input(|i|if i.modifiers.command||i.modifiers.ctrl{0.1}else{1.0});
+            let prior=ui.data(|d|d.get_temp::<f32>(id)).unwrap_or(level);
+            level=(prior-slider.drag_motion().y/(160.0*z)*fine).clamp(0.0,1.0);
+            ui.data_mut(|d|d.insert_temp(id,level));
         }
         if slider.double_clicked() {
             level = 1.0;
@@ -164,7 +166,7 @@ impl Rack {
         }
         if slider.drag_stopped() || ui.input(|i| i.pointer.button_released(PointerButton::Primary))
         {
-            ui.data_mut(|d| d.remove::<String>(id));
+            ui.data_mut(|d| {d.remove::<String>(id);d.remove::<f32>(id);});
         }
         if slider.secondary_clicked() {
             self.open_precision_editor(
@@ -173,28 +175,7 @@ impl Rack {
             );
         }
         slider.on_hover_text("Level 0–100%. Drag vertically; arrows adjust 1%, Shift adjusts 10%. Double-click resets to 100%. Right-click or click the readout for exact entry.");
-        let track = Rect::from_min_max(p(36.0, 109.0), p(44.0, 273.0));
-        painter.rect_filled(track, 4.0 * z, Color32::from_rgb(52, 61, 58));
-        for tick in 0..=4 {
-            let y = 273.0 - tick as f32 * 41.0;
-            painter.line_segment([p(19.0, y), p(25.0, y)], Stroke::new(0.8 * z, MUTED));
-        }
-        // The configured fader is reflective; it never claims to be live gain.
-        let thumb = Rect::from_center_size(p(40.0, 273.0 - level * 164.0), vec2(24.0, 9.0) * z);
-        painter.rect_filled(thumb, 2.0 * z, Color32::from_rgb(222, 226, 212));
-        painter.rect_stroke(
-            thumb,
-            2.0 * z,
-            Stroke::new(z, Color32::from_rgb(76, 105, 90)),
-            egui::StrokeKind::Inside,
-        );
-        painter.line_segment(
-            [
-                thumb.left_center() + vec2(4.0 * z, 0.0),
-                thumb.right_center() - vec2(4.0 * z, 0.0),
-            ],
-            Stroke::new(z, INK),
-        );
+        crate::panel_skin::parameter_rotary(&painter,slider_rect.center(),27.0,level,false,crate::panel_skin::luminous_accent(&node.kind),z,&self.lighting);
 
         let state = self
             .module_lights

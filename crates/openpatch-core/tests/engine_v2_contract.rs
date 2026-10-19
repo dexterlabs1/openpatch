@@ -10,6 +10,104 @@ thread_local! {
 }
 
 #[test]
+fn original_rack_endpoint_routes_polyphony_and_adopts_without_callback_heap() {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    #[derive(Debug)]
+    struct Endpoint(Arc<AtomicUsize>);
+    impl openpatch_core::RackPlaitsEndpoint for Endpoint {
+        fn activate(&mut self) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+        fn process(
+            &mut self,
+            controls: &[f32; 6],
+            inputs: &[PortFrame],
+            outputs: &mut [PortFrame],
+        ) {
+            outputs[0] = inputs[0];
+            outputs[1] = inputs[0];
+            for v in &mut outputs[1].values {
+                *v = -*v + controls[2];
+            }
+        }
+    }
+    let p = patch(
+        vec![
+            node(
+                "pitch",
+                "poly_constant",
+                &[
+                    ("channels", 4.0),
+                    ("v1", 2.0),
+                    ("v2", 2.0),
+                    ("v3", 2.0),
+                    ("v4", 2.0),
+                ],
+            ),
+            node("voice", "rack_plaits", &[("level", 0.5)]),
+        ],
+        vec![cable("pitch", "out", "voice", "pitch")],
+        "voice",
+    );
+    let mut old = p.compile().unwrap();
+    let mut new = p.compile().unwrap();
+    let activated = Arc::new(AtomicUsize::new(0));
+    old.attach_rack_plaits("voice", Box::new(Endpoint(activated.clone())))
+        .unwrap();
+    new.attach_rack_plaits("voice", Box::new(Endpoint(activated.clone())))
+        .unwrap();
+    let mut output = [PortFrame::default(); 129];
+    MEMORY_OPERATIONS.with(|n| n.set(0));
+    TRACK_MEMORY.with(|t| t.set(true));
+    old.process_poly_block(&mut output);
+    new.adopt_state_from(&old);
+    new.process_poly_block(&mut output);
+    TRACK_MEMORY.with(|t| t.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert_eq!(activated.load(Ordering::Relaxed), 1);
+    assert_eq!(output[128].channels, 4);
+    assert_eq!(output[128].values[0], 1.0);
+    assert!(openpatch_core::render_audio(&p, 0.01)
+        .unwrap_err()
+        .contains("live worker"));
+    assert!(new
+        .attach_rack_plaits("missing", Box::new(Endpoint(activated)))
+        .is_err());
+}
+
+#[test]
+fn macro_voice_all_engines_first_callback_and_adoption_use_no_heap() {
+    let mut engines = (0..8)
+        .map(|engine| {
+            let p = patch(
+                vec![
+                    node("pitch", "poly_constant", &[("channels", 16.0)]),
+                    node("voice", "macro_voice", &[("engine", engine as f32)]),
+                ],
+                vec![cable("pitch", "out", "voice", "pitch")],
+                "voice",
+            );
+            (p.compile().unwrap(), p.compile().unwrap())
+        })
+        .collect::<Vec<_>>();
+    let mut frames = [PortFrame::default(); 129];
+    MEMORY_OPERATIONS.with(|n| n.set(0));
+    TRACK_MEMORY.with(|t| t.set(true));
+    for (old, new) in &mut engines {
+        for length in [0, 1, 3, 64, 128, 129] {
+            old.process_poly_block(&mut frames[..length]);
+            new.adopt_state_from(old);
+            new.process_poly_block(&mut frames[..length]);
+        }
+    }
+    TRACK_MEMORY.with(|t| t.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+}
+
+#[test]
 fn multi_vco_first_callback_and_state_adoption_use_no_heap() {
     let mut p = patch(
         vec![
@@ -1518,4 +1616,50 @@ fn annotation_content_edits_preserve_synthesis_and_callbacks_never_allocate_or_f
     assert_eq!(before, baseline_before);
     assert_eq!(after, baseline_after);
     assert!(after.iter().any(|f| f.values[0].abs() > 0.001));
+}
+
+#[test]
+fn braids_console_and_creative_effects_first_callback_and_adoption_use_no_heap() {
+    let mut nodes = vec![
+        node("b", "braids", &[("model", 37.)]),
+        node(
+            "m",
+            "studio_mixer",
+            &[("channels", 16.), ("send_a1", 0.5), ("send_b1", 0.5)],
+        ),
+        node("out", "audio_stereo", &[]),
+    ];
+    for kind in [
+        "diffuse_reverb",
+        "tape_delay",
+        "stereo_ensemble",
+        "bass_glitch",
+    ] {
+        nodes.push(node(kind, kind, &[]));
+    }
+    let p = patch(
+        nodes,
+        vec![
+            cable("b", "out", "m", "in1"),
+            cable("m", "left", "out", "left"),
+            cable("m", "right", "out", "right"),
+            cable("m", "send_a_left", "bass_glitch", "left"),
+            cable("m", "send_b_left", "diffuse_reverb", "left"),
+            cable("diffuse_reverb", "left", "tape_delay", "left"),
+            cable("tape_delay", "left", "stereo_ensemble", "left"),
+        ],
+        "out",
+    );
+    let mut old = p.compile().unwrap();
+    let mut new = p.compile().unwrap();
+    let mut out = [[0.; 2]; 128];
+    MEMORY_OPERATIONS.with(|c| c.set(0));
+    TRACK_MEMORY.with(|t| t.set(true));
+    for _ in 0..64 {
+        old.process_audio_block(&mut out);
+        new.adopt_state_from(&old);
+        new.process_audio_block(&mut out);
+    }
+    TRACK_MEMORY.with(|t| t.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
 }

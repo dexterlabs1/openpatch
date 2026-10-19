@@ -1,0 +1,51 @@
+{
+  "format": "openpatch-rack-host-qualification",
+  "version": 1,
+  "platform": "macOS-26.7.1-arm64-arm-64bit",
+  "machine": "arm64",
+  "sdk_library_sha256": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c",
+  "worker_source_sha256": "486f037258c6850ac31940f72dd53f504ca38e544cbe5906411ff8e3b4a52bb6",
+  "client_source_sha256": "e30dc8cccfb6637c650b9621e118189824e2df6357ab30152a6a6e01c146446c",
+  "qualification_source_sha256": "726ffab6ad8152cfbbaade614834179b7c8b501ead5ed06e349a6fa10df5cee1",
+  "plugin_binary_sha256": {
+    "Fundamental": "a12611d70cbd61f0d77a1bedd92653ed2c2615ef0dff46f7ce1798383ffe9cc9",
+    "AudibleInstruments": "c275c3f494beba7585058efb77144700748c9d7abc2d16d6aebb7de417e9f57e"
+  },
+  "plugin_versions": {
+    "Fundamental": "2.6.4",
+    "AudibleInstruments": "2.0.0"
+  },
+  "plugin_binaries_unchanged": true,
+  "tests": [
+    "__main__.Qualification.test_audio_is_independent_of_ipc_block_boundaries",
+    "__main__.Qualification.test_catalog_reads_manifests_without_loading_binaries",
+    "__main__.Qualification.test_invalid_commands_leave_controls_unchanged_and_worker_alive",
+    "__main__.Qualification.test_original_vco_pitch_and_polyphonic_width",
+    "__main__.Qualification.test_plaits_custom_state_and_parameters_survive_process_restart",
+    "__main__.Qualification.test_plaits_engine_selection_changes_original_dsp",
+    "__main__.Qualification.test_restore_rejects_mismatched_identity_version_runtime_and_params",
+    "__main__.Qualification.test_wav_export_reports_real_audio_and_failure_preserves_existing_file",
+    "__main__.Qualification.test_worker_failure_is_contained_and_new_worker_recovers"
+  ],
+  "tests_run": 9,
+  "failures": 0,
+  "errors": 0,
+  "elapsed_seconds": 7.867854374999297,
+  "local_catalog_modules": 1132,
+  "limitations": [
+    "Offline one-module worker; no desktop integration or real-time audio qualification",
+    "No original module UI, expanders, inter-module graph, MIDI or file-backed module storage",
+    "Module JSON preserves Rack preset state, not unsaved oscillator/DSP phase histories",
+    "Only original Fundamental VCO and Audible Instruments Plaits binaries qualified",
+    "macOS arm64 only; no library service authentication or remote plugin installation"
+  ],
+  "preview": {
+    "path": "/Users/dbrewer/OpenPatch/Rack-Original-Plaits.wav",
+    "frames": 192000,
+    "channels": 2,
+    "sample_rate": 48000,
+    "peak": 0.46402587890624997,
+    "rms": 0.31084724912298495,
+    "clipped_samples": 0
+  }
+}

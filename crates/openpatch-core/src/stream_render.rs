@@ -23,6 +23,9 @@ pub fn render_wav_stream(patch: &Patch, path: &Path, seconds: f64) -> Result<Ren
     if !seconds.is_finite() || !(0.001..=300.0).contains(&seconds) {
         return Err("seconds must be finite and in 0.001..=300".into());
     }
+    if patch.nodes.iter().any(|n| n.kind == "rack_plaits") {
+        return Err("Original Rack Plaits requires the desktop live worker; use the Rack host renderer for offline export".into());
+    }
     // Compilation and all header validation precede creation of the destination.
     let mut engine = patch.compile()?;
     let frames = (seconds * f64::from(patch.sample_rate)).round() as u64;

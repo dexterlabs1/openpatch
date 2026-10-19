@@ -154,7 +154,8 @@ fn stock_vca_tab_cycles_level_and_response_in_both_directions() {
 fn stock_vca_actual_pointer_drag_and_mode_click_use_observed_revision() {
     let ctx = egui::Context::default();
     let mut rack = Rack::default();
-    let patch = patch();
+    let mut patch = patch();
+    patch.nodes[0].params.insert("level".into(),0.5);
     frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
     let start = at(stock_vca_slider_rect().center());
     frame_revision_state(
@@ -188,7 +189,7 @@ fn stock_vca_actual_pointer_drag_and_mode_click_use_observed_revision() {
         .as_str()
         .unwrap()
         .starts_with("rack-stock-vca-slider-"));
-    assert!((args["value"].as_f64().unwrap() - (0.5 + 30.0 / 164.0)).abs() < 1e-6);
+    assert!((args["value"].as_f64().unwrap() - (0.5 + 30.0 / 160.0)).abs() < 1e-6);
     frame_revision_state(
         &ctx,
         &mut rack,
@@ -484,7 +485,7 @@ fn stock_vca_held_slider_keeps_node_and_history_identity_across_graph_edits() {
         let mut rack = Rack::default();
         let mut patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
             {"id":"earlier","kind":"stock_vca"},
-            {"id":"held","kind":"stock_vca"}
+            {"id":"held","kind":"stock_vca","params":{"level":0.5}}
         ]}))
         .unwrap();
         rack.positions.insert("earlier".into(), pos2(0.0, 0.0));
@@ -568,7 +569,7 @@ fn stock_vca_deleted_held_slider_never_transfers_drag_to_remaining_filter() {
     let ctx = egui::Context::default();
     let mut rack = Rack::default();
     let mut patch: Patch = serde_json::from_value(json!({"version":2,"nodes":[
-        {"id":"held","kind":"stock_vca"},
+        {"id":"held","kind":"stock_vca","params":{"level":0.5}},
         {"id":"remaining","kind":"stock_vca"}
     ]}))
     .unwrap();
@@ -753,6 +754,7 @@ fn stock_vca_vertical_slider_keeps_focus_for_repeated_arrow_edits() {
     let ctx = egui::Context::default();
     let mut rack = Rack::default();
     let mut patch = patch();
+    patch.nodes[0].params.insert("level".into(),0.5);
     frame_revision_state(&ctx, &mut rack, &patch, 0.0, vec![], true, true, 29);
     let position = at(stock_vca_slider_rect().center());
     let action = frame_revision_state(
@@ -766,10 +768,7 @@ fn stock_vca_vertical_slider_keeps_focus_for_repeated_arrow_edits() {
         29,
     )
     .0;
-    let Some(RackAction::Command("set_parameter", args)) = action else {
-        panic!("click slider at 50%")
-    };
-    assert_eq!(args["value"], 0.5);
+    assert!(action.is_none(),"clicking a knob focuses without changing its value");
     patch.nodes[0].params.insert("level".into(), 0.5);
     frame_revision_state(
         &ctx,

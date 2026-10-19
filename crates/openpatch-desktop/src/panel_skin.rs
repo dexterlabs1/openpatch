@@ -25,7 +25,9 @@ pub(crate) fn family_accent(kind: &str) -> Color32 {
         "oscillator" | "analog_vco" | "multi_vco" | "white_noise" | "drum_voice" => {
             Color32::from_rgb(151, 93, 57)
         }
-        "modal_resonator" | "colored_noise" => Color32::from_rgb(151, 93, 57),
+        "modal_resonator" | "colored_noise" | "macro_voice" | "rack_plaits" => {
+            Color32::from_rgb(151, 93, 57)
+        }
         "lowpass" | "ladder_vcf" | "stock_vcf" | "svf_filter" => Color32::from_rgb(68, 113, 121),
         "adsr" | "adsr_eg" | "lfo" | "multi_lfo" | "gate" | "seq3" | "score_sequencer"
         | "random_values" | "sh_asr" => Color32::from_rgb(116, 96, 136),
@@ -55,6 +57,11 @@ pub(crate) fn model_caption(kind: &str) -> &str {
         "notes" => "PATCH NOTES",
         "blank" => "RACK SPACE",
         "score_sequencer" => "PATTERNS & AUTOMATION",
+        "studio_mixer" => "PERFORMANCE CONSOLE",
+        "bass_glitch" => "GRANULAR STUTTER",
+        "diffuse_reverb" => "DENSE MODULATED REVERB",
+        "tape_delay" => "SATURATED ECHO",
+        "stereo_ensemble" => "SIX-VOICE STEREO CHORUS",
         "stereo_delay" => "MODULATED ECHO",
         "stereo_reverb" => "STEREO REVERBERATOR",
         "sidechain_compressor" => "SIDECHAIN COMPRESSOR",
@@ -63,6 +70,8 @@ pub(crate) fn model_caption(kind: &str) -> &str {
         "analog_vco" => "ANALOG OSCILLATOR",
         "oscillator" => "SINE OSCILLATOR",
         "multi_vco" => "MULTI-WAVE OSCILLATOR",
+        "macro_voice" => "8 ENGINE POLYPHONIC SYNTH",
+        "rack_plaits" => "ORIGINAL RACK PLUGIN · PLAITS",
         "lowpass" => "LOW-PASS FILTER",
         "ladder_vcf" => "TRANSISTOR FILTER",
         "stock_vcf" => "POLYPHONIC LP / HP FILTER",
@@ -181,20 +190,327 @@ pub(crate) fn heading_font(ctx: &egui::Context, size: f32) -> FontId {
 }
 
 pub(crate) fn metal(painter: &egui::Painter, rect: Rect, zoom: f32) {
-    // Warm, matte metal: a simple face and a crisp edge keep the controls clear.
-    // Room illumination belongs to the caller, including bespoke panel layouts.
-    painter.rect_filled(
-        rect.translate(vec2(1.0, 1.5) * zoom),
-        1.0,
-        Color32::from_black_alpha(38),
-    );
-    painter.rect_filled(rect, 1.0, Color32::from_rgb(139, 140, 133));
+    // Anodized champagne metal, shared by every native faceplate. The room
+    // lighting pass still owns reflected light; screen emission is separate.
+    painter.rect_filled(rect, 0.0, Color32::from_rgb(132, 131, 121));
     let face = rect.shrink(1.0 * zoom);
-    painter.rect_filled(face, 0.0, Color32::from_rgb(223, 220, 210));
+    let mut mesh = egui::Mesh::default();
+    for (point, color) in [
+        (face.left_top(), Color32::from_rgb(232, 227, 213)),
+        (face.right_top(), Color32::from_rgb(218, 213, 200)),
+        (face.right_bottom(), Color32::from_rgb(201, 197, 184)),
+        (face.left_bottom(), Color32::from_rgb(220, 215, 202)),
+    ] {
+        mesh.colored_vertex(point, color);
+    }
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    painter.add(egui::Shape::mesh(mesh));
+    if zoom >= 0.65 {
+        for row in 1..(rect.height() / (4.0 * zoom)) as usize {
+            let y = rect.top() + row as f32 * 4.0 * zoom;
+            painter.line_segment(
+                [pos2(face.left(), y), pos2(face.right(), y)],
+                Stroke::new(0.35 * zoom, Color32::from_white_alpha(9)),
+            );
+        }
+    }
     painter.line_segment(
         [face.left_top(), face.right_top()],
         Stroke::new(0.6 * zoom, Color32::from_rgb(237, 234, 223)),
     );
+    for x in [rect.left() + 8.0 * zoom, rect.right() - 8.0 * zoom] {
+        for y in [rect.top() + 8.0 * zoom, rect.bottom() - 8.0 * zoom] {
+            let center = pos2(x, y);
+            painter.circle_filled(
+                center + vec2(0.5, 0.8) * zoom,
+                4.0 * zoom,
+                Color32::from_black_alpha(70),
+            );
+            painter.circle_filled(center, 3.6 * zoom, Color32::from_rgb(101, 100, 90));
+            painter.circle_stroke(
+                center,
+                3.0 * zoom,
+                Stroke::new(0.8 * zoom, Color32::from_rgb(194, 190, 173)),
+            );
+            painter.line_segment(
+                [
+                    center + vec2(-1.7, 1.4) * zoom,
+                    center + vec2(1.7, -1.4) * zoom,
+                ],
+                Stroke::new(1.0 * zoom, Color32::from_rgb(34, 36, 34)),
+            );
+        }
+    }
+}
+
+pub(crate) fn luminous_accent(kind: &str) -> Color32 {
+    match kind {
+        "lowpass" | "ladder_vcf" | "stock_vcf" | "svf_filter" => Color32::from_rgb(126, 225, 174),
+        "adsr" | "adsr_eg" | "lfo" | "multi_lfo" | "gate" | "seq3" | "score_sequencer"
+        | "random_values" | "sh_asr" => Color32::from_rgb(195, 161, 239),
+        "stereo_delay"
+        | "stereo_reverb"
+        | "sidechain_compressor"
+        | "audio_stereo"
+        | "output"
+        | "audio_out" => Color32::from_rgb(126, 197, 243),
+        "oscillator" | "analog_vco" | "multi_vco" | "macro_voice" | "drum_voice"
+        | "modal_resonator" | "colored_noise" | "white_noise" => Color32::from_rgb(243, 177, 105),
+        _ => Color32::from_rgb(143, 214, 179),
+    }
+}
+
+/// Reflective cap and emissive 270-degree position scale. The ring is a setting
+/// indicator; it deliberately does not imply measured audio activity.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn parameter_rotary(
+    painter: &egui::Painter,
+    center: Pos2,
+    radius: f32,
+    value: f32,
+    active: bool,
+    accent: Color32,
+    zoom: f32,
+    lighting: &crate::lighting::RoomLighting,
+) {
+    let value = fader_value(value);
+    let ring = (radius - 1.0).max(8.0) * zoom;
+    let body = ring * 0.80;
+    painter.circle_filled(
+        center + vec2(0.7, 2.0) * zoom,
+        body + 2.0 * zoom,
+        Color32::from_black_alpha(80),
+    );
+    painter.circle_filled(center, body + zoom, Color32::from_rgb(17, 23, 24));
+    for band in (0..8).rev() {
+        let t = band as f32 / 7.0;
+        painter.circle_filled(
+            center - vec2(0.2, 0.45) * zoom,
+            body * (0.88 + 0.12 * t),
+            Color32::from_gray((34.0 + 28.0 * t) as u8),
+        );
+    }
+    painter.circle_filled(center, body * 0.85, Color32::from_rgb(34, 39, 40));
+    painter.circle_stroke(
+        center,
+        body * 0.84,
+        Stroke::new(0.65 * zoom, Color32::from_rgb(65, 70, 68)),
+    );
+    let start = std::f32::consts::PI * 0.75;
+    let sweep = std::f32::consts::PI * 1.5;
+    for tick in 0..=24 {
+        let (sin, cos) = (start + sweep * tick as f32 / 24.0).sin_cos();
+        let direction = vec2(cos, sin);
+        painter.line_segment(
+            [
+                center + direction * (ring + 1.5 * zoom),
+                center + direction * (ring + if tick % 6 == 0 { 4.0 } else { 2.7 } * zoom),
+            ],
+            Stroke::new(0.65 * zoom, Color32::from_rgb(108, 108, 98)),
+        );
+    }
+    let emission = crate::lighting::next(painter);
+    let muted = Color32::from_rgb(69, 77, 76);
+    for segment in 0..48 {
+        let t = segment as f32 / 48.0;
+        let a = start + sweep * t;
+        let b = a + sweep / 48.0 * 0.72;
+        let points = [
+            center + vec2(a.cos(), a.sin()) * ring,
+            center + vec2(b.cos(), b.sin()) * ring,
+        ];
+        if t <= value {
+            painter.line_segment(points, Stroke::new(4.8 * zoom, accent.gamma_multiply(0.09)));
+            painter.line_segment(points, Stroke::new(2.6 * zoom, accent.gamma_multiply(0.32)));
+            painter.line_segment(points, Stroke::new(1.35 * zoom, accent));
+        } else {
+            painter.line_segment(points, Stroke::new(1.1 * zoom, muted));
+        }
+    }
+    let angle = start + sweep * value;
+    let direction = vec2(angle.cos(), angle.sin());
+    painter.line_segment(
+        [
+            center + direction * body * 0.45,
+            center + direction * body * 0.86,
+        ],
+        Stroke::new(2.0 * zoom, Color32::from_rgb(248, 230, 190)),
+    );
+    if active {
+        painter.circle_stroke(
+            center,
+            ring + 5.0 * zoom,
+            Stroke::new(0.7 * zoom, accent.gamma_multiply(0.6)),
+        );
+    }
+    lighting.preserve(painter, emission);
+}
+
+/// Native rotary widget for bespoke panels. Uses stable caller scopes, relative
+/// dragging, fine modifiers and keyboard edits; exact entry stays with the panel.
+pub(crate) struct StudioDial<'a> {
+    value: &'a mut f32,
+    range: std::ops::RangeInclusive<f32>,
+    size: egui::Vec2,
+    color: Color32,
+    zoom: f32,
+    lighting: &'a crate::lighting::RoomLighting,
+    logarithmic: bool,
+}
+impl<'a> StudioDial<'a> {
+    pub(crate) fn new(
+        value: &'a mut f32,
+        range: std::ops::RangeInclusive<f32>,
+        size: egui::Vec2,
+        color: Color32,
+        zoom: f32,
+        lighting: &'a crate::lighting::RoomLighting,
+    ) -> Self {
+        Self {
+            value,
+            range,
+            size,
+            color,
+            zoom,
+            lighting,
+            logarithmic: false,
+        }
+    }
+    pub(crate) fn logarithmic(mut self, logarithmic: bool) -> Self {
+        self.logarithmic = logarithmic;
+        self
+    }
+}
+// Some native event loops deliver an entire short drag in one repaint. egui's
+// Response then has neither an active drag nor a click when release is outside
+// the knob. Recover only a complete primary gesture that began on this control.
+pub(crate) fn completed_pointer_drag(ui: &egui::Ui, response: &egui::Response) -> Option<egui::Vec2> {
+    if !response.enabled() || response.dragged() || response.drag_stopped() {
+        return None;
+    }
+    let clip = ui.clip_rect();
+    let (from, delta) = ui.input(|i| {
+        let mut start = None;
+        let mut movement = None;
+        for event in &i.events {
+            if let egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, .. } = event {
+                if *pressed {
+                    start = (response.rect.contains(*pos) && clip.contains(*pos)).then_some(*pos);
+                } else if let Some(from) = start.take() {
+                    let delta = *pos - from;
+                    if delta.length() >= 6.0 { movement = Some((from, delta)); }
+                }
+            }
+        }
+        movement
+    })?;
+    (ui.ctx().layer_id_at(from) == Some(response.layer_id)).then_some(delta)
+}
+
+impl egui::Widget for StudioDial<'_> {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let (rect, mut response) = ui.allocate_exact_size(self.size, egui::Sense::click_and_drag());
+        let min = *self.range.start();
+        let max = *self.range.end();
+        let span = (max - min).max(f32::EPSILON);
+        let old = *self.value;
+        let mut normalized = if self.logarithmic {
+            ((*self.value - min).max(0.0)).ln_1p() / span.ln_1p()
+        } else {
+            (*self.value - min) / span
+        };
+        let position_id = response.id.with("studio-position");
+        let completed_motion = completed_pointer_drag(ui, &response);
+        if response.is_pointer_button_down_on()
+            && ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary))
+        {
+            ui.data_mut(|d| d.insert_temp(position_id, normalized));
+        }
+        if response.dragged() {
+            normalized = ui
+                .data(|d| d.get_temp::<f32>(position_id))
+                .unwrap_or(normalized);
+        }
+        let initial_normalized = normalized;
+        if response.is_pointer_button_down_on() || response.clicked() {
+            response.request_focus();
+        }
+        if ui.is_enabled() {
+            let modifiers = ui.input(|i| i.modifiers);
+            let fine = if modifiers.command || modifiers.ctrl {
+                if modifiers.shift {
+                    0.01
+                } else {
+                    0.1
+                }
+            } else {
+                1.0
+            };
+            if response.dragged() || completed_motion.is_some() {
+                // Follow screen points: native integrations may provide a zero raw
+                // mouse delta alongside real PointerMoved events.
+                let motion = completed_motion.unwrap_or_else(|| response.drag_delta());
+                normalized += (motion.x * 0.35 - motion.y) / (160.0 * self.zoom) * fine;
+            }
+            if response.has_focus() {
+                ui.ctx().memory_mut(|m| {
+                    m.set_focus_lock_filter(
+                        response.id,
+                        egui::EventFilter {
+                            horizontal_arrows: true,
+                            vertical_arrows: true,
+                            ..Default::default()
+                        },
+                    )
+                });
+                let step = if modifiers.shift { 0.1 } else { 0.01 } * fine;
+                let (nudge, boundary) = ui.input_mut(|i| {
+                    let up = i.consume_key(modifiers, egui::Key::ArrowUp)
+                        || i.consume_key(modifiers, egui::Key::ArrowRight);
+                    let down = i.consume_key(modifiers, egui::Key::ArrowDown)
+                        || i.consume_key(modifiers, egui::Key::ArrowLeft);
+                    let boundary = if i.consume_key(modifiers, egui::Key::Home) {
+                        Some(0.0)
+                    } else if i.consume_key(modifiers, egui::Key::End) {
+                        Some(1.0)
+                    } else {
+                        None
+                    };
+                    (i32::from(up) - i32::from(down), boundary)
+                });
+                normalized = boundary.unwrap_or(normalized + nudge as f32 * step);
+            }
+        }
+        normalized = normalized.clamp(0.0, 1.0);
+        // Drawing, focus and preview must never quantize the stored value.
+        if ui.is_enabled() && normalized != initial_normalized {
+            *self.value = if self.logarithmic {
+                min + (normalized * span.ln_1p()).exp_m1()
+            } else {
+                min + normalized * span
+            };
+            if *self.value != old {
+                response.mark_changed();
+            }
+            ui.data_mut(|d| d.insert_temp(position_id, normalized));
+        }
+        if response.drag_stopped() || !ui.is_enabled() || !ui.input(|i| i.focused) {
+            ui.data_mut(|d| d.remove::<f32>(position_id));
+        }
+        let radius = (rect.height().min(rect.width()) * 0.5 / self.zoom - 3.0).max(6.0);
+        parameter_rotary(
+            ui.painter(),
+            rect.center(),
+            radius,
+            normalized,
+            response.hovered() || response.has_focus(),
+            self.color,
+            self.zoom,
+            self.lighting,
+        );
+        response.on_hover_cursor(egui::CursorIcon::ResizeVertical)
+    }
 }
 
 /// The normalized parameter's travel in screen points. `radius` is a logical,

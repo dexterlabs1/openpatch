@@ -2,8 +2,10 @@
 //! then all edges publish current output frames. Strings, routing and voice
 //! storage are resolved/allocated only during compilation.
 use crate::adsr_eg::{self, AdsrEg};
+use crate::braids::{self, Braids};
 use crate::colored_noise::{self, ColoredNoise};
 use crate::gates::{self, Gates};
+use crate::macro_voice::{self, MacroVoice};
 use crate::midi::{MidiCv, OUTPUTS as MIDI_OUTPUTS};
 use crate::midi_cc::{self, MidiCc};
 use crate::midi_gate::{self, MidiGate};
@@ -13,6 +15,7 @@ use crate::multi_lfo::{self, MultiLfo};
 use crate::multi_vco::{self, MultiVco};
 use crate::pulses::{self, Pulses};
 use crate::push::{self, Push};
+use crate::rack_plaits::{self, RackPlaits};
 use crate::random_values::{self, RandomValues};
 use crate::routing::{self, Routing};
 use crate::scope::{self, Scope};
@@ -24,6 +27,7 @@ use crate::stereo_output::StereoOutput;
 use crate::stock_vca::{self, StockVca};
 use crate::stock_vcf::{self, StockVcf};
 use crate::studio_fx::{self, StudioFx};
+use crate::studio_mixer::{self, StudioMixer};
 use crate::switch::{self, SequentialSwitch};
 use crate::utility_bank::{self, UtilityBank};
 use crate::voice_tools::{self, VoiceTools};
@@ -34,7 +38,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 pub const MAX_CHANNELS: usize = 16;
-const MAX_PORTS: usize = 16;
+const MAX_PORTS: usize = 32;
 
 /// A fixed-capacity port value. Engine-produced frames have 0..=16 channels and
 /// zero in inactive slots. Zero channels means disconnected for normaling.
@@ -74,6 +78,10 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
         || kind == "colored_noise"
         || kind == "score_sequencer"
         || kind == "modal_resonator"
+        || kind == "macro_voice"
+        || kind == "braids"
+        || kind == "studio_mixer"
+        || kind == "rack_plaits"
         || studio_fx::input_names(kind).is_some()
         || voice_tools::input_names(kind).is_some()
         || routing::input_names(kind).is_some()
@@ -115,6 +123,20 @@ fn numbered_port(name: &str, prefix: &str) -> Option<usize> {
     }
 }
 fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
+    if kind == "braids" {
+        return braids::INPUTS.iter().position(|p| *p == name);
+    }
+    if kind == "studio_mixer" {
+        return studio_mixer::INPUTS.iter().position(|p| *p == name);
+    }
+    if kind == "rack_plaits" {
+        return rack_plaits::RACK_PLAITS_INPUTS
+            .iter()
+            .position(|p| *p == name);
+    }
+    if kind == "macro_voice" {
+        return macro_voice::INPUTS.iter().position(|p| *p == name);
+    }
     if kind == "modal_resonator" {
         return modal_resonator::INPUTS.iter().position(|p| *p == name);
     }
@@ -163,6 +185,18 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
     }
 }
 fn output_port(kind: &str, name: &str) -> Option<usize> {
+    if kind == "braids" {
+        return (name == "out").then_some(0);
+    }
+    if kind == "studio_mixer" {
+        return studio_mixer::OUTPUTS.iter().position(|p| *p == name);
+    }
+    if kind == "rack_plaits" {
+        return ["out", "aux"].iter().position(|p| *p == name);
+    }
+    if kind == "macro_voice" {
+        return macro_voice::OUTPUTS.iter().position(|p| *p == name);
+    }
     if kind == "colored_noise" {
         return colored_noise::OUTPUTS.iter().position(|p| *p == name);
     }
@@ -283,7 +317,21 @@ fn voice_policy(kind: &str) -> VoicePolicy {
 }
 pub(crate) fn annotate_catalog(module: &mut Value) {
     let kind = module["kind"].as_str().unwrap().to_owned();
-    let outputs = if kind == "colored_noise" {
+    let outputs = if kind == "studio_mixer" {
+        studio_mixer::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
+    } else if kind == "braids" {
+        vec!["out".to_owned()]
+    } else if kind == "rack_plaits" {
+        vec!["out".to_owned(), "aux".to_owned()]
+    } else if kind == "macro_voice" {
+        macro_voice::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect::<Vec<_>>()
+    } else if kind == "colored_noise" {
         colored_noise::OUTPUTS
             .iter()
             .map(|s| (*s).to_owned())
@@ -467,7 +515,14 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     module["output_metadata"] = json!(outputs.iter().map(|name|json!({"name":name,"maximum_channels":if kind=="audio_stereo" {2} else if kind=="poly_split" || kind=="poly_sum" || matches!(voice_policy(&kind),VoicePolicy::Generator) {1} else {16},"units":if kind=="audio_out" || kind=="audio_stereo" {"normalized digital amplitude"} else if module["model"]=="legacy" {"legacy normalized"} else {"V"}})).collect::<Vec<_>>());
     if matches!(
         kind.as_str(),
-        "drum_voice" | "stereo_delay" | "stereo_reverb" | "sidechain_compressor"
+        "diffuse_reverb"
+            | "tape_delay"
+            | "stereo_ensemble"
+            | "bass_glitch"
+            | "drum_voice"
+            | "stereo_delay"
+            | "stereo_reverb"
+            | "sidechain_compressor"
     ) {
         module["polyphony"]["version_2"] = json!(
             "mono per port; stereo effects use independent left/right ports and read channel zero"
@@ -476,6 +531,30 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
         for output in module["output_metadata"].as_array_mut().unwrap() {
             output["maximum_channels"] = json!(1);
         }
+    }
+    if matches!(
+        kind.as_str(),
+        "diffuse_reverb" | "tape_delay" | "stereo_ensemble" | "bass_glitch"
+    ) {
+        module["polyphony"]["version_2"] =
+            json!("mono L/R ports plus a two-lane packed stereo output");
+        if let Some(o) = module["output_metadata"]
+            .as_array_mut()
+            .and_then(|a| a.get_mut(2))
+        {
+            o["maximum_channels"] = json!(2);
+        }
+    }
+    if kind == "studio_mixer" {
+        module["polyphony"]["version_2"]=json!("16 bounded mono/stereo input strips; inactive strips ignored; two-lane return cables are stereo; outputs are named mono L/R ports");
+        module["polyphony"]["primary_input"] = Value::Null;
+        module["light_names"] = json!((1..=16).map(|i| format!("Channel {i}")).collect::<Vec<_>>());
+        for o in module["output_metadata"].as_array_mut().unwrap() {
+            o["maximum_channels"] = json!(1);
+        }
+    }
+    if kind == "braids" {
+        module["polyphony"]["version_2"]=json!("maximum pitch/trigger width, minimum one, up to 16 independent original Braids voices; other CVs mono-broadcast");
     }
     if kind == "score_sequencer" {
         module["polyphony"]["version_2"] = json!(
@@ -512,6 +591,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     }
     if kind == "modal_resonator" {
         modal_resonator::annotate(module);
+    }
+    if kind == "macro_voice" {
+        macro_voice::annotate(module);
     }
     if kind == "seq3" {
         sequence::annotate(module);
@@ -555,6 +637,10 @@ enum Model {
     Score(Box<ScoreSequencer>),
     StudioFx(Box<StudioFx>),
     ModalResonator(Box<ModalResonator>),
+    MacroVoice(Box<MacroVoice>),
+    Braids(Box<Braids>),
+    StudioMixer(Box<StudioMixer>),
+    RackPlaits(Box<RackPlaits>),
     VoiceTools(Box<VoiceTools>),
     Voices {
         template: Dsp,
@@ -602,6 +688,18 @@ impl Model {
         }
         if node.kind == "modal_resonator" {
             return ModalResonator::build(node, rate).map(|s| Self::ModalResonator(Box::new(s)));
+        }
+        if node.kind == "rack_plaits" {
+            return RackPlaits::build(node).map(|s| Self::RackPlaits(Box::new(s)));
+        }
+        if node.kind == "studio_mixer" {
+            return StudioMixer::build(node, rate).map(|s| Self::StudioMixer(Box::new(s)));
+        }
+        if node.kind == "braids" {
+            return Braids::build(node, rate).map(|s| Self::Braids(Box::new(s)));
+        }
+        if node.kind == "macro_voice" {
+            return MacroVoice::build(node, rate).map(|s| Self::MacroVoice(Box::new(s)));
         }
         if node.kind == "score_sequencer" {
             return ScoreSequencer::build(node, rate).map(|s| Self::Score(Box::new(s)));
@@ -850,8 +948,11 @@ impl PolyEngine {
             None
         }
     }
-    pub(crate) fn begin_taps(&mut self, taps: &[Option<usize>; 2]) {
+    pub(crate) fn begin_taps<const N: usize>(&mut self, taps: &[Option<usize>; N]) {
         for node in &mut self.nodes {
+            if !matches!(node.model, Model::MidiCc(_) | Model::StockVcf(_)) {
+                continue;
+            }
             for tap in taps.iter().flatten() {
                 if matches!(node.model, Model::MidiCc(_) | Model::StockVcf(_))
                     && (node.output_start..node.output_start + node.output_count).contains(tap)
@@ -933,6 +1034,7 @@ impl PolyEngine {
             Some(Model::ShiftRegister(p)) => Some(p.lights()),
             Some(Model::RandomValues(p)) => Some(p.lights()),
             Some(Model::Gates(g)) => Some(g.lights()),
+            Some(Model::StudioMixer(m)) => Some(m.lights()),
             Some(Model::Mixing(m)) => m.lights(),
             Some(Model::Sum(s)) => Some(s.lights()),
             Some(Model::Viz(v)) => Some(v.lights()),
@@ -1145,6 +1247,19 @@ impl PolyEngine {
                 s.reset_state();
                 node.output_count
             }
+            Model::Braids(s) => {
+                s.reset_state();
+                node.output_count
+            }
+            Model::StudioMixer(s) => {
+                s.reset_state();
+                node.output_count
+            }
+            Model::RackPlaits(_) => node.output_count,
+            Model::MacroVoice(s) => {
+                s.reset_state();
+                node.output_count
+            }
             Model::StudioFx(s) => {
                 s.reset_state();
                 node.output_count
@@ -1234,6 +1349,7 @@ impl PolyEngine {
             Model::RandomValues(p) => p.release(),
             Model::Scope(s) => s.reset(),
             Model::ModalResonator(s) => s.reset_state(),
+            Model::MacroVoice(s) => s.reset_state(),
             // Parameter initialization preserves all other adopted runtime
             // histories, including VCO phase, switch position, and process
             // hold/slew. The host separately releases momentary controls.
@@ -1340,7 +1456,15 @@ impl PolyEngine {
                 connected_mask: 0,
                 base_connected_mask: 0,
             });
-            let count = if node.kind == "colored_noise" {
+            let count = if node.kind == "studio_mixer" {
+                studio_mixer::OUTPUTS.len()
+            } else if node.kind == "braids" {
+                1
+            } else if node.kind == "rack_plaits" {
+                2
+            } else if node.kind == "macro_voice" {
+                macro_voice::OUTPUTS.len()
+            } else if node.kind == "colored_noise" {
                 colored_noise::OUTPUTS.len()
             } else if node.kind == "score_sequencer" {
                 score::OUTPUTS.len()
@@ -1528,6 +1652,22 @@ impl PolyEngine {
             }),
         })
     }
+    pub(crate) fn attach_rack_plaits(
+        &mut self,
+        id: &str,
+        endpoint: Box<dyn crate::RackPlaitsEndpoint>,
+    ) -> Result<(), String> {
+        let index = *self
+            .node_lookup
+            .get(id)
+            .ok_or("Original Rack module was not found")?;
+        if let Model::RackPlaits(module) = &mut self.nodes[index].model {
+            module.endpoint = Some(endpoint);
+            Ok(())
+        } else {
+            Err("Endpoint target is not an original Rack Plaits module".into())
+        }
+    }
     pub(crate) fn output_channels(&self) -> u16 {
         if self.stereo {
             2
@@ -1623,6 +1763,10 @@ impl PolyEngine {
                 Model::Score(_)
                 | Model::StudioFx(_)
                 | Model::VoiceTools(_)
+                | Model::RackPlaits(_)
+                | Model::StudioMixer(_)
+                | Model::Braids(_)
+                | Model::MacroVoice(_)
                 | Model::ModalResonator(_) => {
                     let mut inputs = [PortFrame::default(); MAX_PORTS];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -1642,6 +1786,10 @@ impl PolyEngine {
                             s.process(&inputs, outputs);
                         }
                         Model::ModalResonator(s) => s.process(&inputs, outputs),
+                        Model::StudioMixer(s) => s.process(&inputs, outputs),
+                        Model::Braids(s) => s.process(&inputs, outputs),
+                        Model::MacroVoice(s) => s.process(&inputs, outputs),
+                        Model::RackPlaits(s) => s.process(&inputs, outputs),
                         Model::StudioFx(s) => s.process(&inputs, outputs),
                         Model::VoiceTools(s) => s.process(&inputs, outputs),
                         _ => unreachable!(),
@@ -1945,7 +2093,7 @@ impl PolyEngine {
                     );
                 }
                 Model::Routing(routing) => {
-                    let mut inputs = [PortFrame::default(); MAX_PORTS];
+                    let mut inputs = [PortFrame::default(); 16];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
                         if let Some(edge) = edge {
                             *input = self.input_frames[*edge];
@@ -2248,6 +2396,9 @@ impl PolyEngine {
             };
             let strike_unchanged = self.nodes[*index].kind != "modal_resonator"
                 || self.input_unchanged(*index, old, *old_index, 1);
+            let macro_trigger_unchanged =
+                !matches!(self.nodes[*index].kind.as_str(), "macro_voice" | "braids")
+                    || self.input_unchanged(*index, old, *old_index, 1);
             let node = &mut self.nodes[*index];
             let previous = &old.nodes[*old_index];
             if node.kind != previous.kind {
@@ -2266,6 +2417,12 @@ impl PolyEngine {
                 }
                 (Model::ModalResonator(s), Model::ModalResonator(old)) => {
                     s.adopt(old, strike_unchanged)
+                }
+                (Model::RackPlaits(s), Model::RackPlaits(_)) => s.adopt(),
+                (Model::StudioMixer(s), Model::StudioMixer(old)) => s.adopt(old),
+                (Model::Braids(s), Model::Braids(old)) => s.adopt(old, macro_trigger_unchanged),
+                (Model::MacroVoice(s), Model::MacroVoice(old)) => {
+                    s.adopt(old, macro_trigger_unchanged)
                 }
                 (Model::StudioFx(s), Model::StudioFx(old)) => s.adopt(old),
                 (Model::VoiceTools(s), Model::VoiceTools(old)) => s.adopt(old),

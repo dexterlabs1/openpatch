@@ -944,6 +944,7 @@ impl OpenPatch {
                     ui.label("Transport paused · audio callbacks continue");
                 }
                 ui.label(timing_explanation(status));
+                if let Some(status) = self.audio.as_ref().and_then(Audio::rack_status) { ui.colored_label(ACCENT, status); }
                 if status == TimingStatus::Ready {
                     let snapshot = snapshot.as_ref().unwrap();
                     let percent = |value: f64| format!("{:.1}%", value * 100.0);
@@ -3067,6 +3068,7 @@ impl OpenPatch {
                         ui.add(egui::ProgressBar::new(audio.peak().min(1.0)).desired_width(48.0).desired_height(5.0).fill(ACCENT))
                             .on_hover_text("Combined output peak · after master volume and graph crossfade");
                         ui.label(RichText::new(if audio.is_playing(){"Playing"}else{"Paused"}).size(10.0).color(MUTED));
+                        if let Some(status) = audio.rack_status() { ui.label(RichText::new(status).size(10.0).color(ACCENT)); }
                         if audio.solver_failures()!=0 {
                             ui.colored_label(ACCENT,"Solver holds").on_hover_text(format!("{} circuit solves reached the bounded work limit. The last valid capacitor state was retained. Reduce drive, resonance, or modulation.",audio.solver_failures()));
                         }
@@ -3141,7 +3143,12 @@ impl OpenPatch {
                     Some(AnalysisTab::Scope) => self.scope.contents(ui, &self.patch, &self.catalog),
                     Some(AnalysisTab::Visuals) => {
                         ui.horizontal(|ui| {
-                            for (mode, name) in [(0, "Aurora"), (1, "Spectrum"), (2, "Waveform")] {
+                            for (mode, name) in [
+                                (0, "Aurora"),
+                                (1, "Spectrum"),
+                                (2, "Waveform"),
+                                (3, "Ferrofluid"),
+                            ] {
                                 ui.selectable_value(&mut self.visual_mode, mode, name);
                             }
                         });
@@ -3825,7 +3832,7 @@ impl OpenPatch {
             .default_size([730.0, 540.0])
             .show(ctx, |ui| {
                 ui.label(
-                    "GLSL 330 · u_time · u_resolution · u_level · u_wave[256] · u_spectrum[64]",
+                    "GLSL 330 · u_time · u_resolution · u_level · u_wave[256] · u_spectrum[64] · u_ferro",
                 );
                 ui.horizontal(|ui| {
                     if ui.button("Compile").clicked() {
@@ -5854,6 +5861,11 @@ impl eframe::App for OpenPatch {
         self.scope.service(&self.patch, self.audio.as_mut());
         self.analysis_dock(ctx);
         if self.smoke_test.is_none() || self.audio.is_some() {
+            self.rack.set_panel_screens(
+                self.audio
+                    .as_ref()
+                    .and_then(|audio| audio.panel_screens(self.revision)),
+            );
             self.rack.set_port_lights(
                 self.audio
                     .as_ref()

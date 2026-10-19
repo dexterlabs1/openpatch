@@ -1,10 +1,14 @@
 //! Original bounded studio effects, not emulations of Surge, Plateau, or Pressor.
 //! Audio ports use channel one. Delay/reverb gains are independent dry + wet.
+mod creative;
 use crate::{parameter, Node, PortFrame, SIGNAL_LIMIT};
 use serde_json::{json, Value};
 use std::f64::consts::TAU;
 
 pub(crate) fn input_names(kind: &str) -> Option<&'static [&'static str]> {
+    if creative::supports(kind) {
+        return Some(&creative::INPUTS);
+    }
     match kind {
         "stereo_delay" | "stereo_reverb" => Some(&["left", "right"]),
         "sidechain_compressor" => Some(&["left", "right", "sidechain"]),
@@ -12,6 +16,9 @@ pub(crate) fn input_names(kind: &str) -> Option<&'static [&'static str]> {
     }
 }
 pub(crate) fn output_names(kind: &str) -> Option<&'static [&'static str]> {
+    if creative::supports(kind) {
+        return Some(&["left", "right", "stereo"]);
+    }
     match kind {
         "stereo_delay" | "stereo_reverb" => Some(&["left", "right"]),
         "sidechain_compressor" => Some(&["left", "right", "gain"]),
@@ -39,11 +46,13 @@ pub(crate) fn catalog() -> Vec<Value> {
             ("detector_ms", 10.0, 0.1, 100.0, "ms"),
         ], "Original stereo-linked RMS soft-knee compressor, 5 V reference. External sidechain channel one overrides the maximum stereo detector. Gain output is 10 V times gain reduction, before makeup."),
     ];
-    spec.into_iter().map(|(kind,title,params,description)| {
+    let mut effects:Vec<Value> = spec.into_iter().map(|(kind,title,params,description)| {
         let params: serde_json::Map<String,Value> = params.into_iter().map(|(name,default,min,max,unit)|
             (name.to_owned(), json!({"default":default,"min":min,"max":max,"unit":unit}))).collect();
         json!({"kind":kind,"title":title,"model":"functional","inputs":input_names(kind).unwrap(),"outputs":output_names(kind).unwrap(),"params":params,"description":description})
-    }).collect()
+    }).collect();
+    effects.extend(creative::catalog());
+    effects
 }
 
 #[derive(Clone, Debug)]
@@ -148,6 +157,7 @@ impl Compressor {
 }
 #[derive(Clone, Debug)]
 enum Effect {
+    Creative(Box<creative::CreativeFx>),
     Delay(Delay),
     Reverb(Reverb),
     Compressor(Compressor),
@@ -161,6 +171,12 @@ impl StudioFx {
     pub(crate) fn build(node: &Node, rate: u32) -> Result<Self, String> {
         if rate == 0 || rate > 384000 {
             return Err("studio effects require a sample rate between 1 and 384000 Hz".into());
+        }
+        if creative::supports(&node.kind) {
+            return Ok(Self {
+                rate,
+                effect: Effect::Creative(Box::new(creative::CreativeFx::build(node, rate)?)),
+            });
         }
         let allowed: &[&str] = match node.kind.as_str() {
             "stereo_delay" => &[
@@ -248,6 +264,7 @@ impl StudioFx {
         let left = sample(inputs, 0, 0.0);
         let input = [left, sample(inputs, 1, left)];
         let (audio, gain) = match &mut self.effect {
+            Effect::Creative(s) => (s.process(inputs), 0.0),
             Effect::Delay(d) => {
                 let modulation = d.depth * d.phase.sin();
                 let delayed = std::array::from_fn::<_, 2, _>(|i| {
@@ -316,6 +333,15 @@ impl StudioFx {
             }
         };
         for (i, out) in outputs.iter_mut().enumerate() {
+            if i == 2 && matches!(self.effect, Effect::Creative(_)) {
+                *out = PortFrame {
+                    channels: 2,
+                    values: std::array::from_fn(
+                        |j| if j < 2 { finite(audio[j]) as f32 } else { 0.0 },
+                    ),
+                };
+                continue;
+            }
             *out = PortFrame::mono(finite(if i < 2 {
                 audio[i]
             } else if i == 2 {
@@ -331,6 +357,7 @@ impl StudioFx {
             return;
         }
         match (&mut self.effect, &old.effect) {
+            (Effect::Creative(a), Effect::Creative(b)) => a.adopt(b),
             (Effect::Delay(a), Effect::Delay(b)) => {
                 for i in 0..2 {
                     a.lines[i].adopt(&b.lines[i]);
@@ -357,6 +384,7 @@ impl StudioFx {
     }
     pub(crate) fn reset_state(&mut self) {
         match &mut self.effect {
+            Effect::Creative(s) => s.reset(),
             Effect::Delay(d) => {
                 for l in &mut d.lines {
                     l.reset();
@@ -549,6 +577,7 @@ mod tests {
                             .map(|l| l.data.as_ptr() as usize)
                             .collect(),
                         Effect::Compressor(_) => vec![],
+                        Effect::Creative(_) => unreachable!("legacy effect test"),
                     }
                 };
                 let before = addresses(&new);
@@ -580,6 +609,7 @@ mod tests {
                     Effect::Delay(d) => assert_eq!(d.dry, 0.0),
                     Effect::Reverb(d) => assert_eq!(d.dry, 0.0),
                     Effect::Compressor(c) => assert!(c.makeup > 1.9),
+                    Effect::Creative(_) => unreachable!("legacy effect test"),
                 }
                 let mut other_rate = effect(kind, json!({}), rate + 1);
                 other_rate.adopt(&old);
