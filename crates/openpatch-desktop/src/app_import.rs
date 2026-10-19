@@ -59,7 +59,9 @@ impl OpenPatch {
         let mut command: Option<(&str, Value)> = None;
         egui::TopBottomPanel::bottom("import-status").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label(if suspended {
+                ui.label(if !hosted.is_empty() {
+                    format!("Experimental host · {} hosted · {}", hosted.len(), if hosted_status["active"] == true { "running" } else if hosted_status["status"] == "requested" { "requested" } else { "stopped" })
+                } else if suspended {
                     format!(
                         "Playback suspended · {} unresolved modules · {automation_count}",
                         dependencies.len()
@@ -74,7 +76,7 @@ impl OpenPatch {
                     .small_button(if self.import_review_open {
                         "Hide review"
                     } else {
-                        "Review dependencies"
+                        if hosted.is_empty() { "Review dependencies" } else { "Review playback" }
                     })
                     .clicked()
                 {
@@ -84,7 +86,7 @@ impl OpenPatch {
         });
         if self.import_review_open {
             egui::SidePanel::right("import-dependencies").default_width(290.).min_width(240.).resizable(true).show(ctx,|ui| {
-                ui.heading("Import review");
+                ui.heading(if hosted.is_empty() { "Import review" } else { "Project playback" });
                 ui.label(format!("{} native · {} unresolved",self.patch.nodes.len(),dependencies.len()));
                 if suspended {ui.label("Exact playback waits for every module and automation target to be resolved.");}
                 if !dependencies.is_empty() || !automation.is_empty() {ui.label("Partial playback omits unresolved modules, their routes and unbound automation. Sound can change.");}

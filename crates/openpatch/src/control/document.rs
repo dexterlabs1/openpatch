@@ -730,10 +730,11 @@ impl Session {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         let status = {
             let mut status = status;
-            let runtime = self
-                .live_module_events
-                .as_ref()
-                .and_then(|backend| backend.hosted_execution_status());
+            let runtime = self.hosted_execution_grant.as_ref().and_then(|_| {
+                self.live_module_events
+                    .as_ref()
+                    .and_then(|backend| backend.hosted_execution_status())
+            });
             status["delayed_hosted_request"] = self.hosted_execution_grant.as_ref().map_or(
                 json!({"status":"not_requested"}),
                 |grant| {

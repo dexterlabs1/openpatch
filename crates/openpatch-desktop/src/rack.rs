@@ -12266,6 +12266,9 @@ mod tests {
     mod cable_presentation_ui_tests {
         include!("cable_presentation_ui_tests.rs");
     }
+    mod hosted_panel_tests {
+        include!("hosted_panel_tests.rs");
+    }
     use super::*;
 
     fn frame(

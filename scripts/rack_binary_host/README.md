@@ -2,8 +2,11 @@
 
 This deliberately separate executable tests an **existing installed** Bogaudio
 2.6.47 `plugin.dylib` with the genuine Rack SDK 2.6.6 runtime. It compiles only
-OpenPatch's adapter, never Bogaudio source. It is not linked into OpenPatch,
-included in the application bundle, or an available playback/import backend.
+OpenPatch's adapter, never Bogaudio source. The companion and third-party runtime
+are not included in the application bundle. The experimental integrated candidate
+now exposes explicit pinned OFFSET playback through this separate process; see
+[the current application contract](../../docs/BINARY_HOST_V1.md#explicit-experimental-workflow).
+These original standalone receipts do not establish application/device qualification.
 
 On macOS ARM, supply explicit local directories:
 

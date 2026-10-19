@@ -1,13 +1,72 @@
 # First application-host milestone
 
-Implementation checkpoint, 2026-10-17, following the successful bounded
-[actual-binary test](../scripts/rack_binary_host/README.md) and one focused
-architecture advisory. **User-facing hosted activation is not available.** Process
-ownership, authored document/history/MCP preparation, core mixed graphs and the
-desktop callback adapter and application controller are implemented below. The
-installed OpenPatch 0.2.7 remains unchanged. The full
+Integration candidate, 2026-10-18. The experimental host now has explicit
+native/MCP activation, shared rack controls, coherent native/MCP save dispatch,
+and same-child continuity across ordinary native parameter and Scope rebuilds.
+The current branch includes released `main` features. Validation of this candidate
+is in progress; source implementation is not a device qualification receipt.
+The installed OpenPatch 0.3.0 build 10 is unchanged. The full
 [compatibility obligation](COMPATIBILITY_DECISION.md#extensions-and-existing-vcv-binaries)
 and native Rust extension API remain separate.
+
+## Explicit experimental workflow
+
+Open [the quiet mono example](../examples/experimental-hosted-offset.json), click
+the hosted panel to review playback, then choose **Start experimental hosted
+playback**. Opening a document never grants execution. Only one fingerprint-pinned
+Bogaudio 2.6.47 OFFSET with genuine Rack SDK 2.6.6 is supported. Supply explicit
+`OPENPATCH_HOSTED_COMPANION`, `OPENPATCH_HOSTED_SDK` and
+`OPENPATCH_HOSTED_PLUGIN` paths before starting the candidate app; optional
+`OPENPATCH_HOSTED_WORKSPACE` selects private child staging. The application
+requests a 48 kHz / fixed 128-frame device stream on activation, validates every
+actual callback, and reports preparation/running/failure separately.
+
+The shared Signal Atlas OFFSET/SCALE knobs and both persistent options submit
+revision-fenced Session commands. One drag has one undo checkpoint; typed MCP
+assignments preserve the same bounded event ordering and acknowledgment. Option
+changes revoke the grant because they require a fresh supported snapshot; start
+hosted playback again explicitly. Exact/Partial retain their original meaning.
+Grants are not saved, cloned, or revived by undo; load/topology/incarnation changes
+revoke them.
+
+MCP uses `set_hosted_execution {"enabled":true,"expected_revision":N}` and
+`false` to stop. `inspect_document.execution.delayed_hosted_request` reports the
+request and current publication; `inspect_performance` exposes control
+acknowledgments and failure reasons. `save_document` dispatches the same coherent
+capture barrier as native Save, waits off the Session lock, validates its receipt
+against current revision/generation/layout/backend, and writes a new complete
+snapshot. MCP snapshot exports retain their existing semantics: they do not
+register the active-project saved baseline. Native Save registers its captured
+baseline only after successful conflict-checked persistence. Direct synchronous
+`Session::execute` live capture still refuses the barrier; transports must use
+`execute_shared` to dispatch it.
+
+Ordinary native parameter changes and Scope selection now compile a new full
+graph while transferring the exact live runner at callback adoption. Matching
+execution incarnation, ordered topology, Engine-bound handles, rate and ports
+are required before any transfer. Native state, hosted partial quantum, pending
+events, output block and incident cable frame survive; no child is relaunched.
+Ordinary Core state adoption continues to exclude foreign external histories.
+
+The ignored `actual_macos_device_sustained_hosted_deadlines` gate opens an actual
+CPAL output stream for 30–300 seconds, defaults to 60 seconds, and records a
+16-voice native VCO → VCF → actual OFFSET → VCA patch with native/Scope changes.
+`OPENPATCH_HOSTED_DEVICE_REVIEW` selects its receipt directory;
+`OPENPATCH_HOSTED_DEVICE_NAME` selects the physical output and
+`OPENPATCH_HOSTED_DEVICE_SECONDS` selects the duration. Run it in an optimized
+test build, serially, with the three explicit binary paths. Its receipt includes
+actual callback counts/rate/frames, timing overruns, allocation/deallocation
+observations, signal peak, transport/device failure, and CPAL predicted DAC
+playback timestamps. Numerical graph latency and predicted delivery are distinct
+from physical loopback latency; this gate does not measure a physical input/output
+loop. The device receipt must pass before this candidate is merged. Earlier
+paced/headless evidence below cannot substitute for it.
+
+## Prior implementation checkpoints
+
+The following sections retain the earlier bounded evidence and architecture.
+Their paced tests remain useful regression anchors; the workflow above describes
+the integrated candidate's current public dispatch.
 
 ## Implemented transport foundation
 
@@ -18,8 +77,8 @@ Rack routing frame in its source/sink harness and verifies a non-silent native
 oscillator WAV sample-by-sample. Actual stall/crash/late/malformed/parent-death
 cases and eight parent boundary tests pass; parent endpoint calls allocate and
 deallocate no heap memory. This is a debug correctness gate, not an application
-or device benchmark. Live document/UI/MCP authority, application activation and
-sustained realtime/device deadlines remain open.
+or device benchmark. This transport-only checkpoint alone establishes no live
+application control, save or sustained realtime/device qualification.
 
 ## Implemented process and document preparation
 
@@ -102,10 +161,9 @@ their 20.8 µs budgets; one small event callback in the Core runner gate also
 overran. Neither gate qualifies arbitrary tiny callbacks or sustained real-time
 playback. No performance advantage is claimed. [Recorded evidence](benchmarks/rack-binary-mixed-graph.json).
 
-Application launch/configuration, user-facing delayed permission, active
-Signal Atlas controls, shared live parameter/state publication and coherent
-live save/reopen remain unfinished. The actual Callback fixture explicitly
-injects a prepared graph; it does not override document Exact/Partial permission.
+This earlier Callback fixture explicitly injects a prepared graph; it does not
+exercise the integrated candidate's public activation, controls or save dispatch,
+and does not override document Exact/Partial permission.
 
 ## Implemented full-document request boundary
 
@@ -197,11 +255,10 @@ The actual desktop companion fixture also passes again with zero heap activity;
 its two tiny callbacks still exceed their budgets. [Evidence, timing scope and
 retained findings](benchmarks/rack-binary-mixed-graph.json).
 
-User-facing activation remains unavailable. The internal Audio controller now
+The Audio controller now
 publishes the complete graph using a separate hosted execution epoch, and the
 two-phase capture API below implements a coherent cut. Native Save/Save As now
-dispatch that asynchronous workflow across UI frames. Synchronous MCP save still
-refuses a live hosted binding. The native-only execution gate remains suspended.
+dispatch that asynchronous workflow across UI frames. MCP now dispatches the same barrier through the application control thread. The native-only execution gate remains suspended.
 
 ## User-visible exit
 
@@ -254,7 +311,7 @@ one sample scheduler in the companion. That is provisional: preserve both
 native and Rack behavior and measure it before selecting the final architecture.
 Wrapping Rust modules as Rack modules alone would not prove that contract.
 
-## Implemented application controller; activation still internal
+## Implemented application controller
 
 `Audio::new_with_document` and `submit_document` now prepare the complete hosted
 graph through an explicitly configured control-thread controller. Its child
@@ -270,8 +327,8 @@ has its own authored-revision receipt, so a newer pending graph cannot acknowled
 an older one. Explicit equal native assignments still require native preparation.
 A hosted value change that did not pass the live admission channel prepares a
 fresh child rather than falsely reporting that an unchanged child applied it.
-Native graph edits currently also prepare a fresh child; seamless native/hosted
-rebuilds and hosted Scope selection remain unfinished.
+Ordinary compatible native edits and Scope selection now use the checked
+same-executor handoff described above; topology changes revoke permission.
 
 The actual installed plugin now passes the real `Audio` submit/service path and
 desktop Callback with shared Session edits, undo and redo: **5,120 frames**, four
@@ -290,12 +347,10 @@ documents without such a binding retain their existing save/reopen behavior.
 
 Launch configuration is explicit (`OPENPATCH_HOSTED_COMPANION`,
 `OPENPATCH_HOSTED_SDK`, `OPENPATCH_HOSTED_PLUGIN`, optional
-`OPENPATCH_HOSTED_WORKSPACE`). There is no automatic plugin discovery or public
-activation control yet. The device start path requests 48 kHz / fixed 128-frame
-buffers and validates the actual callback; that path has not been device-qualified.
-The installed app remains 0.2.7 build 9. Native save dispatch is implemented; MCP
-dispatch, active shared controls and Mac device qualification remain before
-exposing activation.
+`OPENPATCH_HOSTED_WORKSPACE`). There is no automatic plugin discovery. The device
+start path requests 48 kHz / fixed 128-frame buffers and validates the actual
+callback. The current candidate requires a real-device receipt; the old paced
+receipts in this section do not qualify it. The installed 0.3.0 build 10 is unchanged.
 
 ## Implemented coherent capture and resume API
 
@@ -339,9 +394,9 @@ commands across three real quanta, full-return-queue freezing, native VCA/HOLD
 capture, explicit save/reopen, resume, late-timeout ownership return, stale edits
 and child death. Callback allocation/deallocation checks remain active. This is
 a paced headless API result, not native-window/device qualification. Native
-Save/Save As dispatch the begin/poll workflow described below. MCP save dispatch,
-public hosted controls, seamless ordinary graph/Scope rebuilds and sustained Mac
-device deadlines remain open; no installation follows.
+Save/Save As dispatch the begin/poll workflow described below. MCP save dispatch, public controls and ordinary graph/Scope handoff are now
+implemented in the candidate. Sustained Mac device deadlines require the separate
+actual-device receipt; no installation follows.
 
 Native Save/Save As retain the target name and original file token while polling
 the capture result across UI frames. A successful, current receipt goes through

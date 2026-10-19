@@ -2250,6 +2250,8 @@ fn same_external_executor_continues_polyphony_and_cable_frames_without_heap() {
     let mut next = compile();
     let old_handle = old.resolve_external_module("binary").unwrap();
     let handle = next.resolve_external_module("binary").unwrap();
+    let taps = [Some(next.resolve_tap("sink", "out", 15).unwrap())];
+    let mut observed = [openpatch_core::TapSample::default(); 1];
     let mut io = [ExternalFrameIo::new(old_handle)];
     io[0].outputs[0] = PortFrame {
         channels: 16,
@@ -2261,9 +2263,16 @@ fn same_external_executor_continues_polyphony_and_cable_frames_without_heap() {
     next.handoff_state_from(&mut old);
     let continued = next.continue_external_from(&old, handle, old_handle);
     io[0].handle = handle;
-    let audio = next.process_audio_frame_with_externals(&mut io);
+    let audio = next.process_audio_frame_with_externals_taps_and_listen(
+        &mut io,
+        &taps,
+        &mut observed,
+        None,
+    );
     TRACK_MEMORY.with(|active| active.set(false));
     assert!(continued);
     assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
-    assert_eq!(audio.unwrap(), [32.; 2]); // Existing native sink sums sixteen 2V voices.
+    assert_eq!(audio.unwrap(), [2.; 2]); // Existing monitor selects voice zero.
+    assert!(observed[0].active);
+    assert_eq!(observed[0].value, 2.);
 }

@@ -310,6 +310,18 @@ impl Rack {
                 FontId::proportional(10. * z),
                 ink,
             );
+            // Register the background before its knobs so the shared controls
+            // retain hit-test priority inside the panel.
+            let response = ui.interact(
+                rect,
+                ui.id().with(("unresolved-module", &panel.id)),
+                Sense::click(),
+            );
+            let controls_enabled = interactive
+                && self.shortcuts_enabled
+                && self.editing.is_none()
+                && self.annotation_edit.is_none()
+                && !egui::Popup::is_any_open(ui.ctx());
             if let Some(module) = &panel.hosted_module {
                 for (index, name) in ["offset", "scale"].into_iter().enumerate() {
                     if let Ok(value) = module.parameter(name) {
@@ -324,7 +336,7 @@ impl Rack {
                             ui,
                             &response,
                             normalized,
-                            interactive,
+                            controls_enabled,
                             &format!("{value:.3}"),
                         );
                         let next = if input.reset {
@@ -394,7 +406,7 @@ impl Rack {
                         );
                         let clicked = response.clicked();
                         response.on_hover_text("Changing a persistent option stops hosted playback. Start it again in playback controls.");
-                        if interactive && clicked {
+                        if controls_enabled && clicked {
                             *action = Some(RackAction::Command(
                                 "set_hosted_option",
                                 json!({"id":panel.id,"option":name,"value":!value,"expected_revision":revision}),
@@ -409,11 +421,6 @@ impl Rack {
                     crate::panel_skin::mounting_screw(painter, center, z);
                 }
             }
-            let response = ui.interact(
-                rect,
-                ui.id().with(("unresolved-module", &panel.id)),
-                Sense::click(),
-            );
             pointer_on_panel |= response.hovered();
             if response.clicked() {
                 self.dependency_focus = Some(panel.id.clone());

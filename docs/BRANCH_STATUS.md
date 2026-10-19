@@ -23,7 +23,7 @@ source-reference/build evidence were retained in OpenPatch Archive.
 | Work | Review location | Remaining merge requirements |
 | --- | --- | --- |
 | Recall Random | [Draft #37](https://github.com/dexterlabs1/openpatch/pull/37), `work/recall-random` | Native 32 kHz/five-frame bridge, explicit latency and state adoption, six weighted scale slots, revision-fenced capture, shared panel/telemetry/UI/MCP/history/preset/reopen and callback no-heap checks, then macOS milestone CI. |
-| Existing-binary Rack host | [Draft #38](https://github.com/dexterlabs1/openpatch/pull/38), `work/rack-binary-feasibility` | Extract host-only work onto current main, resolve 21 merge-conflict paths, public activation and MCP save dispatch, ordinary graph/Scope continuity, stale/crash/ownership/no-heap checks, actual Mac device deadlines and compatibility/redistribution decisions. |
+| Existing-binary Rack host | [Draft #38](https://github.com/dexterlabs1/openpatch/pull/38), `work/rack-binary-feasibility` | Current main integrated; explicit experimental activation/shared controls, coherent MCP save dispatch and ordinary graph/Scope continuity implemented. Focused stale/crash/ownership/no-heap regression, real Mac device receipt and final review remain in progress. Wider binary/GUI compatibility and redistribution remain separate. |
 
 Recall Random is synchronized with the audited `main`. Its bounded input check
 accepts 26 cases and three source-negative cases; this audit did not rerun DSP

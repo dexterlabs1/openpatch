@@ -26,8 +26,12 @@ Only two unfinished product lines need integration:
   synchronized with current `main`; native Engine/state/capture/UI/MCP integration
   and focused macOS qualification remain.
 - [Rack binary hosting — draft PR #38](https://github.com/dexterlabs1/openpatch/pull/38):
-  historical experimental checkpoint; 21 merge-conflict paths and the public
-  activation/save/device/compatibility gates remain. It is excluded from 0.3.0.
+  integrated with current `main`, preserving released instruments, Patch Engine,
+  rack tools and licenses. Explicit experimental activation/shared controls,
+  coherent MCP save dispatch and ordinary graph/Scope continuity are implemented;
+  focused regression and real Mac device qualification remain in progress.
+  General binary/GUI compatibility and redistribution remain separate. It is
+  excluded from the installed 0.3.0. [Current contract](BINARY_HOST_V1.md).
 
 [Branch disposition and recovery](BRANCH_STATUS.md) records the remaining work,
 protected dirty checkouts and rules for the next milestone. Earlier sections
