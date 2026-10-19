@@ -1517,6 +1517,13 @@ impl Recipe {
         let ch = &c.chords;
         let mut chords = vec![];
         let rhythm = rng.pick(c.g.rhythm);
+        // percussive designs (low-pass gates, struck resonators, plucks) die away inside a held chord: strike each bar
+        let rhythm = if rhythm == "held" && instruments::design(c.voice).is_some_and(|x| !x.sustain)
+        {
+            "restrike"
+        } else {
+            rhythm
+        };
         match rhythm {
             "held" | "restrike" => {
                 for (ci, chord) in ch.iter().enumerate() {
