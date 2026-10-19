@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       # Release PRs qualify all requested platforms once; daily work targets Mac.
-      matrix: ${{ fromJSON((inputs.full_validation || inputs.release_validation || startsWith(github.head_ref, 'work/release-')) && '{"include":[{"os":"macos-14","target":"aarch64-apple-darwin","artifact":"macos-arm64","binary":"openpatch"},{"os":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","artifact":"linux-x86_64","binary":"openpatch"},{"os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"windows-x86_64","binary":"openpatch.exe"}]}' || '{"include":[{"os":"macos-14","target":"aarch64-apple-darwin","artifact":"macos-arm64","binary":"openpatch"}]}') }}
+      matrix: ${{ fromJSON((inputs.full_validation || inputs.release_validation || startsWith(github.head_ref, 'work/release-')) && '{"include":[{"os":"macos-15","target":"aarch64-apple-darwin","artifact":"macos-arm64","binary":"openpatch"},{"os":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","artifact":"linux-x86_64","binary":"openpatch"},{"os":"windows-latest","target":"x86_64-pc-windows-msvc","artifact":"windows-x86_64","binary":"openpatch.exe"}]}' || '{"include":[{"os":"macos-15","target":"aarch64-apple-darwin","artifact":"macos-arm64","binary":"openpatch"}]}') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -204,7 +204,7 @@ jobs:
           name: repository-snapshot
           path: openpatch.bundle
   visualizer:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
