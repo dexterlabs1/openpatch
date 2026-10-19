@@ -6106,8 +6106,16 @@ impl Rack {
             }
         }
         if !matches!(mode, RenderMode::Preview) {
-            pointer_on_module |=
-                self.paint_unresolved_panels(ui, &painter, canvas, &mut inputs, &mut outputs, revision, interactive, &mut action);
+            pointer_on_module |= self.paint_unresolved_panels(
+                ui,
+                &painter,
+                canvas,
+                &mut inputs,
+                &mut outputs,
+                revision,
+                interactive,
+                &mut action,
+            );
         }
         self.lighting.finish(&painter, lighting_start);
         if mode.is_interactive() {
