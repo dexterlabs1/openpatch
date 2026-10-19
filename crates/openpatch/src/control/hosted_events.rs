@@ -53,14 +53,6 @@ fn module<'a>(
     })
 }
 
-fn key(parameter: u16) -> Result<&'static str, String> {
-    match parameter {
-        0 => Ok("offset"),
-        1 => Ok("scale"),
-        _ => Err("unsupported hosted parameter assignment".into()),
-    }
-}
-
 pub(super) fn for_commit(
     before: &ProjectDocument,
     after: &ProjectDocument,
@@ -80,12 +72,15 @@ pub(super) fn for_commit(
             let Some(old) = module(before, id) else {
                 continue;
             };
-            if old.validate_supported_offset().is_err() || next.validate_supported_offset().is_err()
+            if old.validate_supported().is_err()
+                || next.validate_supported().is_err()
+                || old.capability()? != next.capability()?
             {
                 continue;
             }
-            for parameter in 0..=1 {
-                let name = key(parameter)?;
+            for (parameter, descriptor) in next.capability()?.parameters().iter().enumerate() {
+                let parameter = parameter as u16;
+                let name = descriptor.key;
                 let value = next.parameter(name)?;
                 if old.parameter(name)?.to_bits() != value.to_bits()
                     && !assignments
@@ -103,11 +98,14 @@ pub(super) fn for_commit(
     }
     let mut previous = Vec::with_capacity(assignments.len());
     for assignment in &assignments {
-        let name = key(assignment.parameter)?;
         let old = module(before, &assignment.module_id)
             .ok_or("hosted assignment has no previous incarnation")?;
         let next = module(after, &assignment.module_id)
             .ok_or("hosted assignment has no target incarnation")?;
+        if old.capability()? != next.capability()? {
+            return Err("hosted assignment changed capability".into());
+        }
+        let name = next.capability()?.parameter_key(assignment.parameter)?;
         if next.parameter(name)?.to_bits() != assignment.value.to_bits() {
             return Err("hosted assignment differs from committed document".into());
         }

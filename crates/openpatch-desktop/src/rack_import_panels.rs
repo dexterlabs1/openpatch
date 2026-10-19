@@ -323,10 +323,20 @@ impl Rack {
                 && self.annotation_edit.is_none()
                 && !egui::Popup::is_any_open(ui.ctx());
             if let Some(module) = &panel.hosted_module {
-                for (index, name) in ["offset", "scale"].into_iter().enumerate() {
+                let parameters = module
+                    .capability()
+                    .map(|capability| capability.parameters())
+                    .unwrap_or_default();
+                for (index, parameter) in parameters
+                    .iter()
+                    .filter(|parameter| !parameter.discrete)
+                    .enumerate()
+                {
+                    let name = parameter.key;
                     if let Ok(value) = module.parameter(name) {
                         let center = rect.min + vec2(55. + 70. * index as f32, 278.) * z;
-                        let normalized = (value + 1.) * 0.5;
+                        let range = parameter.maximum - parameter.minimum;
+                        let normalized = (value - parameter.minimum) / range;
                         let response = ui.interact(
                             Rect::from_center_size(center, vec2(48., 48.) * z),
                             ui.id().with(("hosted-knob", &panel.id, name)),
@@ -340,14 +350,23 @@ impl Rack {
                             &format!("{value:.3}"),
                         );
                         let next = if input.reset {
-                            Some(0.)
+                            Some(parameter.default)
                         } else if let Some(boundary) = input.boundary {
-                            Some(if boundary { 1. } else { -1. })
-                        } else {
-                            input.normalized.map(|v| v * 2. - 1.).or_else(|| {
-                                (input.nudge != 0)
-                                    .then_some((value + input.nudge as f32 * 0.01).clamp(-1., 1.))
+                            Some(if boundary {
+                                parameter.maximum
+                            } else {
+                                parameter.minimum
                             })
+                        } else {
+                            input
+                                .normalized
+                                .map(|v| parameter.minimum + v * range)
+                                .or_else(|| {
+                                    (input.nudge != 0).then_some(
+                                        (value + input.nudge as f32 * range * 0.005)
+                                            .clamp(parameter.minimum, parameter.maximum),
+                                    )
+                                })
                         };
                         if let Some(next) = next {
                             let mut args = json!({"id":panel.id,"parameter":name,"value":next,"expected_revision":revision});
@@ -380,13 +399,54 @@ impl Rack {
                         );
                     }
                 }
-                for (index, (name, label)) in [
-                    ("offset_first", "Offset first"),
-                    ("disable_output_limit", "Disable limit"),
-                ]
-                .into_iter()
-                .enumerate()
+                for (index, parameter) in parameters
+                    .iter()
+                    .filter(|parameter| parameter.discrete)
+                    .enumerate()
                 {
+                    let name = parameter.key;
+                    if let Ok(value) = module.parameter(name) {
+                        let control_rect = Rect::from_min_size(
+                            rect.min + vec2(24., 320. + index as f32 * 18.) * z,
+                            vec2(132., 17.) * z,
+                        );
+                        let response = ui.interact(
+                            control_rect,
+                            ui.id().with(("hosted-parameter-switch", &panel.id, name)),
+                            Sense::click(),
+                        );
+                        let enabled = value > parameter.minimum;
+                        clipped.text(
+                            control_rect.left_center(),
+                            Align2::LEFT_CENTER,
+                            format!(
+                                "{} {}",
+                                if enabled { "●" } else { "○" },
+                                name.to_uppercase()
+                            ),
+                            FontId::proportional(10. * z),
+                            ink,
+                        );
+                        if controls_enabled && response.clicked() {
+                            *action = Some(RackAction::Command(
+                                "set_hosted_parameter",
+                                json!({"id":panel.id,"parameter":name,"value":if enabled {parameter.minimum} else {parameter.maximum},"expected_revision":revision}),
+                            ));
+                        }
+                    }
+                }
+                let options: &[(&str, &str)] = if matches!(
+                    module.capability(),
+                    Ok(openpatch::project_document::hosted::HostedCapability::Offset)
+                ) {
+                    &[
+                        ("offset_first", "Offset first"),
+                        ("disable_output_limit", "Disable limit"),
+                    ]
+                } else {
+                    &[]
+                };
+                for (index, &(name, label)) in options.iter().enumerate() {
                     if let Ok(value) = module.option(name) {
                         let rect = Rect::from_min_size(
                             rect.min + vec2(24., 320. + index as f32 * 18.) * z,

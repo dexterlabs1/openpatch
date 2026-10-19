@@ -9,6 +9,9 @@ use std::collections::BTreeSet;
 use std::io::{self, Write};
 use std::sync::Arc;
 
+mod capability;
+pub use capability::{HostedCapability, HostedParameter, MAX_PARAMETERS};
+
 const STATE_LIMIT: usize = 1024 * 1024;
 const MAX_RACK_ID: f64 = 9_007_199_254_740_991.0;
 
@@ -171,29 +174,46 @@ impl HostedModule {
         Ok(())
     }
 
-    /// Qualify only the explicitly pinned first capability, without loading it.
-    pub fn validate_supported_offset(&self) -> Result<(), String> {
+    pub fn capability(&self) -> Result<HostedCapability, String> {
+        HostedCapability::from_identity(&self.identity)
+    }
+    /// Qualify an explicitly allowlisted profile without loading any binary.
+    pub fn validate_supported(&self) -> Result<(), String> {
         self.validate_structure()?;
-        if self.identity.plugin != "Bogaudio"
-            || self.identity.model != "Bogaudio-Offset"
-            || self.identity.version != "2.6.47"
-            || self.identity.rack_version != "2.6.6"
-        {
+        let capability = self.capability()?;
+        let expected = capability.ports();
+        if self.ports.len() != expected.len() || !expected.iter().all(|p| self.ports.contains(p)) {
+            return Err("hosted port manifest differs from supported capability".into());
+        }
+        validate_snapshot_for(self.state.as_ref(), capability)
+    }
+    /// Compatibility check for callers that specifically require OFFSET.
+    pub fn validate_supported_offset(&self) -> Result<(), String> {
+        if self.capability()? != HostedCapability::Offset {
             return Err("hosted identity is not the supported Offset capability".into());
         }
-        let expected = offset_ports();
-        if self.ports.len() != expected.len()
-            || !expected.iter().all(|expected| {
-                self.ports.iter().any(|port| {
-                    port.direction == expected.direction
-                        && port.index == expected.index
-                        && port.key == expected.key
-                })
-            })
-        {
-            return Err("hosted Offset port manifest differs from supported capability".into());
+        self.validate_supported()
+    }
+    pub fn xfade(
+        identity: HostedIdentity,
+        mix: f32,
+        curve: f32,
+        linear: bool,
+    ) -> Result<Self, String> {
+        let module = Self {
+            schema_version: 1,
+            identity,
+            ports: HostedCapability::XFade.ports(),
+            state: HostedState::new(
+                json!({"plugin":"Bogaudio","model":"Bogaudio-XFade","version":"2.6.47","id":2,
+                "params":[{"id":0,"value":f64::from(mix)},{"id":1,"value":f64::from(curve)},{"id":2,"value":if linear {1.0} else {0.0}}],"data":{}}),
+            )?,
+        };
+        if module.capability()? != HostedCapability::XFade {
+            return Err("XFade constructor requires XFade identity".into());
         }
-        validate_offset_snapshot(self.state.as_ref())
+        module.validate_supported()?;
+        Ok(module)
     }
 
     pub fn offset(
@@ -223,8 +243,8 @@ impl HostedModule {
     }
 
     pub fn parameter(&self, key: &str) -> Result<f32, String> {
-        self.validate_supported_offset()?;
-        let id = parameter_id(key)?;
+        self.validate_supported()?;
+        let id = u64::from(self.capability()?.parameter_id(key)?);
         self.state.as_ref()["params"]
             .as_array()
             .and_then(|params| params.iter().find(|param| param["id"].as_u64() == Some(id)))
@@ -235,9 +255,14 @@ impl HostedModule {
 
     /// Return a validated new snapshot; existing history/state stays immutable.
     pub fn with_parameter(&self, key: &str, value: f32) -> Result<Self, String> {
-        self.validate_supported_offset()?;
-        validate_parameter(value)?;
-        let id = parameter_id(key)?;
+        self.validate_supported()?;
+        let capability = self.capability()?;
+        let id = u64::from(capability.parameter_id(key)?);
+        if !capability.accepts_parameter(id as u16, value) {
+            return Err(
+                "hosted parameter is outside its supported range or discrete values".into(),
+            );
+        }
         let mut updated = self.clone();
         let mut state = self.state.as_ref().clone();
         let param = state["params"]
@@ -250,7 +275,7 @@ impl HostedModule {
             .ok_or_else(|| "hosted Offset parameter missing".to_string())?;
         param["value"] = json!(f64::from(value));
         updated.state = HostedState::new(state)?;
-        updated.validate_supported_offset()?;
+        updated.validate_supported()?;
         Ok(updated)
     }
 
@@ -285,45 +310,67 @@ impl HostedModule {
 /// Validate the complete snapshot accepted by the pinned companion. Extra fields
 /// remain preservable by `HostedModule`, but cannot silently enter execution.
 pub fn validate_offset_snapshot(state: &Value) -> Result<(), String> {
+    validate_snapshot_for(state, HostedCapability::Offset)
+}
+pub fn validate_supported_snapshot(state: &Value) -> Result<HostedCapability, String> {
+    let capability = HostedCapability::from_model(
+        state["model"]
+            .as_str()
+            .ok_or("hosted snapshot model missing")?,
+    )?;
+    validate_snapshot_for(state, capability)?;
+    Ok(capability)
+}
+fn validate_snapshot_for(state: &Value, capability: HostedCapability) -> Result<(), String> {
     exact_keys(
         state,
         &["data", "id", "model", "params", "plugin", "version"],
     )?;
     if state["plugin"] != "Bogaudio"
-        || state["model"] != "Bogaudio-Offset"
+        || state["model"] != capability.model()
         || state["version"] != "2.6.47"
         || state["id"].as_i64() != Some(2)
     {
-        return Err("Offset snapshot identity/version/id mismatch".into());
+        return Err("hosted snapshot identity/version/id mismatch".into());
     }
+    let count = capability.parameters().len();
     let params = state["params"]
         .as_array()
-        .filter(|params| params.len() == 2)
-        .ok_or_else(|| "Offset snapshot requires both parameters".to_string())?;
+        .filter(|p| p.len() == count)
+        .ok_or("hosted snapshot requires all supported parameters")?;
     let mut seen = 0u8;
     for param in params {
         exact_keys(param, &["id", "value"])?;
         let id = param["id"]
             .as_u64()
-            .filter(|id| *id < 2)
-            .ok_or_else(|| "invalid Offset snapshot parameter id".to_string())?;
+            .filter(|id| *id < count as u64)
+            .ok_or("invalid hosted snapshot parameter ID")?;
         let value = param["value"]
             .as_f64()
-            .ok_or_else(|| "invalid Offset snapshot parameter value".to_string())?;
-        validate_parameter(value as f32)?;
-        if !value.is_finite() || f64::from(value as f32) != value {
-            return Err("Offset snapshot parameter must roundtrip exactly through f32".into());
+            .ok_or("invalid hosted snapshot parameter value")?;
+        if !capability.accepts_parameter(id as u16, value as f32)
+            || f64::from(value as f32) != value
+        {
+            return Err(
+                "hosted snapshot value must satisfy its range and roundtrip exactly through f32"
+                    .into(),
+            );
         }
         if seen & (1 << id) != 0 {
-            return Err("duplicate Offset snapshot parameter id".into());
+            return Err("duplicate hosted snapshot parameter ID".into());
         }
         seen |= 1 << id;
     }
-    exact_keys(&state["data"], &["offset_first", "disableOutputLimit"])?;
-    if !state["data"]["offset_first"].is_boolean()
-        || !state["data"]["disableOutputLimit"].is_boolean()
-    {
-        return Err("Offset snapshot requires explicit boolean custom flags".into());
+    match capability {
+        HostedCapability::Offset => {
+            exact_keys(&state["data"], &["offset_first", "disableOutputLimit"])?;
+            if !state["data"]["offset_first"].is_boolean()
+                || !state["data"]["disableOutputLimit"].is_boolean()
+            {
+                return Err("Offset snapshot requires explicit boolean custom flags".into());
+            }
+        }
+        HostedCapability::XFade => exact_keys(&state["data"], &[])?,
     }
     validate_state_size(state)
 }
@@ -345,28 +392,8 @@ fn validate_parameter(value: f32) -> Result<(), String> {
     Ok(())
 }
 
-fn parameter_id(key: &str) -> Result<u64, String> {
-    match key {
-        "offset" => Ok(0),
-        "scale" => Ok(1),
-        _ => Err("unknown hosted Offset parameter".into()),
-    }
-}
-
 fn offset_ports() -> Vec<HostedPort> {
-    [
-        (PortDirection::Input, 0, "offset_cv"),
-        (PortDirection::Input, 1, "scale_cv"),
-        (PortDirection::Input, 2, "in"),
-        (PortDirection::Output, 0, "out"),
-    ]
-    .into_iter()
-    .map(|(direction, index, key)| HostedPort {
-        direction,
-        index,
-        key: key.into(),
-    })
-    .collect()
+    HostedCapability::Offset.ports()
 }
 
 fn validate_state_size(state: &Value) -> Result<(), String> {
@@ -512,3 +539,6 @@ mod tests {
         assert!(module.validate_supported_offset().is_err());
     }
 }
+
+#[cfg(test)]
+mod profile_tests;

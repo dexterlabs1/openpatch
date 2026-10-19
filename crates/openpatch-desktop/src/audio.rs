@@ -764,16 +764,14 @@ impl Audio {
         let stamp = self.performance.native_intent_stamp();
         let same_native = serde_json::to_value(&native).map_err(|e| e.to_string())?
             == serde_json::to_value(&self.accepted_patch).map_err(|e| e.to_string())?;
-        let requested_values = (
-            plan.module().parameter("offset")?.to_bits(),
-            plan.module().parameter("scale")?.to_bits(),
-        );
+        let requested_values =
+            openpatch::binary_host::control::ParameterValues::from_module(plan.module())?;
         if ticket.delta.is_empty()
             && same_native
             && stamp == self.hosted_native_intent
             && self.hosted_control.as_ref().is_some_and(|control| {
                 let values = control.snapshot().requested;
-                (values.offset.to_bits(), values.scale.to_bits()) == requested_values
+                values.values.map(f32::to_bits) == requested_values.values.map(f32::to_bits)
                     && control
                         .accepts_document(&ticket.document, ticket.document_generation)
                         .unwrap_or(false)

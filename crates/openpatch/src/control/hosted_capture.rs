@@ -131,10 +131,10 @@ impl Session {
             });
         let (module_id, module) = hosted
             .next()
-            .ok_or("hosted capture requires one OFFSET module")?;
-        module.validate_supported_offset()?;
+            .ok_or("hosted capture requires one supported hosted module")?;
+        module.validate_supported()?;
         if hosted.next().is_some() {
-            return Err("hosted capture requires exactly one OFFSET module".into());
+            return Err("hosted capture requires exactly one supported hosted module".into());
         }
         let module_id = module_id.clone();
         let audio_ticket = self.capture_resume_snapshot()?;
@@ -261,12 +261,12 @@ fn validate_hosted_state(
         .ok_or("sealed hosted module missing")?;
     let expected_state = module.state.clone();
     module.state = HostedState::new(state)?;
-    module.validate_supported_offset()?;
-    // OFFSET has no autonomous persistent state. Every parameter and option
+    module.validate_supported()?;
+    // The supported profiles have no autonomous persistent state. Every parameter and option
     // must still equal the sealed authored request after its queue is drained.
     // Future capabilities must explicitly qualify their mutable state fields.
     if module.state.as_ref() != expected_state.as_ref() {
-        return Err("captured OFFSET state differs from the sealed request".into());
+        return Err("captured hosted state differs from the sealed request".into());
     }
     Ok(module)
 }

@@ -1,0 +1,158 @@
+{
+  "format": "openpatch-project",
+  "version": 3,
+  "graph": {
+    "version": 2,
+    "sample_rate": 48000,
+    "assets": {},
+    "nodes": [
+      {
+        "type": "native",
+        "node": {
+          "id": "source",
+          "kind": "stock_vco",
+          "params": {
+            "frequency": -12.0
+          }
+        }
+      },
+      {
+        "type": "native",
+        "node": {
+          "id": "source_b",
+          "kind": "stock_vco",
+          "params": {
+            "frequency": -5.0
+          }
+        }
+      },
+      {
+        "type": "hosted",
+        "id": "binary",
+        "module": {
+          "schema_version": 1,
+          "identity": {
+            "plugin": "Bogaudio",
+            "model": "Bogaudio-XFade",
+            "version": "2.6.47",
+            "rack_version": "2.6.6",
+            "plugin_sha256": "264e55e1389274c3873439372c5c51f48f63168bd6c98fb2c6ffec170224b6f6",
+            "runtime_sha256": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c"
+          },
+          "ports": [
+            {
+              "direction": "input",
+              "index": 0,
+              "key": "mix_cv"
+            },
+            {
+              "direction": "input",
+              "index": 1,
+              "key": "a"
+            },
+            {
+              "direction": "input",
+              "index": 2,
+              "key": "b"
+            },
+            {
+              "direction": "output",
+              "index": 0,
+              "key": "out"
+            }
+          ],
+          "state": {
+            "data": {},
+            "id": 2,
+            "model": "Bogaudio-XFade",
+            "params": [
+              {
+                "id": 0,
+                "value": 0.0
+              },
+              {
+                "id": 1,
+                "value": 0.5
+              },
+              {
+                "id": 2,
+                "value": 0.0
+              }
+            ],
+            "plugin": "Bogaudio",
+            "version": "2.6.47"
+          }
+        }
+      },
+      {
+        "type": "native",
+        "node": {
+          "id": "amp",
+          "kind": "gain",
+          "params": {
+            "gain": 0.025
+          }
+        }
+      }
+    ],
+    "cables": [
+      {
+        "route": {
+          "id": "host-in",
+          "from": "source",
+          "output": "sine",
+          "to": "binary",
+          "input": "a"
+        }
+      },
+      {
+        "route": {
+          "id": "host-b",
+          "from": "source_b",
+          "output": "sine",
+          "to": "binary",
+          "input": "b"
+        }
+      },
+      {
+        "route": {
+          "id": "host-out",
+          "from": "binary",
+          "output": "out",
+          "to": "amp",
+          "input": "signal"
+        }
+      }
+    ],
+    "output": "amp",
+    "output_port": "out"
+  },
+  "layout": {
+    "version": 1,
+    "zoom": 1.0,
+    "pan": [
+      0.0,
+      0.0
+    ],
+    "positions": {
+      "source": [
+        0.0,
+        0.0
+      ],
+      "source_b": [
+        360.0,
+        0.0
+      ],
+      "binary": [
+        720.0,
+        0.0
+      ],
+      "amp": [
+        900.0,
+        0.0
+      ]
+    }
+  },
+  "sources": {},
+  "source_blobs": {}
+}

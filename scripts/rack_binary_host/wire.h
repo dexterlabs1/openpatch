@@ -1,4 +1,4 @@
-// OpenPatch companion protocol v1, original code MIT. macOS ARM64 little endian.
+// OpenPatch companion protocol v2, original code MIT. macOS ARM64 little endian.
 // All integers/floats are fixed-width native little endian; no C++ object layout.
 // Immutable header is published before child launch. Mutable control/state words
 // use lock-free acquire/release uint32 atomics. Payload access requires ownership.
@@ -7,14 +7,14 @@
 #include <cstdint>
 #include <cstring>
 namespace openpatch_host {
-constexpr uint32_t VERSION=1, QUANTUM=128, RATE=48000, SLOTS=4, EVENTS=64;
+constexpr uint32_t VERSION=2, QUANTUM=128, RATE=48000, SLOTS=4, EVENTS=64;
 constexpr uint32_t INPUTS=3, OUTPUTS=1, CHANNELS=16;
 constexpr size_t HEADER=128, SLOT=34368, BYTES=HEADER+SLOTS*SLOT;
-constexpr char MAGIC[8]={'O','P','H','S','T','0','0','1'};
+constexpr char MAGIC[8]={'O','P','H','S','T','0','0','2'};
 // Header offsets: version8, bytes12, quantum16, rate20, slots24, maxEvents28,
 // incarnation32:u64, generation40:u64, revision48:u64, inputPorts56,
 // outputPorts60, maxChannels64, status68, stop72, error76, processed80,
-// inputConnectionMask84. All other header bytes must remain zero.
+// inputConnectionMask84, capability88 (1=OFFSET,2=XFADE). Reserved92..127 zero.
 constexpr size_t STATUS=68, STOP=72, ERROR=76, PROCESSED=80, INPUT_MASK=84;
 constexpr uint32_t BOOT=0, READY=1, FAULT=2, STOPPED=3;
 // Slot ownership: parent Free->Writing->InputReady, child InputReady->Processing
@@ -27,7 +27,7 @@ constexpr size_t OUTPUT_COUNTS=26048, OUTPUT_VALUES=26176;
 // counts[port][frame]:u8; values[port][frame][channel]:f32.
 // output counts[frame]:u8; output values[frame][channel]:f32.
 // Each 16-byte event: sampleOffset:u16,param:u16,value:f32,order:u32,reserved:u32.
-// Events sorted strictly by (sampleOffset,order); param0/1 in [-1,1]. All data
+// Events sorted strictly by (sampleOffset,order); profile-specific parameter IDs/ranges (XFADE param2 is 0 or 1). All data
 // must be validated BEFORE processing. Mask-fixed disconnected input counts=0;
 // connected input counts=1..16; unused voltages are zero. Output count0..16.
 template<class T> T get(const uint8_t* p,size_t offset) {

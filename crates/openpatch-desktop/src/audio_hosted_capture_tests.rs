@@ -682,3 +682,46 @@ fn actual_public_hosted_controls_scope_native_continuity_and_mcp_save() {
         "mcp_save_state_source":result["state_source"],"callback_heap_operations":0,"device_qualified":false
     })).unwrap()).unwrap();
 }
+
+#[test]
+#[ignore = "requires explicit real ARM companion/SDK/plugin paths; paced callback, no device"]
+fn actual_xfade_application_three_controls_native_continuity_and_coherent_save() {
+    let destination=std::path::PathBuf::from(std::env::var_os("OPENPATCH_HOSTED_CAPTURE_REVIEW").expect("review path"));
+    std::fs::create_dir_all(&destination).unwrap();
+    let children=tempfile::tempdir_in(&destination).unwrap();let workspace=tempfile::tempdir_in(&destination).unwrap();
+    let mut doc=document();
+    for node in &mut doc.graph.nodes { if let DocumentNode::Hosted{module,..}=node {
+        let mut identity=module.identity.clone();identity.model="Bogaudio-XFade".into();
+        *module=HostedModule::xfade(identity,-1.,0.5,true).unwrap();
+    }}
+    for cable in &mut doc.graph.cables {if cable.route.to=="binary" {cable.route.input="a".into();}}
+    let mut session=Session::new(workspace.path()).unwrap();session.replace_project_document(doc,None).unwrap();
+    session.execute("set_hosted_execution",json!({"enabled":true,"expected_revision":session.revision()})).unwrap();
+    let native=session.project_document().state_carrier().unwrap().patch;
+    let (mut audio,mut callback)=super::super::tests::host_test_audio(&native);
+    audio.hosted_controller.set_config(real_configuration(children.path()));session.set_live_module_events(Some(audio.performance.clone())).unwrap();
+    submit(&mut audio,&mut session);audio.set_playing(true);
+    for _ in 0..8 {render(&mut callback,128);audio.service();}
+    let owner=audio.hosted_controller.statuses()[0].process_id;
+    for (parameter,value) in [("mix",0.25),("mix",0.5),("curve",0.75),("linear",0.)] {
+        session.execute("set_hosted_parameter",json!({"id":"binary","parameter":parameter,"value":value})).unwrap();
+    }
+    session.execute("undo",json!({})).unwrap();session.execute("redo",json!({})).unwrap();submit(&mut audio,&mut session);
+    for _ in 0..10 {render(&mut callback,128);audio.service();}
+    assert_eq!(audio.hosted_controller.statuses()[0].process_id,owner);
+    let control=audio.hosted_control.as_ref().unwrap();assert_eq!(control.snapshot().applied.unwrap().values.values,[0.5,0.75,0.]);
+    session.execute("set_parameter",json!({"id":"amp","parameter":"level","value":0.25})).unwrap();submit(&mut audio,&mut session);
+    for _ in 0..8 {render(&mut callback,128);audio.service();}
+    assert_eq!(audio.hosted_controller.statuses()[0].process_id,owner);assert_eq!(native_level(&callback),0.25);
+    let shared=Arc::new(std::sync::Mutex::new(session));let worker_session=shared.clone();let(send,receive)=std::sync::mpsc::channel();
+    let worker=std::thread::spawn(move||{send.send(openpatch::control::execute_shared(&worker_session,"save_document",json!({"filename":"xfade-live.json"}))).unwrap();});
+    let deadline=Instant::now()+Duration::from_secs(10);
+    let result=loop {audio.service();render(&mut callback,128);audio.service();if let Ok(result)=receive.try_recv(){break result.unwrap();}assert!(Instant::now()<deadline,"XFade save barrier timed out");};
+    worker.join().unwrap();assert_eq!(result["state_source"],"live_hosted_barrier");
+    let saved=ProjectDocument::decode(&std::fs::read(workspace.path().join("xfade-live.json")).unwrap()).unwrap();
+    let module=saved.graph.nodes.iter().find_map(|n|match n{DocumentNode::Hosted{module,..}=>Some(module),_=>None}).unwrap();
+    module.validate_supported().unwrap();for(key,value)in[("mix",0.5),("curve",0.75),("linear",0.)]{assert_eq!(module.parameter(key).unwrap(),value);}
+    assert_eq!(module.state.as_ref()["data"],json!({}));
+    drop(callback);drop(audio);assert!(std::fs::read_dir(children.path()).unwrap().next().is_none());
+    std::fs::write(destination.join("xfade-application-result.json"),serde_json::to_vec_pretty(&json!({"passed":true,"same_child_for_three_controls_history_and_native_edit":true,"coherent_save":true,"parent_callback_heap_activity":0,"device_qualified":false})).unwrap()).unwrap();
+}

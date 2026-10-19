@@ -2,6 +2,7 @@
 //! Creation, reservations and snapshots are control-thread operations. The
 //! reader's scheduling/acknowledgment operations use fixed storage and atomics.
 use super::{execution::HostedExecutionGrant, Fence, MAX_EVENTS, QUANTUM};
+use crate::project_document::hosted::{HostedCapability, HostedModule, MAX_PARAMETERS};
 use crate::project_document::ProjectDocument;
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::Serialize;
@@ -47,17 +48,20 @@ impl ControlFault {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
 pub struct ParameterValues {
-    pub offset: f32,
-    pub scale: f32,
+    /// Parameter IDs in the capability descriptor; unused entries stay zero.
+    pub values: [f32; MAX_PARAMETERS],
 }
-
 impl ParameterValues {
-    fn assign(&mut self, parameter: u16, value: f32) {
-        match parameter {
-            0 => self.offset = value,
-            1 => self.scale = value,
-            _ => unreachable!("only validated parameter IDs enter the queue"),
+    pub fn from_module(module: &HostedModule) -> Result<Self, String> {
+        module.validate_supported()?;
+        let mut values = [0.; MAX_PARAMETERS];
+        for (id, parameter) in module.capability()?.parameters().iter().enumerate() {
+            values[id] = module.parameter(parameter.key)?;
         }
+        Ok(Self { values })
+    }
+    fn assign(&mut self, parameter: u16, value: f32) {
+        self.values[parameter as usize] = value;
     }
 }
 
@@ -113,6 +117,7 @@ impl HostedCaptureSeal {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct HostedControlSnapshot {
+    pub capability: HostedCapability,
     pub module_id: String,
     pub incarnation: u64,
     pub generation: u64,
@@ -162,8 +167,7 @@ struct ControlState {
 /// the opening/closing version with every payload access without unsafe code.
 struct EffectiveState {
     version: AtomicU64,
-    offset: AtomicU32,
-    scale: AtomicU32,
+    values: [AtomicU32; MAX_PARAMETERS],
     sequence: AtomicU64,
     revision: AtomicU64,
     input_frame: AtomicU64,
@@ -175,8 +179,7 @@ impl EffectiveState {
     fn new(values: ParameterValues, revision: u64) -> Self {
         Self {
             version: AtomicU64::new(0),
-            offset: AtomicU32::new(values.offset.to_bits()),
-            scale: AtomicU32::new(values.scale.to_bits()),
+            values: std::array::from_fn(|i| AtomicU32::new(values.values[i].to_bits())),
             sequence: AtomicU64::new(0),
             revision: AtomicU64::new(revision),
             input_frame: AtomicU64::new(0),
@@ -187,10 +190,9 @@ impl EffectiveState {
 
     fn publish(&self, state: AppliedParameters) {
         self.version.fetch_add(1, Ordering::SeqCst);
-        self.offset
-            .store(state.values.offset.to_bits(), Ordering::SeqCst);
-        self.scale
-            .store(state.values.scale.to_bits(), Ordering::SeqCst);
+        for (target, value) in self.values.iter().zip(state.values.values) {
+            target.store(value.to_bits(), Ordering::SeqCst);
+        }
         self.sequence.store(state.sequence, Ordering::SeqCst);
         self.revision
             .store(state.authored_revision, Ordering::SeqCst);
@@ -211,8 +213,9 @@ impl EffectiveState {
             }
             let state = AppliedParameters {
                 values: ParameterValues {
-                    offset: f32::from_bits(self.offset.load(Ordering::SeqCst)),
-                    scale: f32::from_bits(self.scale.load(Ordering::SeqCst)),
+                    values: std::array::from_fn(|i| {
+                        f32::from_bits(self.values[i].load(Ordering::SeqCst))
+                    }),
                 },
                 sequence: self.sequence.load(Ordering::SeqCst),
                 authored_revision: self.revision.load(Ordering::SeqCst),
@@ -230,6 +233,7 @@ impl EffectiveState {
 pub struct HostedControl {
     grant: HostedExecutionGrant,
     module_id: String,
+    capability: HostedCapability,
     fence: Fence,
     state: Mutex<ControlState>,
     outstanding: AtomicUsize,
@@ -253,14 +257,13 @@ impl HostedControl {
             return Err("hosted control requires a nonzero execution fence".into());
         }
         let plan = grant.prepare(document, fence.generation)?;
-        let values = ParameterValues {
-            offset: plan.module().parameter("offset")?,
-            scale: plan.module().parameter("scale")?,
-        };
+        let values = ParameterValues::from_module(plan.module())?;
+        let capability = plan.module().capability()?;
         let (producer, consumer) = RingBuffer::new(COMMAND_CAPACITY);
         let shared = Arc::new(Self {
             grant,
             module_id: plan.hosted_id().into(),
+            capability,
             fence,
             state: Mutex::new(ControlState {
                 producer,
@@ -314,6 +317,9 @@ impl HostedControl {
         self.fence
     }
 
+    pub fn capability(&self) -> HostedCapability {
+        self.capability
+    }
     pub fn module_id(&self) -> &str {
         &self.module_id
     }
@@ -415,7 +421,7 @@ impl HostedControl {
         }
         if assignments
             .iter()
-            .any(|a| a.parameter > 1 || !a.value.is_finite() || !(-1.0..=1.0).contains(&a.value))
+            .any(|a| !self.capability.accepts_parameter(a.parameter, a.value))
         {
             return Err("unsupported hosted parameter or value".into());
         }
@@ -458,6 +464,7 @@ impl HostedControl {
         let failure = ControlFault::from_code(self.failure.load(Ordering::Acquire));
         let closed = self.closed.load(Ordering::Acquire);
         HostedControlSnapshot {
+            capability: self.capability,
             module_id: self.module_id.clone(),
             incarnation: self.fence.incarnation,
             generation: self.fence.generation,
@@ -553,6 +560,9 @@ pub struct HostedControlReader {
 }
 
 impl HostedControlReader {
+    pub fn capability(&self) -> HostedCapability {
+        self.shared.capability
+    }
     pub fn fence(&self) -> Fence {
         self.shared.fence
     }
@@ -760,7 +770,7 @@ mod tests {
         }
         let snapshot = control.snapshot();
         assert_eq!(snapshot.latest_accepted_sequence, 0);
-        assert_eq!(snapshot.requested.offset, 0.);
+        assert_eq!(snapshot.requested.values[0], 0.);
         assert_eq!(
             control
                 .reserve(&[assignment(0, 0.25)])
@@ -822,8 +832,7 @@ mod tests {
         assert_eq!(
             control.snapshot().requested,
             ParameterValues {
-                offset: 0.25,
-                scale: -0.75
+                values: [0.25, -0.75, 0.]
             }
         );
         reader.acknowledge(1, 384).unwrap();
@@ -832,8 +841,7 @@ mod tests {
         assert_eq!(
             applied.values,
             ParameterValues {
-                offset: 0.25,
-                scale: 0.5
+                values: [0.25, 0.5, 0.]
             }
         );
         assert_eq!(applied.authored_revision, 22);
@@ -841,7 +849,7 @@ mod tests {
         reader.acknowledge(2, 512).unwrap();
         let applied = control.snapshot().applied.unwrap();
         assert_eq!(applied.sequence, 3);
-        assert_eq!(applied.values.scale, -0.75);
+        assert_eq!(applied.values.values[1], -0.75);
         assert_eq!(applied.input_frame, 128);
     }
 
@@ -862,7 +870,7 @@ mod tests {
         assert!(!snapshot.available);
         assert_eq!(snapshot.applied.unwrap().sequence, 0);
         assert_eq!(snapshot.latest_accepted_sequence, 1);
-        assert_eq!(snapshot.requested.offset, 1.);
+        assert_eq!(snapshot.requested.values[0], 1.);
         assert_eq!(snapshot.queued.unwrap().last_sequence, 1);
         assert_eq!(snapshot.outstanding_commands, 1);
         assert!(control.reserve(&[assignment(0, 0.)]).is_err());
@@ -1011,7 +1019,7 @@ mod tests {
         assert_eq!(reservation.publish(10).last_sequence, 1);
         assert_eq!(reader.next_for_sample(0).unwrap().unwrap().value, -0.25);
         reader.acknowledge(1, 384).unwrap();
-        assert_eq!(control.snapshot().applied.unwrap().values.scale, -0.25);
+        assert_eq!(control.snapshot().applied.unwrap().values.values[1], -0.25);
     }
 
     #[test]

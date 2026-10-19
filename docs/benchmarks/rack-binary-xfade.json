@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "status": "development candidate; final Mac CI and device gate pending",
+  "supported_profiles": [
+    "Bogaudio-Offset",
+    "Bogaudio-XFade"
+  ],
+  "plugin": "Bogaudio 2.6.47 Mac ARM existing installed binary",
+  "plugin_sha256": "264e55e1389274c3873439372c5c51f48f63168bd6c98fb2c6ffec170224b6f6",
+  "runtime": "genuine Rack SDK 2.6.6",
+  "runtime_sha256": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c",
+  "behavior_source_commit": "656eaae458e045602dc974bae82e15a11e104958",
+  "source_urls": [
+    "https://github.com/bogaudio/BogaudioModules/blob/656eaae458e045602dc974bae82e15a11e104958/src/XFade.cpp",
+    "https://github.com/bogaudio/BogaudioModules/blob/656eaae458e045602dc974bae82e15a11e104958/src/XFade.hpp"
+  ],
+  "wire": {
+    "version": 2,
+    "profile_header_offset": 88,
+    "offset_profile": 1,
+    "xfade_profile": 2,
+    "rate": 48000,
+    "quantum": 128,
+    "transport_delay_frames": 384,
+    "channels": 16,
+    "max_hosted_nodes": 1,
+    "max_parameters": 3
+  },
+  "genuine_default_snapshot": {
+    "path": "scripts/rack_binary_host/fixtures/xfade-default-state.json",
+    "sha256": "795bacca5da66c66a784e08fe9c55d1372998ac55d36abfec1275346529c7cf4"
+  },
+  "headless_xfade": {
+    "passed": true,
+    "companion_sha256": "885a1f2f59c22e92e0d031ba669ef1323877815735e5e0adc55ff8d771b579d0",
+    "parent_sha256": "975c6b4629f2f3e8f19431a7a4daee74ea12b872570e87b1968c9512f5687d88",
+    "artifact_manifest_sha256": "6f703ed284e188799dcaf779729feec58e5482cb52cc067913b0952a6d491f98",
+    "checks": [
+      "mono CV across poly16 A/B voices",
+      "A/B endpoints",
+      "linear midpoint",
+      "curve",
+      "linear mode",
+      "shared Session undo/redo",
+      "all three acknowledged values",
+      "exact persistent capture",
+      "fresh binary restore",
+      "foreign snapshot rejected"
+    ],
+    "shared_graph_frames": 8192,
+    "poly16_mix_cv_frames": 6144,
+    "parent_allocations": 0,
+    "parent_deallocations": 0,
+    "evidence": "native-test-output/host-xfade/actual/transport-fbaeel8m"
+  },
+  "desktop_controller": {
+    "coherent_save": true,
+    "device_qualified": false,
+    "parent_callback_heap_activity": 0,
+    "passed": true,
+    "same_child_for_three_controls_history_and_native_edit": true
+  },
+  "offset_regression": {
+    "passed": true,
+    "checks": [
+      "actual plugin/runtime image identities",
+      "mono impulse",
+      "settled poly16",
+      "within-block channel changes at pinned source cadence",
+      "mono offset CV and poly16 bipolar scale CV",
+      "sample-offset and simultaneous ordered parameter events",
+      "native Rust oscillator waveform and gain through existing plugin offline WAV",
+      "quiescent capture/fresh-process restore",
+      "SIGSTOP deadline and late-result silence",
+      "no endpoint reacquisition",
+      "SIGKILL deadline silence",
+      "malformed input rejected before processing"
+    ],
+    "process_owner_checks": [
+      "pinned launch and identity receipt",
+      "owned endpoint moved to worker while controller stays on control thread",
+      "healthy acknowledged capture and fresh restore",
+      "wrong fingerprint refusal",
+      "pending capture refusal plus child reap/workspace cleanup",
+      "wrong mapping refusal even with identical fences"
+    ],
+    "parent_death_cleanup": true,
+    "artifact_manifest_sha256": "19d3a890a77e3c5314abfd326d5362b53cd6fa62c0240ac9f787a764c327da4e",
+    "evidence": "native-test-output/host-xfade/offset-regression/transport-sf2acgzr"
+  },
+  "real_child_refusals": [
+    {
+      "case": "foreign_profile",
+      "passed": true,
+      "exit": 1,
+      "status": 2,
+      "fault": 5
+    },
+    {
+      "case": "unknown_profile",
+      "passed": true,
+      "exit": 1,
+      "status": 2,
+      "fault": 3
+    },
+    {
+      "case": "legacy_protocol",
+      "passed": true,
+      "exit": 1,
+      "status": 2,
+      "fault": 3
+    },
+    {
+      "case": "fractional_switch",
+      "passed": true,
+      "exit": 1,
+      "status": 2,
+      "fault": 5
+    },
+    {
+      "case": "curve_out_of_range",
+      "passed": true,
+      "exit": 1,
+      "status": 2,
+      "fault": 5
+    },
+    {
+      "case": "reserved_header",
+      "passed": true,
+      "exit": 1,
+      "status": 2,
+      "fault": 3
+    }
+  ],
+  "boundary_review": "Independent read-only implementation review found no actionable defect in profile/range/mask, image/receipt/capture, permission/history, reused-child or fixed-atomic publication boundaries.",
+  "device": {
+    "status": "pending"
+  },
+  "mac_ci": {
+    "status": "pending"
+  },
+  "limits": [
+    "One hosted module; explicit separate setup and execution permission.",
+    "Original plugin DSP, native OpenPatch controls; no arbitrary Rack widgets.",
+    "Default XFade custom-state object only; unsupported state preserved without execution.",
+    "Persistent restore is not transient slew-history restoration.",
+    "No general plugin, hardware-model accuracy, physical-loopback latency or performance-superiority claim.",
+    "Public/installed 0.3.1 build11 unchanged."
+  ]
+}

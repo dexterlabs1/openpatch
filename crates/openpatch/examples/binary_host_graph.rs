@@ -555,8 +555,10 @@ mod mac {
             let effective_matches_authored = final_control.applied.is_some_and(|applied| {
                 applied.sequence == 7
                     && applied.authored_revision == session.revision()
-                    && applied.values.offset == authored_plan.module().parameter("offset").unwrap()
-                    && applied.values.scale == authored_plan.module().parameter("scale").unwrap()
+                    && applied.values.values[0]
+                        == authored_plan.module().parameter("offset").unwrap()
+                    && applied.values.values[1]
+                        == authored_plan.module().parameter("scale").unwrap()
             });
             let mut reopen_matches = false;
             let mut fresh_restore_matches = false;

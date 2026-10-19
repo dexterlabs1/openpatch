@@ -23,9 +23,20 @@ fn parameter_catalog() -> &'static Value {
 #[serde(rename_all = "snake_case")]
 pub enum HostedExecutionProfile {
     Offset48kQ128D384Max128,
+    XFade48kQ128D384Max128,
 }
 
 impl HostedExecutionProfile {
+    pub fn for_capability(capability: crate::project_document::hosted::HostedCapability) -> Self {
+        match capability {
+            crate::project_document::hosted::HostedCapability::Offset => {
+                Self::Offset48kQ128D384Max128
+            }
+            crate::project_document::hosted::HostedCapability::XFade => {
+                Self::XFade48kQ128D384Max128
+            }
+        }
+    }
     pub const SAMPLE_RATE_HZ: u32 = super::SAMPLE_RATE;
     pub const QUANTUM_FRAMES: usize = super::QUANTUM;
     pub const TRANSPORT_DELAY_FRAMES: usize = super::runner::TRANSPORT_DELAY_FRAMES;
@@ -56,7 +67,10 @@ impl HostedTopologyKey {
         document: &ProjectDocument,
         profile: HostedExecutionProfile,
     ) -> Result<Self, String> {
-        HostedGraphPlan::prepare(document)?;
+        let plan = HostedGraphPlan::prepare(document)?;
+        if profile != HostedExecutionProfile::for_capability(plan.module().capability()?) {
+            return Err("hosted execution profile differs from document capability".into());
+        }
         Self::project(document, profile)
     }
 
@@ -110,15 +124,15 @@ impl HostedTopologyKey {
                         }
                     }
                 }
-                DocumentNode::Hosted { .. } => {
-                    // prepare() has checked the complete OFFSET snapshot. Keep
-                    // parameter IDs, order, cardinality and every custom field;
-                    // only the two qualified numeric values are mutable knobs.
+                DocumentNode::Hosted { module, .. } => {
+                    // Keep the qualified model, parameter IDs/order/cardinality
+                    // and every custom field. Only declared live values vary.
+                    let parameter_count = module.capability()?.parameters().len() as u64;
                     for param in entry["module"]["state"]["params"]
                         .as_array_mut()
                         .ok_or("invalid hosted parameters")?
                     {
-                        if matches!(param["id"].as_u64(), Some(0 | 1)) {
+                        if param["id"].as_u64().is_some_and(|id| id < parameter_count) {
                             param
                                 .as_object_mut()
                                 .ok_or("invalid hosted parameter")?
@@ -200,7 +214,8 @@ pub struct HostedExecutionGrant {
 
 impl HostedExecutionGrant {
     pub fn new(document: &ProjectDocument, document_generation: u64) -> Result<Self, String> {
-        let profile = HostedExecutionProfile::Offset48kQ128D384Max128;
+        let plan = HostedGraphPlan::prepare(document)?;
+        let profile = HostedExecutionProfile::for_capability(plan.module().capability()?);
         let topology_key = HostedTopologyKey::new(document, profile)?;
         Ok(Self {
             document_generation,

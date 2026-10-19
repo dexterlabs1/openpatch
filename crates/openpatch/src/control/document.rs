@@ -568,11 +568,21 @@ impl Session {
         expected_revision: Option<u64>,
         group: Option<(String, String, String)>,
     ) -> Result<u64, String> {
-        let index = match parameter {
-            "offset" => 0,
-            "scale" => 1,
-            _ => return Err("unsupported hosted parameter".into()),
-        };
+        let module = self
+            .document
+            .graph
+            .nodes
+            .iter()
+            .find_map(|node| match node {
+                DocumentNode::Hosted {
+                    id: node_id,
+                    module,
+                    ..
+                } if node_id == id => Some(module),
+                _ => None,
+            })
+            .ok_or("hosted module missing")?;
+        let index = module.capability()?.parameter_id(parameter)?;
         self.edit_hosted_module(
             id,
             expected_revision,
@@ -948,7 +958,7 @@ pub(super) fn execution_status(document: &ProjectDocument, mode: PlaybackMode) -
         .collect();
     let hosted:Vec<_>=document.graph.nodes.iter().filter_map(|node|match node {
         DocumentNode::Hosted{id,module,..}=>Some(json!({"id":id,"identity":module.identity,
-            "state_sha256":module.state.id(),"execution":"not_active", "capability_error":module.validate_supported_offset().err()})),_=>None,
+            "state_sha256":module.state.id(),"execution":"not_active", "capability_error":module.validate_supported().err()})),_=>None,
     }).collect();
     json!({"substitutions":substitutions,"hosted_modules":hosted,"mode":if mode == PlaybackMode::Exact {"exact"} else {"partial"},
         "requested_disposition":disposition(document,mode),"unresolved_modules":unresolved,

@@ -43,12 +43,12 @@ impl HostedRunner {
     ) -> Result<Self, String> {
         if handle.input_count() != 3 || handle.output_count() != 1 {
             return Err(
-                "runner requires the declared three-input/one-output OFFSET boundary".into(),
+                "runner requires the declared three-input/one-output hosted boundary".into(),
             );
         }
         let input_mask = handle.input_presence() as u32;
-        if input_mask & !7 != 0 || input_mask & 4 == 0 {
-            return Err("runner requires the supported OFFSET connection mask".into());
+        if !endpoint.capability().accepts_input_mask(input_mask) {
+            return Err("runner requires the supported capability connection mask".into());
         }
         if endpoint.input_mask() != input_mask
             || endpoint.status() != super::Status::Ready
@@ -74,7 +74,7 @@ impl HostedRunner {
         handle: ResolvedExternalModule,
         control: HostedControlReader,
     ) -> Result<Self, String> {
-        if endpoint.fence() != control.fence() {
+        if endpoint.fence() != control.fence() || endpoint.capability() != control.capability() {
             return Err("hosted event reader belongs to another execution fence".into());
         }
         let mut runner = Self::prepare(endpoint, handle)?;
@@ -177,9 +177,10 @@ impl HostedRunner {
         }
         let offset = (self.frame % QUANTUM as u64) as u16;
         if self.awaiting_inputs
-            || parameter > 1
-            || !value.is_finite()
-            || !(-1.0..=1.0).contains(&value)
+            || !self
+                .endpoint
+                .capability()
+                .accepts_parameter(parameter, value)
             || self.input.event_count == super::MAX_EVENTS
             || self.input.event_count.checked_sub(1).is_some_and(|last| {
                 let event = self.input.events[last];

@@ -1,0 +1,21 @@
+{
+  "data": {},
+  "id": 2,
+  "model": "Bogaudio-XFade",
+  "params": [
+    {
+      "id": 0,
+      "value": 0.0
+    },
+    {
+      "id": 1,
+      "value": 0.5
+    },
+    {
+      "id": 2,
+      "value": 0.0
+    }
+  ],
+  "plugin": "Bogaudio",
+  "version": "2.6.47"
+}
