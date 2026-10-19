@@ -77,10 +77,16 @@ fn hosted_document_native_app_history_save_and_inactive_panel_preserve_authority
                     _ => None,
                 })
                 .collect();
-            assert!(text.contains(&"HOST NOT RUNNING"), "{text:?}");
+            assert!(text.contains(&"EXPERIMENTAL HOST"), "{text:?}");
+            assert!(text.contains(&"Hosted execution stopped"), "{text:?}");
+            assert!(
+                text.contains(&"Start experimental hosted playback"),
+                "{text:?}"
+            );
+            assert!(!text.contains(&"Hosted audio running"), "{text:?}");
             assert!(text.contains(&"OFFSET CV"), "{text:?}");
             assert!(text.contains(&"SCALE CV"), "{text:?}");
-            assert!(text.contains(&"Execution not enabled"), "{text:?}");
+            assert!(text.contains(&"Click for playback controls"), "{text:?}");
             assert!(!text.contains(&"Click to inspect / repair"), "{text:?}");
             if let Some(path) = std::env::var_os("OPENPATCH_HOSTED_DOCUMENT_REVIEW") {
                 let path = PathBuf::from(path);

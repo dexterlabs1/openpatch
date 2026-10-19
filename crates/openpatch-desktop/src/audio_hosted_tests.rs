@@ -53,20 +53,45 @@ mod hosted_callback {
         session.replace_project_document(document, None).unwrap();
         session.request_delayed_hosted_execution(None).unwrap();
         let ticket = session.audio_snapshot().unwrap();
-        let (mut audio, _callback) = host_test_audio(&patch);
+        let (mut audio, mut callback) = host_test_audio(&patch);
+        // Inject a deterministic failed host configuration. This negative gate
+        // must keep working when actual-plugin paths are supplied to other tests.
+        audio
+            .hosted_controller
+            .set_config(hosted_audio::HostedAudioConfig {
+                companion_executable: workspace.path().join("missing-companion"),
+                sdk_dir: workspace.path().join("missing-sdk"),
+                plugin_dir: workspace.path().join("missing-plugin"),
+                workspace_parent: workspace.path().into(),
+            });
         let revision = audio.submitted_revision;
         assert!(audio
             .submit_document(ticket.clone())
             .unwrap_err()
-            .contains("OPENPATCH_HOSTED_"));
+            .contains("hosted companion preparation failed"));
         assert_eq!(audio.submitted_revision, revision);
         assert!(audio.pending.is_none());
         assert!(audio.accepted_document.is_none());
+        assert!(
+            ticket.native_projection().is_err(),
+            "the sealed full request never becomes a native carrier"
+        );
+        audio.set_playing(true);
+        let mut output = [1f32; 128];
+        without_heap_activity(|| callback.render(&mut output, 1));
+        assert_eq!(output, [0.; 128]);
+        assert!(!audio.performance.execution_available());
         let error =
-            Audio::new_with_document(ticket, Some("no audio device may be consulted"), false)
+            Audio::new_with_document(ticket, Some("OpenPatch-test-nonexistent-output"), false)
                 .err()
                 .unwrap();
-        assert!(error.contains("OPENPATCH_HOSTED_"));
+        // Missing explicit host configuration fails before device lookup; with
+        // it present, the nonexistent output fails before a stream can open.
+        assert!(
+            error.contains("OPENPATCH_HOSTED_")
+                || error.contains("OpenPatch-test-nonexistent-output"),
+            "{error}"
+        );
     }
 
     #[test]
