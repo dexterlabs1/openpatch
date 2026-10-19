@@ -55,6 +55,48 @@ fn run() -> Result<(), String> {
             .map_err(|e| e.to_string())?;
             Ok(())
         }
+        Some("patch-engine") if args.len() >= 3 && args[1] == "--genome" => {
+            use openpatch::patch_engine::{Genome, Recipe};
+            let mut genome: Genome = args[2].parse()?;
+            let (mut budget, mut mode, mut entropy) = (None, "patch", 1u64);
+            let (mut mutate, mut with) = (None, None);
+            let mut rest = args[3..].iter();
+            while let Some(a) = rest.next() {
+                let mut value = || rest.next().cloned().ok_or(format!("{a} needs a value"));
+                match a.as_str() {
+                    "--mutate" => mutate = Some(value()?),
+                    "--with" => with = Some(value()?.parse::<Genome>()?),
+                    "--entropy" => {
+                        entropy = value()?.parse().map_err(|_| "--entropy needs a number")?
+                    }
+                    "--budget" => {
+                        budget = Some(value()?.parse().map_err(|_| "--budget needs a number")?)
+                    }
+                    "--info" => mode = "info",
+                    "--reveal" => mode = "reveal",
+                    "--showtime" => mode = "showtime",
+                    _ => return Err(format!("unknown option {a}")),
+                }
+            }
+            if let Some(other) = with {
+                genome = genome.breed(&other);
+            }
+            if let Some(kind) = mutate {
+                genome = genome.mutate(&kind, entropy)?;
+            }
+            let r = Recipe::from_genome(&genome, budget)?;
+            let out = match mode {
+                "info" => r.info(),
+                "reveal" => {
+                    let (modules, steps) = r.reveal();
+                    serde_json::json!({"modules": modules, "steps": steps})
+                }
+                "showtime" => serde_json::json!(r.showtime()),
+                _ => r.patch(),
+            };
+            println!("{out}");
+            Ok(())
+        }
         Some("patch-engine") if args.len() >= 4 => {
             let mut seed = 1u64;
             let mut budget = None;
@@ -131,7 +173,7 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         None | Some("--help") | Some("help") => {
-            println!("OpenPatch — modular synthesis with native MCP\n\nCommands:\n  mcp --workspace DIRECTORY\n  sessions\n  attach [--session ID | --workspace DIRECTORY]\n  demo OUTPUT.wav\n  render PATCH.json OUTPUT.wav SECONDS [--midi EVENTS.json]\n  visualizer OUTPUT.html\n  catalog\n  patch-engine GENRE MOOD TEXTURE [--seed N] [--budget PCT] [--energy|--complexity|--weirdness|--space 0..1] [--length 32|64|128] [--info|--reveal|--showtime]\n  --version\n  --third-party-licenses  Print bundled algorithm notices and licenses\n\nMCP uses stdio. Attach connects to an already-open native rack on macOS/Linux; it never opens a window or starts playback. Files are never overwritten. Rendering is offline; audio_stereo exports L/R, other outputs export mono.");
+            println!("OpenPatch — modular synthesis with native MCP\n\nCommands:\n  mcp --workspace DIRECTORY\n  sessions\n  attach [--session ID | --workspace DIRECTORY]\n  demo OUTPUT.wav\n  render PATCH.json OUTPUT.wav SECONDS [--midi EVENTS.json]\n  visualizer OUTPUT.html\n  catalog\n  patch-engine GENRE MOOD TEXTURE [--seed N] [--budget PCT] [--energy|--complexity|--weirdness|--space 0..1] [--length 32|64|128] [--info|--reveal|--showtime]\n  patch-engine --genome CODE [--mutate sound|song|evolve] [--entropy N] [--with CODE] [--budget PCT] [--info|--reveal|--showtime]\n  --version\n  --third-party-licenses  Print bundled algorithm notices and licenses\n\nMCP uses stdio. Attach connects to an already-open native rack on macOS/Linux; it never opens a window or starts playback. Files are never overwritten. Rendering is offline; audio_stereo exports L/R, other outputs export mono.");
             Ok(())
         }
         _ => Err("unknown command or arguments; run openpatch --help".into()),
