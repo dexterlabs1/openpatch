@@ -175,7 +175,8 @@ def variety_report(rows):
     closest, mean = [], []
     for w, items in groups.items():
         ds = [(math.dist(a[1], b[1]), a[0], b[0]) for i, a in enumerate(items) for b in items[i + 1:]]
-        closest.append((min(ds), w)); mean.append(sum(d[0] for d in ds) / len(ds))
+        d, s1, s2 = min(ds)
+        closest.append((d, f"{w} (seeds {s1}, {s2})")); mean.append(sum(x[0] for x in ds) / len(ds))
     closest.sort()
     return closest, sum(mean) / len(mean)
 

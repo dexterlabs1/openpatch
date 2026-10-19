@@ -655,6 +655,29 @@ fn trim_db(name: &str) -> f64 {
         "lead:bells" => -12.7,
         "lead:riff" => 2.4,
         "lead:counter" => -13.0,
+        // catalog designs (stems run of 160 builds, 2026-10-19): chords → 0 dB, pads → −2, pad layer → −3,
+        // bass → −4.5, lead → −5 relative to the kick; swarm confirmed on 14 swarm builds
+        "fm_keys" => -7.3,
+        "fold_stab" => -3.7,
+        "metal_stab" => 0.5,
+        "harmonic_organ" => -5.5,
+        "wt_pad" => -14.6,
+        "swarm_pad" => -0.4,
+        "glass" => 2.6,
+        "analog_pluck" => 6.0,
+        "pad:wt_pad" => -3.8,
+        "pad:swarm_pad" => 8.9,
+        "bass:analog_bass" => -2.8,
+        "bass:fm_bass" => -9.4,
+        "bass:fold_bass" => -7.9,
+        "bass:moog_bass" => -0.8,
+        "lead:analog_lead" => -1.5,
+        "lead:fm_bell" => -11.2,
+        "lead:fold_lead" => -8.0,
+        "lead:harmonic_lead" => -4.6,
+        "lead:modal_bell" => -13.6,
+        "lead:wt_lead" => -9.6,
+        "lead:swarm_lead" => 1.8,
         _ => 0.0,
     }
 }
@@ -3109,7 +3132,14 @@ impl Recipe {
                 };
                 let level = level
                     * 10f64.powf(
-                        (trim_db(&trim_key) + if genre == "Ambient" { 9.0 } else { 0.0 }) / 20.0,
+                        // ambient lifts the lead over a soft kick; the catalog designs are already trimmed hotter
+                        (trim_db(&trim_key)
+                            + match (genre, c.lead_design) {
+                                ("Ambient", "classic") => 9.0,
+                                ("Ambient", _) => 4.5,
+                                _ => 0.0,
+                            })
+                            / 20.0,
                     );
                 let design = self.lead_design(c, c.lead_design, &env, &ll);
                 let classic = design.is_none();
@@ -3296,8 +3326,9 @@ impl Recipe {
         p.insert("return_b".into(), json!(r3(0.6 + 0.25 * sp)));
         for (i, s) in self.strips.iter().enumerate() {
             let n = i + 1;
+            // the strip gives at most ×4 (trim 2 × level 2)
             let (trim, level) = if s.level > 2.0 {
-                (s.level / 2.0, 2.0)
+                ((s.level / 2.0).min(2.0), 2.0)
             } else {
                 (1.0, s.level)
             };

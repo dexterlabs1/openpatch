@@ -113,7 +113,7 @@ pub(super) const DESIGNS: &[Design] = &[
     d(
         "swarm_pad",
         Chords,
-        "a supersaw swarm pad (macro voice · swarm) through a four-pole low-pass",
+        "a supersaw swarm pad (macro voice · swarm), timbre on the sweep",
         &["pad", "huge", "lush", "bright", "prog"],
         true,
         Some("pad_saw"),
@@ -275,7 +275,7 @@ pub(super) const DESIGNS: &[Design] = &[
     d(
         "swarm_lead",
         Lead,
-        "a supersaw swarm lead (macro voice · swarm) through a four-pole low-pass",
+        "a supersaw swarm lead (macro voice · swarm)",
         &["huge", "bright", "prog", "lush"],
         true,
         Some("classic"),
@@ -548,16 +548,22 @@ impl Recipe {
                 self.module(&env, "adsr", row, e, "Envelope → level");
                 self.con(gate.0, gate.1, &env, "gate");
                 self.con(&env, "out", &v, "level");
+                self.con(&fcv.0, &fcv.1, &v, "timbre");
                 if !swarm {
-                    self.con(&fcv.0, &fcv.1, &v, "timbre");
                     return Some((v, "out".into()));
                 }
-                let vcf = format!("{id}_vcf");
-                let cutoff = Self::cut(b, 1100.0 * c.rng.uni(0.8, 1.25), 0.6);
-                self.module(&vcf, "stock_vcf", row, json!({"frequency": vcf_knob(cutoff), "resonance": r3(c.rng.uni(0.05, 0.2)), "cutoff_cv_amount": 1.0}), "Four-pole low-pass");
-                self.con(&v, "out", &vcf, "signal");
-                self.con(&fcv.0, &fcv.1, &vcf, "cutoff_cv");
-                Some((vcf, "lowpass".into()))
+                // the swarm's energy sits high above the fundamental: a four-pole low-pass empties it, so only a
+                // gentle one-pole takes the fizz off while the sweep moves the swarm's own timbre
+                let lp = format!("{id}_lp");
+                self.module(
+                    &lp,
+                    "lowpass",
+                    row,
+                    json!({"cutoff": Self::cut(b, 3200.0 * c.rng.uni(0.8, 1.25), 0.5)}),
+                    "Low-pass (one-pole)",
+                );
+                self.con(&v, "out", &lp, "signal");
+                Some((lp, "out".into()))
             }
             "wt_pad" => {
                 self.module(&v, "wavetable_vco", row, json!({"tune": 0.0, "position": r3(c.rng.uni(0.1, 0.6)), "position_cv_amount": r3(c.rng.uni(0.25, 0.5))}), "Wavetable ×4");
@@ -823,15 +829,19 @@ impl Recipe {
                 self.con(&pp, &po, "lead_voice", "pitch");
                 gated(self, env);
                 self.con("lead_gate", "out", "lead_voice", "level");
+                self.con("motion", "sine", "lead_voice", "timbre");
                 if !swarm {
-                    self.con("motion", "sine", "lead_voice", "timbre");
                     return Some(("lead_voice".into(), "out".into()));
                 }
-                let cutoff = Self::cut(b, 1500.0 * c.rng.uni(0.8, 1.2), 0.6);
-                self.module("lead_vcf", "stock_vcf", row, json!({"frequency": vcf_knob(cutoff), "resonance": r3(c.rng.uni(0.05, 0.2)), "cutoff_cv_amount": 1.0}), "Four-pole low-pass");
+                self.module(
+                    "lead_vcf",
+                    "lowpass",
+                    row,
+                    json!({"cutoff": Self::cut(b, 3500.0 * c.rng.uni(0.8, 1.2), 0.5)}),
+                    "Low-pass (one-pole)",
+                );
                 self.con("lead_voice", "out", "lead_vcf", "signal");
-                self.con("motion", "sine", "lead_vcf", "cutoff_cv");
-                Some(("lead_vcf".into(), "lowpass".into()))
+                Some(("lead_vcf".into(), "out".into()))
             }
             "analog_lead" | "wt_lead" => {
                 if kind == "analog_lead" {
