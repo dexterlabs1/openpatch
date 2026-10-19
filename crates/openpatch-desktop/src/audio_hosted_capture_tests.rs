@@ -660,8 +660,8 @@ fn actual_public_hosted_controls_scope_native_continuity_and_mcp_save() {
         })
         .unwrap();
     assert_eq!(saved_hosted.parameter("offset").unwrap(), 0.5);
-    assert_eq!(saved_hosted.option("offset_first").unwrap(), true);
-    assert_eq!(saved_hosted.option("disable_output_limit").unwrap(), false);
+    assert!(saved_hosted.option("offset_first").unwrap());
+    assert!(!saved_hosted.option("disable_output_limit").unwrap());
     for _ in 0..8 {
         render(&mut callback, 128);
         audio.service();
