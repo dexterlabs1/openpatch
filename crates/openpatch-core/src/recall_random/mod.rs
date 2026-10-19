@@ -128,7 +128,7 @@ pub(crate) fn annotate(module: &mut Value) {
     module["timing_policy"]=json!("Exactly32000 source frames/s in complete5-frame blocks at host8000..192000Hz. Integer phase starts at0; first source tick after one source interval. Collect5 input frames, then run full T followed by X1,X2,X3,Y using one owned source stream. Output block begins on the next source tick:5-source-frame buffer latency156.25us, plus source public T's2-frame delay62.5us. Gates hold; CV linearly interpolates previous/current source frames, adding1 source frame31.25us. Host sampling rounds tick presentation by<1 host frame. Native cables add1 host frame separately. CV and authored controls sample at the block completion boundary; NoteFilter runs once per block.");
     module["input_policy"]=json!("0.1V low/1V high Schmitt clocks/reset, initially low.64 fixed combined chronological snapshots are consumed one per source frame (32000 snapshots/s; full two-edge cycles<=16000Hz combined). Overflow discards backlog, reconciles latest levels at next tick and lights sticky input_overflow. No lossless arbitrary host-Nyquist pulse claim. Physical connection changes are captured with levels; unpatched T clock uses internal source rate. Patched X clock forces external; unpatched X uses selected undelayed T ramps (External selection normals to T2). Unpatched reset is low. CV finite-or-zero; normalized knobs add CV/5, rate adds12 semitones/V. Register input is clamped±100V before the source once/block filter; source register value=0.5+volts/10, clamped0..1. No board ADC/DAC, entropy, calibration or physical debounce emulation.");
     module["state_adoption"]=json!("Same ID/kind/rate/seed retains RNG, loops, PLL/ramps, reacquisition, interpolation, bridge phase, edge FIFO and recorder; receiving controls and authored scales prevail. Changed scale slots copy prebuilt quantizers; unchanged slots retain hysteresis. Initialize, seed/rate change and fresh reopen restart. Bypass emits zero and freezes runtime. Runtime history is never patch content. No callback allocations/deallocations or locks.");
-    module["capture_policy"]=json!("Begin targets slot0..5 and starting document revision, returns a monotonic capture_id; rejects busy. One source NoteFilter call/block samples register_cv. X clock edges (or undelayed T2 while normalled) begin/accept notes. Stop accepts a held note, publishes bounded weighted scale only with>=2 distinct degrees, otherwise Empty; Cancel clears transient recorder. Receipts carry slot/revision/capture_id. Host must fence module incarnation and current revision before committing through shared content/history. Quantizers prepare off callback.");
+    module["capture_policy"]=json!("Begin targets slot0..5 and starting document revision, returns a monotonic capture_id; rejects busy. One source NoteFilter call/block samples register_cv. X clock edges (or undelayed T2 while normalled) begin/accept notes. Stop accepts a held note, publishes bounded weighted scale only with>=2 distinct degrees, otherwise Empty; Cancel clears transient recorder and any finished result. Receipts carry slot/revision/capture_id. Host must fence module incarnation and current revision before committing through shared content/history. Quantizers prepare off callback.");
     module["source_boundaries"]=json!("All seven source T algorithms, coupled sequence draw ordering and source reset preserved. Native saturating float-word endpoint, safe terminal interpolation, and unquantized fallback outside the source quantizer's representable i32 octave domain remain explicit corrections. All6 validated scales load Y too, correcting original empty Y masks; no whole-hardware equivalence claim.");
     module["light_names"] = json!([
         "t1",
@@ -443,12 +443,16 @@ impl RecallRandom {
         true
     }
     pub(crate) fn cancel_capture(&mut self) -> bool {
-        if !self.recording() {
+        let Some(receipt) = self.runtime.capture.as_mut() else {
+            return false;
+        };
+        if receipt.status == RecallRandomCaptureStatus::Cancelled {
             return false;
         }
         self.runtime.recorder.clear();
         self.runtime.note_high = false;
-        self.runtime.capture.as_mut().unwrap().status = RecallRandomCaptureStatus::Cancelled;
+        receipt.status = RecallRandomCaptureStatus::Cancelled;
+        receipt.scale = RecallRandomCapturedScale::default();
         true
     }
     fn recording(&self) -> bool {

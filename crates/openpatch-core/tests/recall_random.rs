@@ -190,6 +190,16 @@ fn capture_is_bounded_transient_tagged_and_survives_compatible_replacement() {
     assert!((2..=16).contains(&receipt.scale.num_degrees));
     receipt.scale.to_scale().validate().unwrap();
     assert!(p.nodes[2].content.is_none());
+    assert!(engine.cancel_recall_random_capture(h));
+    let discarded = engine.recall_random_capture(h).unwrap();
+    assert_eq!(discarded.status, RecallRandomCaptureStatus::Cancelled);
+    assert_eq!(discarded.scale.num_degrees, 0);
+    assert!(discarded
+        .scale
+        .degrees
+        .iter()
+        .all(|d| *d == RecallRandomDegree::default()));
+    assert!(!engine.cancel_recall_random_capture(h));
     assert!(engine.begin_recall_random_capture(h, 1, 43));
     assert!(engine.cancel_recall_random_capture(h));
     let cancelled = engine.recall_random_capture(h).unwrap();
