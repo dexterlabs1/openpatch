@@ -706,6 +706,65 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.assertEqual(self.patch_snapshot(), reopened)
         self.require_tool_error("save_document", {"filename": "retained.json"})
 
+    def test_hosted_controls_history_and_full_document_save_reopen(self) -> None:
+        state = {"plugin": "Bogaudio", "model": "Bogaudio-Offset", "version": "2.6.47", "id": 2,
+                 "params": [{"id": 0, "value": 0.25}, {"id": 1, "value": 0.5}],
+                 "data": {"offset_first": True, "disableOutputLimit": False}}
+        document = {
+            "format": "openpatch-project", "version": 3,
+            "graph": {"version": 2, "sample_rate": 48000, "assets": {}, "nodes": [
+                {"type": "native", "node": {"id": "dc", "kind": "constant", "params": {"value": 0.5}}},
+                {"type": "hosted", "id": "offset", "module": {
+                    "schema_version": 1, "identity": {"plugin": "Bogaudio", "model": "Bogaudio-Offset",
+                        "version": "2.6.47", "rack_version": "2.6.6",
+                        "plugin_sha256": "264e55e1389274c3873439372c5c51f48f63168bd6c98fb2c6ffec170224b6f6",
+                        "runtime_sha256": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c"},
+                    "ports": [{"direction": direction, "index": index, "key": key} for direction, index, key in [
+                        ("input", 0, "offset_cv"), ("input", 1, "scale_cv"), ("input", 2, "in"), ("output", 0, "out")]],
+                    "state": state}}],
+                "cables": [{"route": {"id": "route", "from": "dc", "output": "out", "to": "offset", "input": "in"}}],
+                "output": "offset", "output_port": "out"},
+            "layout": {"version": 1, "zoom": 1.0, "pan": [0.0, 0.0], "positions": {"dc": [0.0, 0.0], "offset": [180.0, 0.0]}},
+            "sources": {}, "source_blobs": {},
+        }
+        initial = self.payload(self.require_tool_success("replace_document", {"document": document}))
+        self.assertEqual(initial["execution"]["requested_disposition"], "suspended_unresolved")
+        compact = self.payload(self.require_tool_success("inspect_document"))
+        self.assertEqual(compact["execution"]["hosted_modules"][0]["execution"], "not_active")
+        self.assertNotIn("state", compact["document"]["graph"]["nodes"][1]["module"])
+        def full() -> dict[str, Any]:
+            return self.payload(self.require_tool_success("inspect_document", {"include_source_data": True}))["document"]
+        original = full()
+        self.require_tool_success("set_hosted_parameter", {"id": "offset", "parameter": "offset", "value": 0.125,
+                                                          "expected_revision": initial["revision"]})
+        self.require_tool_error("set_hosted_option", {"id": "offset", "option": "offset_first", "value": False,
+                                                      "expected_revision": initial["revision"]})
+        self.require_tool_success("set_hosted_option", {"id": "offset", "option": "offset_first", "value": False})
+        self.require_tool_success("set_hosted_option", {"id": "offset", "option": "disable_output_limit", "value": True})
+        self.require_tool_success("set_parameter", {"id": "dc", "parameter": "value", "value": 0.25})
+        edited = full()
+        snapshot = edited["graph"]["nodes"][1]["module"]["state"]
+        self.assertEqual(snapshot["params"][0]["value"], 0.125)
+        self.assertEqual(snapshot["data"], {"offset_first": False, "disableOutputLimit": True})
+        self.assertEqual(edited["graph"]["cables"], original["graph"]["cables"])
+        for _ in range(4):
+            self.require_tool_success("undo")
+        self.assertEqual(full(), original)
+        for _ in range(4):
+            self.require_tool_success("redo")
+        self.assertEqual(full(), edited)
+        for arguments in [{"id": "offset", "parameter": "offset", "value": 1.000001},
+                          {"id": "offset", "parameter": "unknown", "value": 0.5}]:
+            self.require_tool_error("set_hosted_parameter", arguments)
+        self.assertEqual(full(), edited)
+        self.require_tool_error("save_patch", {"filename": "lossy.json"})
+        self.require_tool_success("save_document", {"filename": "hosted.json"})
+        self.assertEqual(json.loads((self.workspace / "hosted.json").read_text()), edited)
+        self.require_tool_success("set_document_playback", {"mode": "partial"})
+        reopened = self.payload(self.require_tool_success("load_document", {"filename": "hosted.json"}))
+        self.assertEqual(reopened["execution"]["requested_disposition"], "suspended_unresolved")
+        self.assertEqual(full(), edited)
+
     def test_atomic_preview_commit_and_shared_history(self) -> None:
         before = self.patch_snapshot()
         arguments = {"expected_revision": before["revision"], "edits": [

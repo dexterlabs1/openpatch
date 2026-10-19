@@ -3,7 +3,9 @@
 use super::audio_diagnostics::{Diagnostics, Recorder};
 use crate::listen_capture::{self, CaptureProducer, CaptureService, StartRequest, Target};
 use crate::scope_transport::{self, ScopeFrame, ScopeProducer, ScopeReader};
-use openpatch::control::LiveModuleEvents;
+use openpatch::control::{
+    DocumentExecutionContext, HostedEditAdmission, HostedEditProposal, LiveModuleEvents,
+};
 use openpatch::project_document::ExecutionDisposition;
 use openpatch_core::{
     Cable, CableHandle, Engine, FixedPatternName, ListenSink, ListenStatus, ModuleAction,
@@ -378,6 +380,9 @@ struct Control {
     revision: u64,
     next_token: u64,
     next_sequence: u64,
+    // Includes explicit native assignments whose models have no published
+    // parameter binding; equality still carries authored runtime intent.
+    native_intent_generation: u64,
     midi_learns: BTreeMap<String, MidiLearnControl>,
     next_learn_serial: u64,
     stock_click_releases: BTreeMap<String, StockClickRelease>,
@@ -984,12 +989,17 @@ struct ExecutionRequest {
     disposition: ExecutionDisposition,
 }
 struct Shared {
+    capture_pending: AtomicBool,
     execution_serial: AtomicU64,
     execution_revision: AtomicU64,
     execution_generation: AtomicU64,
     execution_runnable: AtomicBool,
     execution_ack: AtomicU64,
     execution_cancel: AtomicU64,
+    hosted_status: AtomicU32,
+    hosted_request: AtomicU64,
+    hosted_ack: AtomicU64,
+    hosted_status_incarnation: AtomicU64,
     desired: [AtomicU64; MAX_NODES],
     action_epochs: [AtomicU64; MAX_NODES],
     emergency_release_epochs: [AtomicU64; MAX_NODES],
@@ -1037,14 +1047,25 @@ impl Shared {
         (serial == self.execution_serial.load(Ordering::SeqCst)).then_some(request)
     }
     fn execution_available(&self) -> bool {
-        self.execution_request()
-            .is_some_and(|(_, generation, runnable)| {
-                runnable
-                    && self.execution_ack.load(Ordering::SeqCst) == generation
-                    && self
-                        .execution_request()
-                        .is_some_and(|(_, current, runnable)| current == generation && runnable)
-            })
+        let incarnation = self.hosted_request.load(Ordering::Acquire);
+        if incarnation != 0 {
+            return self.hosted_status.load(Ordering::Acquire) == 2
+                && self.hosted_status_incarnation.load(Ordering::Acquire) == incarnation
+                && self.hosted_ack.load(Ordering::Acquire) == incarnation
+                && self.hosted_request.load(Ordering::Acquire) == incarnation
+                && self.hosted_status.load(Ordering::Acquire) == 2;
+        }
+        matches!(self.hosted_status.load(Ordering::Acquire), 0 | 2)
+            && self
+                .execution_request()
+                .is_some_and(|(_, generation, runnable)| {
+                    runnable
+                        && self.execution_ack.load(Ordering::SeqCst) == generation
+                        && self
+                            .execution_request()
+                            .is_some_and(|(_, current, runnable)| current == generation && runnable)
+                })
+            && self.hosted_request.load(Ordering::Acquire) == 0
     }
     fn publish_frame(&self, frame: u64, publish: impl FnOnce()) {
         self.publish_serial.fetch_add(1, Ordering::SeqCst);
@@ -1053,8 +1074,23 @@ impl Shared {
         self.publish_serial.fetch_add(1, Ordering::SeqCst);
     }
 }
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[derive(Default)]
+struct HostedControlBinding {
+    revision: u64,
+    control: Option<Arc<openpatch::binary_host::control::HostedControl>>,
+}
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub(super) type HostedCaptureDispatch = (
+    openpatch::control::HostedProjectCaptureTicket,
+    std::sync::mpsc::SyncSender<Result<openpatch::control::HostedProjectCaptureReceipt, String>>,
+);
 pub(super) struct Performance {
     control: Mutex<Control>,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted_control: Mutex<HostedControlBinding>,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted_capture_dispatch: Mutex<Option<HostedCaptureDispatch>>,
     pub(super) diagnostics: Arc<Diagnostics>,
     shared: Arc<Shared>,
     rate: u32,
@@ -1091,8 +1127,17 @@ struct ScopeBinding {
     producer: ScopeProducer,
     next_frame: u64,
 }
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+struct HostedPlanPermission {
+    control: Arc<openpatch::binary_host::control::HostedControl>,
+    // Resolving this handle proves the granted external vertex belongs to the
+    // supplied engine, rather than to its omitted native state carrier.
+    _external: openpatch_core::ResolvedExternalModule,
+}
 pub(super) struct ModulePlan {
     execution: ExecutionRequest,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted_permission: Option<HostedPlanPermission>,
     midi_learns: Vec<MidiLearnBinding>,
     scopes: Vec<ScopeBinding>,
     scope_cursor: usize,
@@ -1116,6 +1161,8 @@ impl Default for ModulePlan {
     fn default() -> Self {
         Self {
             execution: ExecutionRequest::default(),
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_permission: None,
             scopes: Vec::new(),
             midi_learns: Vec::new(),
             scope_cursor: 0,
@@ -1493,8 +1540,179 @@ pub(super) struct EventReader {
 }
 
 impl Performance {
+    /// Register event admission for a fully prepared document. This does not
+    /// activate playback; Audio must still publish the matching hosted graph.
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn register_hosted_control(
+        &self,
+        ticket: &openpatch::control::HostLifecycleTicket,
+        hosted: Arc<openpatch::binary_host::control::HostedControl>,
+    ) -> Result<(), String> {
+        if self.shared.closed.load(Ordering::Acquire) {
+            return Err("audio backend is closed".into());
+        }
+        let openpatch::control::DocumentExecutionRequest::HostedDelayed(grant) = &ticket.execution
+        else {
+            return Err("hosted control registration requires a full-document grant".into());
+        };
+        if !grant.matches_document(&ticket.document, ticket.document_generation)?
+            || !hosted.accepts_document(&ticket.document, ticket.document_generation)?
+        {
+            return Err("hosted control registration does not match its document".into());
+        }
+        let mut native = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        if self.shared.closed.load(Ordering::Acquire) {
+            return Err("audio backend is closed".into());
+        }
+        let mut binding = self
+            .hosted_control
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if ticket.revision
+            < native
+                .revision
+                .max(native.execution.revision)
+                .max(binding.revision)
+        {
+            return Err("stale hosted control registration".into());
+        }
+        // The native carrier stays suspended even after the complete graph is
+        // authorized. Its ExecutionDisposition never grants hosted execution.
+        if native.execution.generation == 0
+            || native.execution.disposition != ExecutionDisposition::SuspendedUnresolved
+        {
+            self.set_execution(
+                &mut native,
+                ticket.revision,
+                ExecutionDisposition::SuspendedUnresolved,
+            );
+        }
+        binding.revision = ticket.revision;
+        if binding
+            .control
+            .as_ref()
+            .is_some_and(|old| Arc::ptr_eq(old, &hosted))
+        {
+            return Ok(());
+        }
+        let incarnation = hosted.fence().incarnation;
+        if let Some(old) = binding.control.replace(hosted) {
+            old.close();
+        }
+        self.shared.hosted_ack.store(0, Ordering::Release);
+        self.shared
+            .hosted_status_incarnation
+            .store(0, Ordering::Release);
+        self.shared.hosted_status.store(1, Ordering::Release);
+        self.shared
+            .hosted_request
+            .store(incarnation, Ordering::Release);
+        Ok(())
+    }
     pub(super) fn execution_available(&self) -> bool {
-        !self.shared.closed.load(Ordering::Acquire) && self.shared.execution_available()
+        if self.shared.closed.load(Ordering::Acquire)
+            || self.shared.capture_pending.load(Ordering::Acquire)
+            || !self.shared.execution_available()
+        {
+            return false;
+        }
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            let incarnation = self.shared.hosted_request.load(Ordering::Acquire);
+            if incarnation != 0 {
+                // Only control/UI readers call this method. The callback uses
+                // its private plan proof and atomic liveness without this lock.
+                return self
+                    .hosted_control
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .control
+                    .as_ref()
+                    .is_some_and(|hosted| {
+                        hosted.fence().incarnation == incarnation && hosted.is_open()
+                    })
+                    && self.shared.hosted_request.load(Ordering::Acquire) == incarnation
+                    && self.shared.execution_available();
+            }
+        }
+        self.shared.hosted_request.load(Ordering::Acquire) == 0
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn set_hosted_capture_pending(&self, pending: bool) {
+        self.shared
+            .capture_pending
+            .store(pending, Ordering::Release);
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn is_closed(&self) -> bool {
+        self.shared.closed.load(Ordering::Acquire)
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn hosted_binding_revision(&self) -> u64 {
+        self.hosted_control
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .revision
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn revoke_hosted_control(&self, revision: u64) -> bool {
+        let mut binding = self
+            .hosted_control
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if revision < binding.revision {
+            return false;
+        }
+        binding.revision = revision;
+        self.shared.hosted_request.store(0, Ordering::Release);
+        self.shared.hosted_ack.store(0, Ordering::Release);
+        self.shared
+            .hosted_status_incarnation
+            .store(0, Ordering::Release);
+        if let Some(hosted) = binding.control.take() {
+            hosted.close();
+        }
+        true
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn allow_native_sync(&self, revision: u64) -> bool {
+        let native = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        !self.shared.closed.load(Ordering::Acquire)
+            && revision >= native.revision
+            && revision >= native.execution.revision
+            && self.revoke_hosted_control(revision)
+    }
+    /// Control-thread equality stamp for native runtime intent. Authored
+    /// revision alone cannot distinguish an equal assignment from a hosted edit.
+    pub(super) fn native_intent_stamp(&self) -> Vec<u64> {
+        let control = self.control.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stamp = vec![control.native_intent_generation];
+        stamp.push(control.entries.len() as u64);
+        for entry in control.entries.values() {
+            stamp.extend([entry.slot as u64, entry.token, entry.action_epoch]);
+            stamp.extend(entry.parameter_epochs);
+        }
+        stamp.push(control.state_entries.len() as u64);
+        for entry in control.state_entries.values() {
+            stamp.extend([
+                entry.slot as u64,
+                entry.token,
+                entry.initialize_generation,
+                entry.saved_generation,
+                entry.sequence_load_epoch.revision,
+                entry.sequence_load_epoch.order as u64,
+            ]);
+            stamp.extend(entry.stock_field_generations);
+        }
+        stamp.push(control.cable_entries.len() as u64);
+        for entry in control.cable_entries.values() {
+            stamp.extend([entry.slot as u64, entry.token]);
+        }
+        stamp.push(control.midi_learns.len() as u64);
+        for entry in control.midi_learns.values() {
+            stamp.extend([entry.slot as u64, entry.token, entry.epoch]);
+        }
+        stamp
     }
     fn set_execution(
         &self,
@@ -1562,12 +1780,17 @@ impl Performance {
         let (queue, input) = RingBuffer::new(EVENT_CAPACITY);
         let (listen, listen_producer) = listen_capture::channel();
         let shared = Arc::new(Shared {
+            capture_pending: AtomicBool::new(false),
             execution_serial: AtomicU64::new(0),
             execution_revision: AtomicU64::new(0),
             execution_generation: AtomicU64::new(0),
             execution_runnable: AtomicBool::new(true),
             execution_ack: AtomicU64::new(0),
             execution_cancel: AtomicU64::new(0),
+            hosted_status: AtomicU32::new(0),
+            hosted_request: AtomicU64::new(0),
+            hosted_ack: AtomicU64::new(0),
+            hosted_status_incarnation: AtomicU64::new(0),
             desired: std::array::from_fn(|_| AtomicU64::new(0)),
             action_epochs: std::array::from_fn(|_| AtomicU64::new(0)),
             emergency_release_epochs: std::array::from_fn(|_| AtomicU64::new(0)),
@@ -1627,6 +1850,10 @@ impl Performance {
         };
         (
             Arc::new(Self {
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                hosted_control: Mutex::new(HostedControlBinding::default()),
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                hosted_capture_dispatch: Mutex::new(None),
                 control: Mutex::new(Control {
                     queue,
                     entries: BTreeMap::new(),
@@ -1636,6 +1863,7 @@ impl Performance {
                     revision: 0,
                     next_token: 1,
                     next_sequence: 1,
+                    native_intent_generation: 0,
                     midi_learns: BTreeMap::new(),
                     next_learn_serial: 1,
                     stock_click_releases: BTreeMap::new(),
@@ -1651,6 +1879,45 @@ impl Performance {
             reader,
             timing,
         )
+    }
+    /// Prepare observer/event bindings only after consuming the full-document
+    /// permission. A native plan cannot manufacture this private graph proof.
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn plan_hosted(
+        &self,
+        ticket: &openpatch::control::HostLifecycleTicket,
+        engine: &Engine,
+        hosted: Arc<openpatch::binary_host::control::HostedControl>,
+        proof: &openpatch::binary_host::graph::HostedCompilationProof,
+    ) -> Result<ModulePlan, String> {
+        let openpatch::control::DocumentExecutionRequest::HostedDelayed(grant) = &ticket.execution
+        else {
+            return Err("hosted plan requires a full-document execution grant".into());
+        };
+        let graph = grant.prepare(&ticket.document, ticket.document_generation)?;
+        if self.shared.closed.load(Ordering::Acquire)
+            || !hosted.accepts_document(&ticket.document, ticket.document_generation)?
+            || hosted.module_id() != graph.hosted_id()
+            || engine.sample_rate() != grant.profile().sample_rate_hz()
+        {
+            return Err("hosted plan control or engine does not match its document".into());
+        }
+        if !proof.validates(engine, &ticket.document, graph.hosted_id())? {
+            return Err("hosted plan engine does not match its full-document compilation".into());
+        }
+        let external = engine.resolve_external_module(graph.hosted_id())?;
+        if external.input_count() != 3
+            || external.output_count() != 1
+            || u32::from(external.input_presence()) != graph.input_mask()
+        {
+            return Err("hosted plan external boundary does not match its document".into());
+        }
+        let mut plan = self.plan(graph.native_patch(), engine, ticket.revision)?;
+        plan.hosted_permission = Some(HostedPlanPermission {
+            control: hosted,
+            _external: external,
+        });
+        Ok(plan)
     }
     pub(super) fn plan(
         &self,
@@ -1892,6 +2159,16 @@ impl Performance {
                 "sequence load target must be a receiving version-2 RackMCP sequencer"
             );
         }
+        if assignments
+            .values()
+            .any(|parameters| !parameters.is_empty())
+            || !sequence_loads.is_empty()
+        {
+            control.native_intent_generation = control
+                .native_intent_generation
+                .checked_add(1)
+                .expect("native intent generation exhausted");
+        }
         let assignment_epoch = assignments
             .values()
             .any(|parameters| !parameters.is_empty())
@@ -1905,7 +2182,10 @@ impl Performance {
                 .checked_add(1)
                 .expect("sequence load epoch exhausted")
         });
-        if control.execution.generation != 0 && revision > control.execution.revision {
+        if control.execution.generation != 0
+            && revision > control.execution.revision
+            && self.shared.hosted_request.load(Ordering::Acquire) == 0
+        {
             let disposition = control.execution.disposition;
             self.set_execution(&mut control, revision, disposition);
         }
@@ -2205,9 +2485,22 @@ impl Performance {
             .fetch_add(1, Ordering::Relaxed);
     }
     pub(super) fn close(&self) {
-        // Serialize against producer acceptance. This mutex never reaches audio.
+        // Keep the same native→hosted lock order as registration and snapshots.
+        // No registration can slip between clearing the binding and closing.
         let _control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         self.shared.closed.store(true, Ordering::Release);
+        self.shared.hosted_request.store(0, Ordering::Release);
+        self.shared.hosted_ack.store(0, Ordering::Release);
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if let Some(hosted) = self
+            .hosted_control
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .control
+            .take()
+        {
+            hosted.close();
+        }
         for mailbox in self.shared.midi_learns.iter() {
             let _ = mailbox.cancel_armed();
         }
@@ -2285,7 +2578,44 @@ impl Performance {
             .fetch_add(pending, Ordering::Relaxed);
     }
 }
+impl Performance {
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn take_hosted_capture_dispatch(&self) -> Option<HostedCaptureDispatch> {
+        self.hosted_capture_dispatch
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+    }
+}
 impl LiveModuleEvents for Performance {
+    fn hosted_execution_status(&self) -> Option<Value> {
+        let live = self.snapshot();
+        Some(
+            json!({"active":live["available"] == true && live["hosted_runtime"]["status"] == "running",
+            "runtime":live["hosted_runtime"], "controls":live["hosted_controls"]}),
+        )
+    }
+
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn request_hosted_project_capture(
+        &self,
+        ticket: openpatch::control::HostedProjectCaptureTicket,
+    ) -> Result<
+        std::sync::mpsc::Receiver<Result<openpatch::control::HostedProjectCaptureReceipt, String>>,
+        String,
+    > {
+        let mut pending = self
+            .hosted_capture_dispatch
+            .lock()
+            .map_err(|_| "capture dispatch poisoned")?;
+        if self.shared.closed.load(Ordering::Acquire) || pending.is_some() {
+            return Err("hosted capture dispatch is closed or already pending".into());
+        }
+        let (send, receive) = std::sync::mpsc::sync_channel(1);
+        *pending = Some((ticket, send));
+        Ok(receive)
+    }
+
     fn recall_random_capture(
         &self,
         id: &str,
@@ -2295,6 +2625,7 @@ impl LiveModuleEvents for Performance {
     ) -> Result<Value, String> {
         self.recall_capture_command(id, action, slot, revision)
     }
+
     fn start_listen_capture(
         &self,
         id: &str,
@@ -2364,12 +2695,31 @@ impl LiveModuleEvents for Performance {
     fn supports_document_execution(&self) -> bool {
         true
     }
+    fn requires_hosted_capture_barrier(&self) -> bool {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            self.hosted_control
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .control
+                .is_some()
+        }
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        false
+    }
     fn request_document_execution(&self, revision: u64, disposition: ExecutionDisposition) {
         let mut control = self
             .control
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        if !self.shared.closed.load(Ordering::Acquire) {
+        if !self.shared.closed.load(Ordering::Acquire)
+            && revision >= control.revision
+            && revision >= control.execution.revision
+        {
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            if !self.revoke_hosted_control(revision) {
+                return;
+            }
             self.set_execution(&mut control, revision, disposition);
         }
     }
@@ -2630,6 +2980,10 @@ impl LiveModuleEvents for Performance {
         }
     }
     fn sync_patch(&self, patch: &Patch, revision: u64) {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if !self.allow_native_sync(revision) {
+            return;
+        }
         self.sync_patch_intents(patch, revision, &BTreeMap::new(), &[]);
     }
     fn sync_patch_with_parameters(
@@ -2638,6 +2992,10 @@ impl LiveModuleEvents for Performance {
         revision: u64,
         assignments: &BTreeMap<String, BTreeMap<String, f32>>,
     ) {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if !self.allow_native_sync(revision) {
+            return;
+        }
         self.sync_patch_intents(patch, revision, assignments, &[]);
     }
     fn sync_patch_with_intents(
@@ -2647,7 +3005,103 @@ impl LiveModuleEvents for Performance {
         assignments: &BTreeMap<String, BTreeMap<String, f32>>,
         sequence_loads: &[String],
     ) {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if !self.allow_native_sync(revision) {
+            return;
+        }
         self.sync_patch_intents(patch, revision, assignments, sequence_loads);
+    }
+    fn reserve_hosted_parameters(
+        &self,
+        proposal: HostedEditProposal<'_>,
+    ) -> Result<Option<Box<dyn HostedEditAdmission>>, String> {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            let binding = self
+                .hosted_control
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if proposal.base_revision < binding.revision {
+                return Err("stale hosted edit admission".into());
+            }
+            let hosted = binding.control.clone();
+            drop(binding);
+            hosted
+                .map(|hosted| proposal.reserve_with_control(&hosted))
+                .transpose()
+        }
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        {
+            let _ = proposal;
+            Ok(None)
+        }
+    }
+    fn sync_document(&self, context: DocumentExecutionContext<'_>) {
+        self.sync_document_with_intents(context, &BTreeMap::new(), &[]);
+    }
+    fn sync_document_with_intents(
+        &self,
+        context: DocumentExecutionContext<'_>,
+        assignments: &BTreeMap<String, BTreeMap<String, f32>>,
+        sequence_loads: &[String],
+    ) {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            // Match the existing snapshot lock order. Check both publication
+            // floors before a stale document can invalidate a newer binding.
+            let mut native = self.control.lock().unwrap_or_else(|e| e.into_inner());
+            let mut binding = self
+                .hosted_control
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if context.revision
+                < native
+                    .revision
+                    .max(native.execution.revision)
+                    .max(binding.revision)
+            {
+                return;
+            }
+            binding.revision = context.revision;
+            if let Some(hosted) = binding.control.as_ref() {
+                let permitted = matches!(&context.request, openpatch::control::DocumentExecutionRequest::HostedDelayed(grant)
+                    if grant.matches_document(context.document, context.document_generation).unwrap_or(false))
+                    && hosted
+                        .accepts_document(context.document, context.document_generation)
+                        .unwrap_or(false);
+                if !permitted {
+                    self.shared.hosted_request.store(0, Ordering::Release);
+                    self.shared.hosted_ack.store(0, Ordering::Release);
+                    self.shared
+                        .hosted_status_incarnation
+                        .store(0, Ordering::Release);
+                    hosted.close();
+                    binding.control.take();
+                }
+            }
+            if context.fence_native {
+                let hosted_request = matches!(
+                    context.request,
+                    openpatch::control::DocumentExecutionRequest::HostedDelayed(_)
+                );
+                if !hosted_request
+                    || native.execution.generation == 0
+                    || native.execution.disposition != ExecutionDisposition::SuspendedUnresolved
+                {
+                    self.set_execution(&mut native, context.revision, context.native_disposition());
+                }
+            }
+        }
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        if context.fence_native {
+            self.request_document_execution(context.revision, context.native_disposition());
+        }
+        self.sync_patch_intents(
+            context.native_carrier,
+            context.revision,
+            assignments,
+            sequence_loads,
+        );
     }
     fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String> {
         self.enqueue_guarded(id, action, None)
@@ -2748,9 +3202,22 @@ impl LiveModuleEvents for Performance {
                 }),
                 "controls":actual.and_then(|snapshot|snapshot.controls),"lights":actual.and_then(|snapshot|snapshot.lights).and_then(module_lights_value)}))
         }).collect();
-        json!({"audio_timing":self.diagnostics.snapshot(),"available":available,"unavailable_reason":(!available).then_some(if shared.closed.load(Ordering::Acquire) { "audio_device_closed" } else { "document_execution_suspended_or_pending" }),"execution":{
+        let hosted_status = shared.hosted_status.load(Ordering::Acquire);
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let hosted_controls = self
+            .hosted_control
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .control
+            .as_ref()
+            .map(|hosted| hosted.snapshot());
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        let hosted_controls: Option<Value> = None;
+        json!({"hosted_controls":hosted_controls,"hosted_runtime":{"status":match hosted_status {0=>"not_present",1=>"priming",2=>"running",_=>"suspended_fault"},"fault_code":(hosted_status>=16).then_some(hosted_status),"reason":match hosted_status {16=>Some("unsupported_callback_profile"),17=>Some("external_boundary_rejected"),18=>Some("sequence_mismatch"),19=>Some("frame_counter_exhausted"),20=>Some("invalid_parameter_event"),32=>Some("companion_unavailable"),33=>Some("companion_fault"),34=>Some("invalid_transport_input"),35=>Some("transport_queue_full"),36=>Some("missed_deadline"),37=>Some("invalid_transport_output"),38=>Some("stale_transport_output"),39=>Some("transport_sequence_exhausted"),40=>Some("hosted_control_failed"),_=>None}},"audio_timing":self.diagnostics.snapshot(),"available":available,"unavailable_reason":(!available).then_some(if shared.closed.load(Ordering::Acquire) { "audio_device_closed" } else { "document_execution_suspended_or_pending" }),"execution":{
             "requested_revision":if control.execution.generation == 0 { control.revision } else { control.execution.revision },
             "generation":control.execution.generation,"disposition":control.execution.disposition,
+            "hosted_requested_incarnation":shared.hosted_request.load(Ordering::Acquire),
+            "hosted_acknowledged_incarnation":shared.hosted_ack.load(Ordering::Acquire),
             "acknowledged":available},"coherent":coherent_frame.is_some(),"frame":coherent_frame,"modules":modules,"revision":control.revision,"emergency_release_requests":shared.emergency_release_requests.load(Ordering::Relaxed),"emergency_release_applied":shared.emergency_release_applied.load(Ordering::Relaxed),"queued":queued,"applied":applied,"dropped":dropped,
             "pending":queued.saturating_sub(applied).saturating_sub(dropped),"backpressure":shared.backpressure.load(Ordering::Relaxed),
             "rejected":shared.rejected.load(Ordering::Relaxed),"expired":shared.expired.load(Ordering::Relaxed),"obsolete":shared.obsolete.load(Ordering::Relaxed),
@@ -2795,6 +3262,93 @@ impl EventReader {
             engine.process_audio_block(output);
         }
     }
+    pub(super) fn clear_hosted_status(&self) {
+        self.shared.hosted_status.store(0, Ordering::Release);
+        self.shared
+            .hosted_status_incarnation
+            .store(0, Ordering::Release);
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn fail_hosted_execution(&self, fault: openpatch::binary_host::runner::RunnerFault) {
+        use openpatch::binary_host::{runner::RunnerFault, Fault};
+        let code = match fault {
+            RunnerFault::UnsupportedProfile => 16,
+            RunnerFault::Boundary => 17,
+            RunnerFault::Sequence => 18,
+            RunnerFault::FrameOverflow => 19,
+            RunnerFault::InvalidEvent => 20,
+            RunnerFault::Control(_) => 40,
+            RunnerFault::Transport(fault) => match fault {
+                Fault::CompanionUnavailable => 32,
+                Fault::CompanionFault(_) => 33,
+                Fault::InvalidInput => 34,
+                Fault::QueueFull => 35,
+                Fault::MissedDeadline => 36,
+                Fault::InvalidOutput => 37,
+                Fault::StaleOutput => 38,
+                Fault::SequenceExhausted => 39,
+            },
+        };
+        self.shared.hosted_status.store(code, Ordering::Release);
+    }
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    pub(super) fn process_audio_hosted(
+        &mut self,
+        engine: &mut Engine,
+        plan: &ModulePlan,
+        hosted: &mut openpatch::binary_host::runner::HostedRunner,
+        output: &mut [[f32; 2]],
+        mut taps: Option<ScopeCaptureBuffers<'_>>,
+    ) -> Result<(), openpatch::binary_host::runner::RunnerFault> {
+        let shared = &self.shared;
+        let handle = self.listen.prepare(|target| {
+            let binding = plan.bindings.get(target.slot).copied().flatten()?;
+            (binding.token == target.token
+                && binding.kind == ModuleKind::RackMcpListen
+                && shared.desired[target.slot].load(Ordering::Acquire) == target.token)
+                .then_some(binding.handle)
+        });
+        if let Some(status) = handle.and_then(|handle| engine.listen_status(handle)) {
+            self.listen.observe_status(status);
+        }
+        self.shared
+            .hosted_status
+            .store(if hosted.is_priming() { 1 } else { 2 }, Ordering::Release);
+        self.shared.hosted_status_incarnation.store(
+            plan.hosted_permission
+                .as_ref()
+                .map_or(0, |proof| proof.control.fence().incarnation),
+            Ordering::Release,
+        );
+        for (index, audio) in output.iter_mut().enumerate() {
+            let listen = handle.map(|handle| {
+                (
+                    handle,
+                    &mut self.listen as &mut dyn openpatch_core::ListenSink,
+                )
+            });
+            *audio = if let Some((taps, samples)) = taps.as_mut() {
+                hosted.process_frame_with_taps_and_listen(
+                    engine,
+                    taps,
+                    &mut samples[index],
+                    listen,
+                )?
+            } else {
+                hosted.process_frame_with_taps_and_listen(engine, &[], &mut [], listen)?
+            };
+        }
+        self.shared
+            .hosted_status
+            .store(if hosted.is_priming() { 1 } else { 2 }, Ordering::Release);
+        self.shared.hosted_status_incarnation.store(
+            plan.hosted_permission
+                .as_ref()
+                .map_or(0, |proof| proof.control.fence().incarnation),
+            Ordering::Release,
+        );
+        Ok(())
+    }
     pub(super) fn invalidate_listen(&self) {
         self.listen.invalidate();
     }
@@ -2803,23 +3357,49 @@ impl EventReader {
         self.shared.execution_cancel.load(Ordering::SeqCst)
     }
     pub(super) fn document_suspended(&self) -> bool {
-        self.shared
-            .execution_request()
-            .is_some_and(|(_, _, runnable)| !runnable)
+        self.shared.closed.load(Ordering::Acquire)
+            || self.shared.hosted_status.load(Ordering::Acquire) >= 16
+            || (self.shared.hosted_request.load(Ordering::Acquire) == 0
+                && self
+                    .shared
+                    .execution_request()
+                    .is_some_and(|(_, _, runnable)| !runnable))
     }
     pub(super) fn execution_permitted(&self, plan: &ModulePlan) -> bool {
-        self.shared
-            .execution_request()
-            .is_some_and(|(revision, generation, runnable)| {
-                runnable
-                    && (generation == 0
-                        || (plan.execution.generation == generation
-                            && plan.execution.revision == revision
-                            && plan.execution.disposition.is_runnable()))
-            })
+        if self.shared.closed.load(Ordering::Acquire)
+            || self.shared.hosted_status.load(Ordering::Acquire) >= 16
+        {
+            return false;
+        }
+        let incarnation = self.shared.hosted_request.load(Ordering::Acquire);
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if let Some(proof) = &plan.hosted_permission {
+            return incarnation != 0
+                && proof.control.fence().incarnation == incarnation
+                && proof.control.is_open()
+                && self.shared.hosted_request.load(Ordering::Acquire) == incarnation;
+        }
+        incarnation == 0
+            && self
+                .shared
+                .execution_request()
+                .is_some_and(|(revision, generation, runnable)| {
+                    runnable
+                        && (generation == 0
+                            || (plan.execution.generation == generation
+                                && plan.execution.revision == revision
+                                && plan.execution.disposition.is_runnable()))
+                })
     }
     pub(super) fn acknowledge_execution(&self, plan: &ModulePlan) {
         if self.execution_permitted(plan) {
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            if let Some(proof) = &plan.hosted_permission {
+                self.shared
+                    .hosted_ack
+                    .store(proof.control.fence().incarnation, Ordering::Release);
+                return;
+            }
             self.shared
                 .execution_ack
                 .store(plan.execution.generation, Ordering::SeqCst);
@@ -3127,6 +3707,8 @@ mod midi_cc_performance_tests;
 mod tests {
     use super::*;
 
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    include!("performance_hosted_activation_tests.rs");
     include!("split_performance_tests.rs");
     include!("listen_performance_tests.rs");
     include!("stock_lfo_performance_tests.rs");

@@ -23,7 +23,7 @@ source-reference/build evidence were retained in OpenPatch Archive.
 | Work | Review location | Status |
 | --- | --- | --- |
 | Recall Random | [#37](https://github.com/dexterlabs1/openpatch/pull/37), `work/recall-random` | Native Engine, six weighted slots, revision-fenced capture, shared panel/telemetry/MCP/history/presets/reopen and callback no-heap checks implemented. Genuine source comparison passes 26 cases / 288,485 observations. Final macOS milestone CI remains the merge gate. |
-| Experimental Rack binary host | [#38](https://github.com/dexterlabs1/openpatch/pull/38), `work/rack-binary-feasibility` | Current main integrated; explicit activation/shared controls, coherent MCP save and native/Scope continuity implemented. Public real-binary workflow and sustained physical Mac output-device tests pass. Final native-window review and macOS CI pending. Qualified for one pinned OFFSET and fixed audio profile; wider compatibility remains separate. |
+| Experimental Rack binary host | [#38](https://github.com/dexterlabs1/openpatch/pull/38), `work/rack-binary-feasibility` | Current main and Recall candidate integrated; explicit activation/shared controls, coherent MCP save and native/Scope continuity implemented. Public real-binary workflow and sustained physical Mac output-device tests pass. Prior device receipt keeps its source/binary pins; integrated device, native-window review and macOS CI pending. One pinned OFFSET and fixed audio profile; wider compatibility remains separate. |
 
 Both candidates preserve the installed 0.3.0 build. Fourteen further creative
 instruments and the larger parity roadmap remain; MIDI/live performance stay

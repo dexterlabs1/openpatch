@@ -2228,3 +2228,51 @@ fn rhythm_terrain_first_scans_taps_fifo_lights_initialize_and_handoff_use_no_hea
         .iter()
         .all(|p| p.channels == 1 && matches!(p.values[0], 0.0 | 5.0)));
 }
+
+#[test]
+fn same_external_executor_continues_polyphony_and_cable_frames_without_heap() {
+    use openpatch_core::{Engine, ExternalFrameIo, ExternalModuleSpec, WavePreparationCache};
+    let native = patch(vec![node("sink", "gain", &[("gain", 0.5)])], vec![], "sink");
+    let banks = native
+        .prepare_wave_banks(&WavePreparationCache::default())
+        .unwrap();
+    let specs = [ExternalModuleSpec {
+        id: "binary".into(),
+        inputs: vec![],
+        outputs: vec!["out".into()],
+    }];
+    let routes = [cable("binary", "out", "sink", "signal")];
+    let compile = || {
+        Engine::compile_with_externals(&native, &specs, &routes, Some("sink"), "out", &banks)
+            .unwrap()
+    };
+    let mut old = compile();
+    let mut next = compile();
+    let old_handle = old.resolve_external_module("binary").unwrap();
+    let handle = next.resolve_external_module("binary").unwrap();
+    let taps = [Some(next.resolve_tap("sink", "out", 15).unwrap())];
+    let mut observed = [openpatch_core::TapSample::default(); 1];
+    let mut io = [ExternalFrameIo::new(old_handle)];
+    io[0].outputs[0] = PortFrame {
+        channels: 16,
+        values: [4.; 16],
+    };
+    old.process_audio_frame_with_externals(&mut io).unwrap();
+    MEMORY_OPERATIONS.with(|count| count.set(0));
+    TRACK_MEMORY.with(|active| active.set(true));
+    next.handoff_state_from(&mut old);
+    let continued = next.continue_external_from(&old, handle, old_handle);
+    io[0].handle = handle;
+    let audio = next.process_audio_frame_with_externals_taps_and_listen(
+        &mut io,
+        &taps,
+        &mut observed,
+        None,
+    );
+    TRACK_MEMORY.with(|active| active.set(false));
+    assert!(continued);
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert_eq!(audio.unwrap(), [2.; 2]); // Existing monitor selects voice zero.
+    assert!(observed[0].active);
+    assert_eq!(observed[0].value, 2.);
+}

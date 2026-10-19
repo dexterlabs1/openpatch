@@ -346,6 +346,7 @@ fn generic_parameter_hardware(
         || atlas_voice(kind)
         || atlas_studio_effect(kind)
         || atlas_creative_kind(kind)
+        || matches!(kind, "tidal_functions" | "segment_garden")
         || matches!(
             kind,
             "tidal_functions"
@@ -5268,6 +5269,7 @@ impl Rack {
                         || atlas_voice(&node.kind)
                         || atlas_studio_effect(&node.kind)
                         || atlas_creative_kind(&node.kind)
+                        || matches!(node.kind.as_str(), "tidal_functions" | "segment_garden")
                         || matches!(
                             node.kind.as_str(),
                             "tidal_functions"
@@ -5459,6 +5461,7 @@ impl Rack {
                     || atlas_voice(&node.kind)
                     || atlas_studio_effect(&node.kind)
                     || atlas_creative_kind(&node.kind)
+                    || matches!(node.kind.as_str(), "tidal_functions" | "segment_garden")
                     || matches!(
                         node.kind.as_str(),
                         "tidal_functions"
@@ -6103,8 +6106,16 @@ impl Rack {
             }
         }
         if !matches!(mode, RenderMode::Preview) {
-            pointer_on_module |=
-                self.paint_unresolved_panels(ui, &painter, canvas, &mut inputs, &mut outputs);
+            pointer_on_module |= self.paint_unresolved_panels(
+                ui,
+                &painter,
+                canvas,
+                &mut inputs,
+                &mut outputs,
+                revision,
+                interactive,
+                &mut action,
+            );
         }
         self.lighting.finish(&painter, lighting_start);
         if mode.is_interactive() {
@@ -12304,6 +12315,9 @@ mod tests {
     }
     mod cable_presentation_ui_tests {
         include!("cable_presentation_ui_tests.rs");
+    }
+    mod hosted_panel_tests {
+        include!("hosted_panel_tests.rs");
     }
     use super::*;
 

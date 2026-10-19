@@ -6,15 +6,16 @@ use openpatch_core::{
     MAX_PATCH_FILE_BYTES,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::Value;
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 mod automation;
+pub mod hosted;
 pub use automation::{AutomationOmissionReason, OmittedAutomation};
 
-pub const DOCUMENT_VERSION: u32 = 2;
+pub const DOCUMENT_VERSION: u32 = 3;
 const MAX_SOURCE_BLOB_BYTES: usize = 16 * 1024 * 1024;
 const MAX_SOURCE_BYTES: usize = 32 * 1024 * 1024;
 
@@ -129,19 +130,28 @@ pub enum DocumentNode {
         /// Only observed incident ports; this is not an invented plugin manifest.
         ports: Vec<ObservedPort>,
     },
+    Hosted {
+        id: String,
+        module: hosted::HostedModule,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<SourceModule>,
+    },
 }
 impl DocumentNode {
     pub fn id(&self) -> &str {
         match self {
             Self::Native { node, .. } => &node.id,
-            Self::Unresolved { id, .. } => id,
+            Self::Unresolved { id, .. } | Self::Hosted { id, .. } => id,
         }
     }
     pub fn source(&self) -> Option<&SourceModule> {
         match self {
-            Self::Native { source, .. } => source.as_ref(),
+            Self::Native { source, .. } | Self::Hosted { source, .. } => source.as_ref(),
             Self::Unresolved { source, .. } => Some(source),
         }
+    }
+    pub fn is_native(&self) -> bool {
+        matches!(self, Self::Native { .. })
     }
 }
 
@@ -370,7 +380,20 @@ impl ProjectDocument {
                     debug_assert_eq!((old.format.as_str(), old.version), ("openpatch-project", 1));
                     Self::from_patch(old.patch, old.layout)?
                 }
-                Some(2) => serde_json::from_value(value).map_err(|e| e.to_string())?,
+                Some(2) => {
+                    let mut old: Self = serde_json::from_value(value).map_err(|e| e.to_string())?;
+                    if old
+                        .graph
+                        .nodes
+                        .iter()
+                        .any(|node| matches!(node, DocumentNode::Hosted { .. }))
+                    {
+                        return Err("hosted modules require project document version 3".into());
+                    }
+                    old.version = DOCUMENT_VERSION;
+                    old
+                }
+                Some(3) => serde_json::from_value(value).map_err(|e| e.to_string())?,
                 _ => return Err("unsupported project document version".into()),
             }
         } else {
@@ -444,7 +467,13 @@ impl ProjectDocument {
         serde_json::json!({
             "format":"openpatch-project-reference","version":self.version,
             "graph":{"version":self.graph.version,"sample_rate":self.graph.sample_rate,
-                "nodes":self.graph.nodes,"cables":self.graph.cables,
+                "nodes":self.graph.nodes.iter().map(|node|match node {
+                    DocumentNode::Hosted{id,module,source}=>json!({"type":"hosted","id":id,"module":{
+                        "schema_version":module.schema_version,"identity":module.identity,"ports":module.ports,
+                        "state_reference":{"sha256":module.state.id(),"bytes":module.state.encoded_len()}
+                    },"source":source}),
+                    _=>json!(node),
+                }).collect::<Vec<_>>(),"cables":self.graph.cables,
                 "output":self.graph.output,"output_port":self.graph.output_port,"assets":assets},
             "layout":self.layout,"sources":sources,"source_blobs":blobs
         })
@@ -480,6 +509,7 @@ impl ProjectDocument {
             }
         }
         let mut nodes = BTreeMap::new();
+        let mut hosted_bytes = 0usize;
         for node in &self.graph.nodes {
             validate_id(node.id())?;
             if nodes.insert(node.id(), node).is_some() {
@@ -487,8 +517,17 @@ impl ProjectDocument {
             }
             if let Some(source) = node.source() {
                 self.source_module(source)?;
-                if matches!(node, DocumentNode::Native { .. }) && source.mapping.is_none() {
-                    return Err("native source module needs an explicit mapping".into());
+                if matches!(
+                    node,
+                    DocumentNode::Native { .. } | DocumentNode::Hosted { .. }
+                ) && source.mapping.is_none()
+                {
+                    return Err(if node.is_native() {
+                        "native source module needs an explicit mapping"
+                    } else {
+                        "hosted source module needs an explicit mapping"
+                    }
+                    .into());
                 }
                 if let Some(mapping) = &source.mapping {
                     if mapping.id.is_empty() || mapping.version == 0 {
@@ -503,6 +542,15 @@ impl ProjectDocument {
                 let unique: BTreeSet<_> = ports.iter().map(|p| (p.direction, p.index)).collect();
                 if unique.len() != ports.len() || ports.len() > MAX_CABLES * 2 {
                     return Err("duplicate or excessive observed source ports".into());
+                }
+            }
+            if let DocumentNode::Hosted { module, .. } = node {
+                module.validate_structure()?;
+                hosted_bytes = hosted_bytes
+                    .checked_add(module.state.encoded_len())
+                    .ok_or("hosted state byte budget overflow")?;
+                if hosted_bytes > MAX_SOURCE_BYTES {
+                    return Err("hosted state exceeds 32 MiB document budget".into());
                 }
             }
         }
@@ -530,6 +578,15 @@ impl ProjectDocument {
                         .any(|p| p.direction == direction && p.key() == *port)
                     {
                         return Err("cable references an unobserved source port".into());
+                    }
+                }
+                if let DocumentNode::Hosted { module, .. } = node {
+                    if !module
+                        .ports
+                        .iter()
+                        .any(|p| p.direction == direction && p.key == *port)
+                    {
+                        return Err("cable references an undeclared hosted port".into());
                     }
                 }
             }
@@ -626,7 +683,7 @@ impl ProjectDocument {
         for node in &candidate.nodes {
             if matches!(
                 original_nodes.get(node.id.as_str()),
-                Some(DocumentNode::Unresolved { .. })
+                Some(DocumentNode::Unresolved { .. } | DocumentNode::Hosted { .. })
             ) {
                 return Err("native module ID collides with an unresolved module".into());
             }
@@ -696,7 +753,7 @@ impl ProjectDocument {
             &self.graph.nodes,
             native_nodes,
             |node| node.id().to_owned(),
-            |node| matches!(node, DocumentNode::Unresolved { .. }),
+            |node| !node.is_native(),
         );
         // Retain opaque routes only while both endpoints survive. Keep their
         // position among native routes without changing candidate DSP ordering.
@@ -741,7 +798,9 @@ impl ProjectDocument {
             .nodes
             .iter()
             .filter_map(|node| match node {
-                DocumentNode::Unresolved { id, .. } => Some(id.clone()),
+                DocumentNode::Unresolved { id, .. } | DocumentNode::Hosted { id, .. } => {
+                    Some(id.clone())
+                }
                 _ => None,
             })
             .collect();

@@ -46,6 +46,12 @@ impl SequenceOwnership {
         }
     }
 
+    pub fn extend_non_writers(&mut self, count: usize) {
+        self.writer_ids.resize(count, None);
+        self.slots.resize(count, [None; 8]);
+        self.acquire.resize(count, false);
+    }
+
     pub fn slot(&self, module: &str, parameter: &str) -> Option<usize> {
         self.entries
             .binary_search_by(|entry| {

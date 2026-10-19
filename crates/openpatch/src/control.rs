@@ -15,6 +15,8 @@ mod document_tests;
 #[cfg(test)]
 mod frame_scene_tests;
 #[cfg(test)]
+mod hosted_document_tests;
+#[cfg(test)]
 mod rack264_import_tests;
 mod rack_import;
 use crate::project_document::{
@@ -22,12 +24,23 @@ use crate::project_document::{
 };
 pub use document::{LayoutIntent, LayoutOrigin, ProjectDocumentSnapshot};
 mod host_lifecycle;
+mod hosted_events;
+pub use hosted_events::{HostedEditAdmission, HostedEditProposal, HostedParameterAssignment};
 #[cfg(test)]
 mod host_lifecycle_tests;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+mod hosted_capture;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+mod hosted_execution;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub use hosted_capture::{HostedProjectCaptureReceipt, HostedProjectCaptureTicket};
 #[cfg(test)]
 mod project_layout_tests;
 #[doc(hidden)]
-pub use host_lifecycle::{HostLifecycleDelta, HostLifecycleTicket, HostModuleLifecycleDelta};
+pub use host_lifecycle::{
+    DocumentExecutionContext, DocumentExecutionRequest, HostLifecycleDelta, HostLifecycleTicket,
+    HostModuleLifecycleDelta,
+};
 mod layout_history;
 mod midi_cc;
 #[cfg(test)]
@@ -178,6 +191,58 @@ impl MidiLearnReceipt {
 pub trait LiveModuleEvents: Send + Sync {
     fn trigger(&self, id: &str, action: ModuleAction) -> Result<Value, String>;
     fn snapshot(&self) -> Value;
+    /// Reserve live capacity before changing authored history. None means this
+    /// backend has no active hosted executor; the edit remains authored-only.
+    fn reserve_hosted_parameters(
+        &self,
+        _proposal: HostedEditProposal<'_>,
+    ) -> Result<Option<Box<dyn HostedEditAdmission>>, String> {
+        Ok(None)
+    }
+
+    /// Actual hosted execution publication, when implemented by this backend.
+    fn hosted_execution_status(&self) -> Option<Value> {
+        None
+    }
+
+    /// Enqueue a quiescent capture for the application's control thread. The
+    /// receiving MCP worker waits without holding Session or touching audio.
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn request_hosted_project_capture(
+        &self,
+        _ticket: HostedProjectCaptureTicket,
+    ) -> Result<std::sync::mpsc::Receiver<Result<HostedProjectCaptureReceipt, String>>, String>
+    {
+        Err("live hosted capture is not dispatched by this backend".into())
+    }
+
+    /// Attach an existing snapshot without inventing an authored load intent.
+    fn sync_document(&self, context: DocumentExecutionContext<'_>) {
+        if context.fence_native {
+            self.request_document_execution(context.revision, context.native_disposition());
+        }
+        self.sync_patch(context.native_carrier, context.revision);
+    }
+
+    /// One full-document synchronization boundary. Legacy/native backends use
+    /// the same gate and native intents as before; a host-aware backend can
+    /// validate its binding before accepting any native projection.
+    fn sync_document_with_intents(
+        &self,
+        context: DocumentExecutionContext<'_>,
+        assignments: &BTreeMap<String, BTreeMap<String, f32>>,
+        sequence_loads: &[String],
+    ) {
+        if context.fence_native {
+            self.request_document_execution(context.revision, context.native_disposition());
+        }
+        self.sync_patch_with_intents(
+            context.native_carrier,
+            context.revision,
+            assignments,
+            sequence_loads,
+        );
+    }
     /// Atomically queue at most two source sequencer requests. Data identifies
     /// the pattern ordering; the callback must reject a superseded identity.
     fn rackmcp_transport(
@@ -334,6 +399,11 @@ pub trait LiveModuleEvents: Send + Sync {
     fn supports_document_execution(&self) -> bool {
         false
     }
+    /// An application host must supply a coherent native/child cut before a
+    /// playing hosted document can be represented as a live project snapshot.
+    fn requires_hosted_capture_barrier(&self) -> bool {
+        false
+    }
     /// Called before sync_patch at the same revision. Backends fence pending
     /// and acknowledged plans; legacy backends accept native-only documents.
     fn request_document_execution(
@@ -397,6 +467,8 @@ pub struct Session {
     last_operation: Option<Value>,
     playback_mode: PlaybackMode,
     document_execution: bool,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted_execution_grant: Option<crate::binary_host::execution::HostedExecutionGrant>,
     patch: Patch,
     wave_preparation_cache: WavePreparationCache,
     prepared_wave_banks: Arc<PreparedWaveBanks>,
@@ -432,6 +504,8 @@ impl Clone for Session {
             last_operation: self.last_operation.clone(),
             playback_mode: self.playback_mode,
             document_execution: self.document_execution,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_execution_grant: None,
             patch: self.patch.clone(),
             wave_preparation_cache: self.wave_preparation_cache.clone(),
             prepared_wave_banks: self.prepared_wave_banks.clone(),
@@ -470,6 +544,8 @@ struct HistoryEntry {
     sequence_loads: Vec<String>,
     restore_parameters: parameters::ParameterValues,
     return_parameters: parameters::ParameterValues,
+    restore_hosted_parameters: Vec<HostedParameterAssignment>,
+    return_hosted_parameters: Vec<HostedParameterAssignment>,
     document: ProjectDocument,
     layout_origin: Option<LayoutOrigin>,
     playback_mode: PlaybackMode,
@@ -658,9 +734,37 @@ pub(crate) fn execute_shared_authorized(
     live.reconcile_midi_cc_learn()?;
     if name == "save_document" {
         validate_arguments(&tools(), name, &args)?;
-        let captured = live.capture_project_document(expected_revision(&args)?)?;
         let filename = string(&args, "filename")?;
         let path = live.file(filename, ".json")?;
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if live.requires_hosted_project_capture() {
+            let ticket = live.begin_hosted_project_capture(expected_revision(&args)?)?;
+            let receiver = live
+                .live_module_events
+                .as_ref()
+                .unwrap()
+                .request_hosted_project_capture(ticket.clone())?;
+            drop(live);
+            let result = (|| {
+                let receipt = receiver
+                    .recv_timeout(std::time::Duration::from_secs(12))
+                    .map_err(|_| {
+                        "hosted save timed out or its audio backend closed".to_string()
+                    })??;
+                let live = session.lock().map_err(|_| "session lock poisoned")?;
+                check_transport_authorization(authorization)?;
+                let captured = live
+                    .complete_hosted_project_capture(&ticket, receipt)?
+                    .snapshot;
+                drop(live);
+                document::write_document_snapshot(&path, filename, captured)
+            })();
+            if let Ok(mut live) = session.lock() {
+                live.record_operation(name, authorization.is_some(), &result);
+            }
+            return result;
+        }
+        let captured = live.capture_project_document(expected_revision(&args)?)?;
         drop(live);
         let result = document::write_document_snapshot(&path, filename, captured);
         if let Ok(mut live) = session.lock() {
@@ -752,6 +856,8 @@ impl Session {
             last_operation: None,
             playback_mode: PlaybackMode::Exact,
             document_execution: false,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_execution_grant: None,
             patch,
             wave_preparation_cache,
             prepared_wave_banks,
@@ -786,10 +892,7 @@ impl Session {
         self.reconcile_midi_cc_learn()?;
         self.prepare_midi_cc_edit(&self.midi_cc_ids())?;
         if let Some(backend) = &backend {
-            if self.document_execution {
-                backend.request_document_execution(self.revision, self.execution_disposition());
-            }
-            backend.sync_patch(&self.patch, self.revision);
+            backend.sync_document(self.document_execution_context());
         }
         let same_backend = match (&self.live_module_events, &backend) {
             (Some(old), Some(new)) => Arc::ptr_eq(old, new),
@@ -813,9 +916,6 @@ impl Session {
         sequence_loads: &[String],
     ) {
         if let Some(backend) = &self.live_module_events {
-            if self.document_execution {
-                backend.request_document_execution(self.revision, self.execution_disposition());
-            }
             let sequence_loads = sequence_loads
                 .iter()
                 .filter(|id| {
@@ -826,9 +926,8 @@ impl Session {
                 })
                 .cloned()
                 .collect::<Vec<_>>();
-            backend.sync_patch_with_intents(
-                &self.patch,
-                self.revision,
+            backend.sync_document_with_intents(
+                self.document_execution_context(),
                 assignments,
                 &sequence_loads,
             );
@@ -976,6 +1075,7 @@ impl Session {
         candidate.compile_with_wave_banks(&prepared)?;
         let parameter_effects = parameters::for_commit(self, &mut candidate, effects)?;
         let document = self.document_after_edit(&candidate, effects)?;
+        let hosted_effects = hosted_events::for_commit(&self.document, &document, effects)?;
         let needs_layout = self.layout_host_attached
             && !prepared_layout
             && (self.layout_pending
@@ -998,6 +1098,11 @@ impl Session {
             self.live_module_events.as_deref(),
         )?;
         let revision = self.revision.checked_add(1).ok_or("revision exhausted")?;
+        let hosted_admission = self.reserve_hosted_edit(
+            &document,
+            &hosted_effects.after,
+            !effects.retired.is_empty() || effects.next_document_generation.is_some(),
+        )?;
         if !effects.learn_reconciliation {
             self.prepare_midi_cc_edit(&self.midi_cc_conflicts(&candidate, effects))?;
         }
@@ -1036,11 +1141,22 @@ impl Session {
                         &parameter_effects.before,
                     )
                     && parameters::same_coverage(&entry.return_parameters, &parameter_effects.after)
+                    && hosted_events::same_coverage(
+                        &entry.return_hosted_parameters,
+                        &hosted_effects.after,
+                    )
                     && entry
                         .release_controls
                         .iter()
                         .eq(effects.release_controls.iter())
             });
+        // A load's generation is part of the same publication as its document.
+        // Do this after fallible preflight, before history or backend publication.
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let hosted_grant = self.grant_after_edit(&document, effects);
+        if let Some(generation) = effects.next_document_generation {
+            self.project_save.begin_document(generation)?;
+        }
         if merge_group {
             self.patch = candidate;
             self.document = document;
@@ -1050,6 +1166,7 @@ impl Session {
                 entry
                     .return_parameters
                     .extend(parameter_effects.after.clone());
+                entry.return_hosted_parameters = hosted_effects.after.clone();
                 entry.return_lifecycle.append(&forward_lifecycle);
                 entry.restore_lifecycle = reverse_lifecycle
                     .clone()
@@ -1063,6 +1180,8 @@ impl Session {
                 sequence_loads: effects.sequence_loads.iter().rev().cloned().collect(),
                 restore_parameters: parameter_effects.before.clone(),
                 return_parameters: parameter_effects.after.clone(),
+                restore_hosted_parameters: hosted_effects.before.clone(),
+                return_hosted_parameters: hosted_effects.after.clone(),
                 document: std::mem::replace(&mut self.document, document),
                 layout_origin: self.layout_origin,
                 playback_mode: std::mem::replace(&mut self.playback_mode, playback_mode),
@@ -1082,6 +1201,13 @@ impl Session {
         }
         self.document_execution |=
             self.has_source_document() || self.playback_mode == PlaybackMode::Partial;
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            if self.hosted_execution_grant.is_some() && hosted_grant.is_none() {
+                self.host_lifecycle.supersede_execution();
+            }
+            self.hosted_execution_grant = hosted_grant;
+        }
         self.prepared_wave_banks = prepared;
         self.layout_generation = layout_generation;
         self.layout_pending = needs_layout;
@@ -1092,6 +1218,9 @@ impl Session {
         self.redo.clear();
         self.prune_history_assets();
         self.revision = revision;
+        if let Some(admission) = hosted_admission {
+            admission.publish(revision);
+        }
         self.host_lifecycle.tail.append(&forward_lifecycle);
         self.host_lifecycle.prune(&self.patch);
         self.record_layout_placements(&effects.placements, &effects.retired);
@@ -1287,6 +1416,13 @@ impl Session {
                 .prepare_wave_banks(&self.wave_preparation_cache)?,
         };
         target.patch.compile_with_wave_banks(&prepared)?;
+        let hosted_admission = self.reserve_hosted_edit(
+            &target.document,
+            &target.restore_hosted_parameters,
+            !target.retired_modules.is_empty(),
+        )?;
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let hosted_grant = self.grant_after_history(&target.document, &target.retired_modules);
         self.prepare_midi_cc_edit(&self.midi_cc_ids())?;
         if redo {
             self.redo.pop().ok_or("nothing to redo")?;
@@ -1298,6 +1434,8 @@ impl Session {
             sequence_loads: entry.sequence_loads.iter().rev().cloned().collect(),
             restore_parameters: entry.return_parameters.clone(),
             return_parameters: entry.restore_parameters.clone(),
+            restore_hosted_parameters: entry.return_hosted_parameters.clone(),
+            return_hosted_parameters: entry.restore_hosted_parameters.clone(),
             document: std::mem::replace(&mut self.document, entry.document),
             layout_origin: self.layout_origin,
             playback_mode: std::mem::replace(&mut self.playback_mode, entry.playback_mode),
@@ -1334,6 +1472,16 @@ impl Session {
             self.redo.push(opposite);
         }
         self.revision = revision;
+        if let Some(admission) = hosted_admission {
+            admission.publish(revision);
+        }
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            if self.hosted_execution_grant.is_some() && hosted_grant.is_none() {
+                self.host_lifecycle.supersede_execution();
+            }
+            self.hosted_execution_grant = hosted_grant;
+        }
         self.layout_generation = layout_generation;
         self.layout_pending = needs_layout;
         self.layout_origin = Some(entry.layout_origin.unwrap_or(LayoutOrigin::Authored));
@@ -2922,6 +3070,9 @@ pub fn tools() -> Value {
         tool("replace_document", "Explicitly replace the complete project, retaining original Rack records/assets and unresolved modules. Loads in exact mode; unresolved dependencies suspend playback. One undo step.", json!({"document":{"type":"object"},"expected_revision":rev}), &["document"], false),
         tool("load_document", "Load a portable project JSON from workspace, preserving original source data. Migrates native legacy projects. Exact playback is the default.", json!({"filename":s,"expected_revision":rev}), &["filename"], false),
         tool("save_document", "Save a complete portable project inside workspace without overwriting. Preserves original Rack data and unresolved dependencies. Suspended saves use persisted state explicitly, never fabricated live observations.", json!({"filename":s,"expected_revision":rev}), &["filename"], false),
+        tool("set_hosted_parameter", "Edit a supported hosted module's authored parameter through shared undo/redo. Does not start a companion or enable playback. Current capability: Bogaudio OFFSET 2.6.47, offset/scale in -1..1.", json!({"id":s,"parameter":{"type":"string","enum":["offset","scale"]},"value":{"type":"number","minimum":-1,"maximum":1},"history_group":history_group,"expected_revision":rev}), &["id","parameter","value"], false),
+        tool("set_hosted_option", "Edit a supported hosted module's persistent option through shared undo/redo. Does not start a companion or enable playback. Current capability: Bogaudio OFFSET 2.6.47.", json!({"id":s,"option":{"type":"string","enum":["offset_first","disable_output_limit"]},"value":{"type":"boolean"},"expected_revision":rev}), &["id","option","value"], false),
+        tool("set_hosted_execution", "Explicitly start or stop experimental delayed hosted playback. Supports one pinned Bogaudio OFFSET at 48000 Hz / 128-frame buffers with 384 transport frames. Requires explicit local companion/SDK/plugin configuration. Grant is session-only, revocable and never enables Exact/Partial automatically. Inspect performance for actual running/failure state.", json!({"enabled":{"type":"boolean"},"expected_revision":rev}), &["enabled"], false),
         tool("set_document_playback", "Explicitly choose exact or partial playback. Partial omits unresolved modules and incident routes and changes downstream normaling; inspect the omission report. Permission is undoable and never saved as an automatic load default.", json!({"mode":{"type":"string","enum":["exact","partial"]},"expected_revision":rev}), &["mode"], false),
         tool("inspect_patch","Read the session patch and revision with compact asset metadata. Set include_asset_data for the full portable payload. In desktop MCP mode this is the live patch shown in the native window.",json!({"include_asset_data":{"type":"boolean","default":false}}),&[],true),
         tool("capture_project_patch","Capture a project-save patch with actual SEQ3 Run, Push HOLD, MIDI CC assignments and controller values, and all Random Values and Shift Register held voltages plus next PRNG state overlaid on a cloned graph. All live stateful modules must be available at the current revision and the same callback frame; otherwise retry. Without a backend uses initial/default state. No stateful modules means parameter-only capture without reading the backend. Returns patch, revision, state_id, running, holding, random_values and shift_registers maps, state_source, and frame. Does not change session, history, queue, or runtime.",json!({"expected_revision":rev,"include_asset_data":{"type":"boolean","default":false}}),&[],true),

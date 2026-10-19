@@ -27,9 +27,11 @@ Two product candidates are now implemented and in final macOS review:
   shared panel/browser, MCP/history/presets and a quiet example. Source-reference,
   focused Engine/callback/no-heap and workflow checks pass. [Guide](RECALL_RANDOM.md).
 - [Experimental Rack binary hosting — PR #38](https://github.com/dexterlabs1/openpatch/pull/38):
-  current main integrated, explicit activation, shared controls, coherent MCP save
+  current main and Recall candidate integrated, explicit activation, shared controls, coherent MCP save
   and ordinary graph/Scope continuity. Actual public binary workflow and a
   60-second physical Mac output-device gate pass for one pinned Bogaudio OFFSET.
+  Prior device evidence retains its exact source/binary pins; integrated device,
+  native-window and milestone checks are pending. [Evidence](BINARY_HOST_V1.md).
   This is a bounded experimental capability, not general Rack binary compatibility.
 
 Final milestone CI remains the merge gate. Neither candidate changes the
@@ -111,6 +113,40 @@ MCP save integration, active panels and actual device qualification remain open
 parallel goal requirements; no hosting-completion or new installation is claimed.
 
 **Next family, `work/creative-rhythm`:** [Event Fork](EVENT_FORK.md) adds two source-derived Bernoulli routers with physical input normaling, shared seeded RNG, toggle and latch memory. Eighteen source cases cover 12,190 exact raw scans plus the complete ADC table; 513 genuine frames also pass through the actual native Engine. Six adapter checks, four Engine contracts, callback allocation/deallocation checks at five rates, six UI checks, the 90-kind shared-renderer guard, readable factory guides, actual stdio MCP/history/preset/reopen, strict Clippy and reviewed normal/dim panels pass. Its quiet routed-duet example renders offline without clipping. The 0.3.0 release gate provides family-level validation; no local install or hardware/device qualification is claimed. [Rhythm Terrain](RHYTHM_TERRAIN.md) adds the pinned Grids drum maps and Euclidean engine, accents, swing, source clock/reset and runtime tap authority. Its genuine source/audited/Rust comparison passes 49 cases / 377,402 operations; the actual Engine matches 29,400 source frames. Focused native callback/no-heap, shared UI/history, stdio MCP/presets/reopen, normal/dim panels and a quiet offline groove have evidence. Fast TAP clicks preserve ordered HIGH/LOW snapshots, and emergency release cancels stale presses. The shared default rack/browser renderer now covers 91 kinds. Continue Recall Random after the completed cross-platform release gate. Retain all broader parity/host/rack-workflow requirements above.
+
+## User-requested rack workflow and creative expansion (2026-10-17)
+
+Development source now adds [Signal Path, cable materials, seated black screws,
+gravity-shaped slack and Organize](../design/reviews/rack-tools-v1/README.md), plus
+[anchored performance/MCP tools, real timing history, recent files and the always
+visible Room slider](../design/reviews/host-tools-v1/README.md). Organize applies
+one undoable graph-aware layout with Auto or 1–8 rows, including retained source
+panels. These changes are not installed; keep 0.2.7 build 9 stable.
+
+The user's next creative-library milestone is [twenty genuinely new instruments](CREATIVE_MODULES_20.md),
+with independent contracts rather than renamed existing kinds. **Tidal Functions,
+Frame Scene and Segment Garden are implemented development candidates; seventeen remain.** Tidal
+Functions’ native Rust generator/extractor matches 129,840 frames in 34 pinned C++ reference cases
+bit for bit, including nonzero amplitude scans, while preserving the original
+frame-zero clock failure as a negative and explicitly adapting native startup.
+Shared Signal Atlas controls, actual output lamps, matching browser thumbnails,
+MCP/history/presets/reopen and callback no-heap checks have focused Mac evidence.
+[Contract and bounds](TIDAL_FUNCTIONS.md), [actual panel capture](../design/reviews/tidal-functions-v1/README.md).
+Frame Scene adds 64 persistent stable-ID scenes, source-integer keyframing,
+explicit ideal VCA normaling, real UI telemetry and shared revision/history/MCP
+editing. Its 25 source cases match 163,013 integer records and pass an independent
+UBSan/bounds audit; source-undefined endpoints have explicit native extensions.
+[Contract and example](FRAME_SCENE.md), [actual shared panel review](../design/reviews/frame-scene-v1/README.md).
+Segment Garden adds six persistent source kernels, physical-gate grouping, all standard
+segment modes, source-clock buffering and ordered edge capture. Its shared panel, real
+telemetry, seeded controls, MCP/presets/reopen and callback no-heap paths have focused Mac
+evidence; raw source qualification covers 952,896 records across 69 cases, with guarded
+endpoints and the internal zero-division boundary kept separate.
+[Contract and source bounds](SEGMENT_GARDEN.md), [shared panel review](../design/reviews/segment-garden-v1/README.md).
+Next run one family-level Mac regression/PR for the three-instrument candidate. Source fidelity, shared UI/MCP/history, Custom plus functional
+tags for original instruments and Mac validation remain done requirements. Binary-host
+MCP save integration, active panels and actual device qualification remain open
+parallel goal requirements; no hosting-completion or new installation is claimed.
 
 ## Execution changes
 
@@ -198,7 +234,98 @@ Reuse this integration checkout. The import evidence is
 `native-test-output/rack-264-voice/STATE.json`. Keep their frozen evidence rather
 than copying or regenerating it for a later module family.
 
-## Current candidate: Core text and host boundary
+## Existing binary feasibility checkpoint
+
+The separate [actual-binary probe](../scripts/rack_binary_host/README.md) now
+loads the installed ARM Bogaudio 2.6.47 binary with genuine Rack SDK 2.6.6,
+processes real engine cables and restores parameters/custom state in a fresh
+child. All twelve independently anchored observations pass, including mono,
+16-channel signal, gain, operation order and clipping. Exact loaded-image paths
+and unchanged plugin/runtime/SDK input hashes are checked. No plugin source is
+compiled, no UI/audio device is initialized, and the installed app is unchanged.
+This is a bounded feasibility result, not an available application host. Next
+resolve bounded transport, mixed-graph/feedback latency, authoritative state and
+failure containment through the [compatibility gate](COMPATIBILITY_DECISION.md#extensions-and-existing-vcv-binaries).
+The next [application-host milestone](BINARY_HOST_V1.md) is one playable
+native → existing OFFSET binary → native path with shared UI/MCP/history,
+persistent save/reopen and measured delay/failure containment. Its proposed
+128-frame transport is now implemented as a separate foundation with real
+plugin processing, per-frame counts/events, zero-heap parent endpoint calls and
+actual stall/crash/malformed/parent-death checks. The gate verifies a native
+oscillator WAV sample-by-sample and measures one Rack routing frame. This debug
+control-driver result does not qualify asynchronous device deadlines or fulfill
+document/UI/MCP/history integration. The installed app remains unchanged.
+
+The next preparation checkpoint adds control-thread process ownership, an owned
+audio endpoint and acknowledged quiescent capture, including actual-plugin
+refusal/cleanup checks. Project document v3 preserves hosted identities, ports and
+immutable full snapshots; older documents migrate unchanged. Shared hosted
+parameter/option commands now support revision guards, undo/redo and full
+save/reopen through MCP and the native headless App. Native edits retain hosted
+routes/state, and compact inspection uses cached state digests. Inactive panels
+explicitly report no host execution. The remaining milestone is the real mixed
+graph, explicit delayed execution permission, active shared controls and measured
+callback/device behavior—not another transport-only demonstration. Installed
+0.2.7 remains unchanged; no packaging or version bump at this checkpoint.
+
+Core external vertices and the desktop callback adapter now preserve native
+routing/normaling while exchanging bounded per-frame hosted data. The actual
+installed OFFSET passes a 387-frame native impulse path, 388-frame feedback cycle
+and ordered parameter-event comparison; a real desktop Callback fixture also
+passes the impulse and control-side capture with no callback heap activity.
+The provisional profile is 48 kHz, Q128, transport delay384, max callback128;
+two one-frame desktop callbacks and one small runner callback overran their budgets, so device/tiny-buffer qualification
+is still open. Callback fault, stale-plan and full-queue donor-retirement tests
+pass. User-facing activation, delayed permission and shared live UI/MCP/save
+remain the next step; these component gates do not make the host available yet.
+
+The full-document request boundary is now implemented: retained audio tickets
+bind document/load generation, permission and ordered effects across startup,
+device retry and edits. An internal profile/topology grant survives ordinary
+knob/layout edits but expires on loads, topology changes and module retirement;
+undo cannot restore it. Revocation replaces a sealed request without losing its
+pending lifecycle effects. Native preparation/offline tools refuse to treat a
+hosted request as permission to run its omitted carrier. This is still not
+user-facing activation. Bounded precommit live-event admission and acknowledgment
+are now implemented; next connect process-owner activation/retirement and coherent live
+save. Installed 0.2.7 remains stable; reuse unchanged DSP reference evidence.
+
+Shared parameter edits, equal-value assignments and undo/redo now reserve queue
+capacity before history changes and publish effective values only after a
+validated returned plugin block. The genuine OFFSET workflow exercises seven
+commands, exact audio, retired capture, native document save/reopen and a fresh
+child restore. This is a paced processing gate, not continuous device/app
+activation. Stale synchronization cannot invalidate a newer event binding.
+Repeated catalog construction found in edit timings is now cached in execution
+checks and graph compilation; the built-in schemas and model equations are
+unchanged. Continue with the actual Audio controller/full hosted execution gate,
+then active panel controls and the coherent live save barrier. No installation.
+
+The full-document `Audio` controller is now connected, with explicit process
+ownership, exact-Engine compilation proof and separate hosted execution
+acknowledgment. A paced actual-plugin application test passes 5,120 exact samples
+and four shared edit/history commands without restarting the child or allocating
+in the callback. Actual-child failure, unadmitted edits, pending-capture refusal
+and unread-queue shutdown also pass. Ordinary live capture now refuses to claim
+a coherent save while a hosted binding exists. Next implement the native/child
+save barrier, seamless graph/Scope rebuilding and active controls, then qualify
+the real Mac device. Internal startup requests 48 kHz/fixed 128; no public
+activation, device claim, packaging or installation follows this checkpoint.
+
+The internal coherent-save barrier now finishes real partial quanta and accepted
+commands, returns the whole frozen native graph, retains the reader through exact
+child drain and validates a stale-safe Session receipt. Actual-plugin checks cover
+130 queued commands from a 37-frame tail, full-return-queue freezing, native knob
+and HOLD persistence, save/reopen/resume, late timeout, newer edits and child death.
+Native DSP survives cancellation/restart, and failed captures never acknowledge a
+saved baseline. Native Save/Save As now dispatch the asynchronous begin/poll
+workflow across UI frames and retain conflict-checked file writes and saved
+baselines. Actual-plugin app tests cover Save As, edit/Save, external disk
+conflicts, newer-edit refusal and preserved audio/child cleanup. MCP synchronous
+hosted save still refuses; MCP dispatch, active panels and the actual Mac device
+gate remain open. No public activation or installation; installed 0.2.7 is unchanged.
+
+## Delivered: Core text and host boundary
 
 Exact Core Notes 2.6.6 now converts into editable native Notes, including legacy
 loading, Unicode/whitespace and original-source retention. The actual full patch
@@ -209,11 +336,15 @@ Core AudioInterface2 stays unresolved, retains saved hardware/mute metadata and
 validates its known source port shape; import reports explain a saved zero level.
 [Source contract and boundaries](CORE_TEXT_IMPORT.md).
 
-This is a development follow-up, not installed in 0.2.7. No version bump, package
-or installation is needed. Finish focused checks and one follow-up PR. The next
-compatibility gate remains actual existing ARM plugin load/process/state restore
-in a separate companion, as scoped in the compatibility decision; that is not
-an already proven binary host or a substitute for native Rust module development.
+[PR #33](https://github.com/dexterlabs1/openpatch/pull/33) is merged at `381cefd`.
+Its [full macOS CI](https://github.com/dexterlabs1/openpatch/actions/runs/39041688024)
+passed **2,623 Rust tests** (17 intentionally ignored), **124 Python/MCP tests**,
+strict lint/formatting, optimized build, packaging and visualizer integration.
+This source follow-up is not installed in 0.2.7. No version bump, new package or
+installation is needed. The first actual existing ARM plugin
+load/process/persistent-restore probe now passes as recorded above. The
+application-host gate remains open; it is not a substitute for native Rust
+module development.
 
 ## Delivered: native sequencing/control workflow
 

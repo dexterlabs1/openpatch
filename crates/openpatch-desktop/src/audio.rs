@@ -4,6 +4,7 @@
 use crate::port_light_transport::{self, PortLightProducer, PortLightReader};
 pub(crate) use crate::port_light_transport::{offline_frame, PortLightFrame, PortLightKey};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use openpatch::control::HostLifecycleTicket;
 use openpatch::control::LiveModuleEvents;
 use openpatch::project_document::ExecutionDisposition;
 pub use openpatch_core::ModuleTelemetry as SequenceTelemetry;
@@ -27,6 +28,12 @@ pub use scope_stream::{ScopeEndpoint, ScopePacket, ScopeSelection};
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[path = "hosted_audio.rs"]
+mod hosted_audio;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[path = "audio_hosted_capture.rs"]
+mod hosted_capture;
 include!("audio_host_lifecycle.rs");
 
 #[cfg(test)]
@@ -386,10 +393,21 @@ struct ScopeSetup {
     taps: [Option<ResolvedTap>; 2],
 }
 struct PreparedGraph {
+    resumed_from_capture: bool,
     engine: Engine,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted: Option<openpatch::binary_host::runner::HostedRunner>,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted_transfer: Option<(
+        openpatch::binary_host::Fence,
+        openpatch_core::ResolvedExternalModule,
+    )>,
     scope: ScopeSetup,
     modules: ModulePlan,
     revision: u64,
+    // Only this graph's accepted hosted-only edits may advance its authored
+    // revision. A newer pending graph must never acknowledge an older graph.
+    authored_revision: Option<Arc<AtomicU64>>,
     // Compiled on the control thread; callback rollback checks stay constant time.
     contains_rackmcp_sequence: bool,
     port_lights: Option<PortLightProducer>,
@@ -400,10 +418,16 @@ struct PreparedGraph {
 impl From<Engine> for PreparedGraph {
     fn from(engine: Engine) -> Self {
         Self {
+            resumed_from_capture: false,
             engine,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted: None,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_transfer: None,
             scope: ScopeSetup::default(),
             modules: ModulePlan::default(),
             revision: 0,
+            authored_revision: None,
             contains_rackmcp_sequence: false,
             port_lights: None,
             port_light_reader: None,
@@ -413,6 +437,50 @@ impl From<Engine> for PreparedGraph {
     }
 }
 impl PreparedGraph {
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn resume_native_from(&mut self, donor: &mut Self) {
+        self.modules.handoff_state_with_host_exclusions(
+            &mut self.engine,
+            &donor.modules,
+            &mut donor.engine,
+            &self.host_lifecycle.resets,
+        );
+        self.modules.inherit_parameters_with_host_exclusions(
+            &mut self.engine,
+            &donor.modules,
+            &donor.engine,
+            &self.host_lifecycle.resets,
+        );
+        self.modules.reload_sequences_with_host_exclusions(
+            &mut self.engine,
+            &donor.modules,
+            &donor.engine,
+            &self.host_lifecycle.resets,
+        );
+        for (slot, binding) in self.modules.bindings.iter_mut().enumerate() {
+            if let Some(binding) = binding {
+                if let Some(old) =
+                    donor.modules.bindings[slot].filter(|old| old.token == binding.token)
+                {
+                    binding.release_epoch = old.release_epoch;
+                } else {
+                    self.engine.reset_module_state(binding.handle);
+                }
+            }
+        }
+        self.modules
+            .initialize_pending(&mut self.engine, Some(&donor.modules));
+        self.modules.load_saved_pending(
+            &mut self.engine,
+            Some((&mut donor.modules, &mut donor.engine)),
+        );
+        self.resumed_from_capture = true;
+    }
+    fn current_revision(&self) -> u64 {
+        self.authored_revision
+            .as_ref()
+            .map_or(self.revision, |revision| revision.load(Ordering::Acquire))
+    }
     /// Control-thread preparation; never resolve endpoints inside rendering.
     #[cfg(test)]
     fn prepare_port_lights(&mut self, patch: &Patch) -> Result<(), String> {
@@ -485,9 +553,15 @@ fn prepare_graph_for_control(
         .transpose()?
         .unwrap_or([None; 2]);
     let mut graph = PreparedGraph {
+        resumed_from_capture: false,
         engine,
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted: None,
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted_transfer: None,
         modules: ModulePlan::default(),
         revision: 0,
+        authored_revision: None,
         contains_rackmcp_sequence: patch
             .nodes
             .iter()
@@ -509,6 +583,8 @@ fn prepare_graph_for_control(
 /// The stream keeps running during transport pause so gain can fade to silence.
 /// Call `service` on each UI update to dispose of retired graphs and publish edits.
 pub struct Audio {
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    capture: hosted_capture::CaptureControl,
     // Drop the stream before its control-side queue endpoints. CPAL shuts down the
     // callback before returning from Stream::drop; graph teardown is not rendering.
     _stream: Option<cpal::Stream>,
@@ -529,11 +605,282 @@ pub struct Audio {
     // Exact control-side graph paired with submitted_revision and banks. Scope
     // rebuilds must not substitute a newer UI patch for a sealed Session ticket.
     accepted_patch: Patch,
+    accepted_document: Option<Arc<HostLifecycleTicket>>,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted_controller: hosted_audio::HostedAudioController,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted_control: Option<Arc<openpatch::binary_host::control::HostedControl>>,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted_authored_revision: Option<Arc<AtomicU64>>,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted_native_intent: Vec<u64>,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    last_hosted_retirement: Option<hosted_audio::HostedRetirementReceipt>,
     prepared_wave_banks: Arc<PreparedWaveBanks>,
     port_light_reader: PortLightReader,
 }
 
 impl Audio {
+    /// All application/device starts consume the same immutable Session request.
+    /// Hosted requests compile the complete graph before the first callback.
+    pub fn new_with_document(
+        ticket: Arc<HostLifecycleTicket>,
+        selected: Option<&str>,
+        port_lights_enabled: bool,
+    ) -> Result<Self, String> {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if let openpatch::control::DocumentExecutionRequest::HostedDelayed(grant) =
+            &ticket.execution
+        {
+            // Explicit configuration is checked before consulting any device.
+            let config = hosted_audio::HostedAudioConfig::from_environment()?;
+            let native = grant
+                .prepare(&ticket.document, ticket.document_generation)?
+                .native_patch()
+                .clone();
+            return Self::new_configured(
+                &native,
+                ticket.banks.clone(),
+                selected,
+                port_lights_enabled,
+                ticket.revision,
+                ExecutionDisposition::SuspendedUnresolved,
+                Some((ticket, config)),
+            );
+        }
+        let (patch, disposition) = ticket.native_projection()?;
+        let mut audio = Self::new_with_device_and_wave_banks_and_execution(
+            patch,
+            ticket.banks.clone(),
+            selected,
+            port_lights_enabled,
+            ticket.revision,
+            disposition,
+        )?;
+        audio.accepted_document = Some(ticket);
+        Ok(audio)
+    }
+
+    pub(crate) fn needs_hosted_device_restart(&self, ticket: &HostLifecycleTicket) -> bool {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            self._stream.is_some()
+                && matches!(
+                    ticket.execution,
+                    openpatch::control::DocumentExecutionRequest::HostedDelayed(_)
+                )
+                && !self.accepted_document.as_ref().is_some_and(|accepted| {
+                    matches!(
+                        accepted.execution,
+                        openpatch::control::DocumentExecutionRequest::HostedDelayed(_)
+                    )
+                })
+        }
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        {
+            let _ = ticket;
+            false
+        }
+    }
+
+    pub fn submit_document(&mut self, ticket: Arc<HostLifecycleTicket>) -> Result<(), String> {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if self.capture_in_progress() {
+            return Err(
+                "Audio capture is returning its current graph; retry the retained document ticket"
+                    .into(),
+            );
+        }
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if matches!(
+            ticket.execution,
+            openpatch::control::DocumentExecutionRequest::HostedDelayed(_)
+        ) {
+            return self.submit_hosted_document(ticket);
+        }
+        let (patch, disposition) = ticket.native_projection()?;
+        // The ticket supplies permission even when no Session event backend is
+        // attached yet. Performance refuses to roll a newer decision backward;
+        // its revision/generation gate keeps stale prepared tickets suspended.
+        self.performance
+            .sync_document(openpatch::control::DocumentExecutionContext {
+                document: &ticket.document,
+                document_generation: ticket.document_generation,
+                request: ticket.execution.clone(),
+                native_carrier: patch,
+                revision: ticket.revision,
+                fence_native: true,
+            });
+        self.performance
+            .request_document_execution(ticket.revision, disposition);
+        self.submit_patch_with_host_lifecycle(
+            patch,
+            ticket.revision,
+            ticket.banks.clone(),
+            &ticket.delta,
+        )?;
+        self.accepted_document = Some(ticket);
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            self.hosted_control = None;
+            self.hosted_authored_revision = None;
+            self.hosted_native_intent.clear();
+        }
+        Ok(())
+    }
+
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn submit_hosted_document(&mut self, ticket: Arc<HostLifecycleTicket>) -> Result<(), String> {
+        self.submit_hosted_document_inner(ticket, None)
+    }
+
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn submit_hosted_document_inner(
+        &mut self,
+        ticket: Arc<HostLifecycleTicket>,
+        donor: Option<&mut PreparedGraph>,
+    ) -> Result<(), String> {
+        use openpatch::control::DocumentExecutionRequest;
+        if ticket.revision < self.submitted_revision {
+            return Err("Stale audio patch revision".into());
+        }
+        if self.sample_rate != 48_000 {
+            return Err("hosted execution requires a 48000 Hz stream restart".into());
+        }
+        let DocumentExecutionRequest::HostedDelayed(grant) = &ticket.execution else {
+            unreachable!()
+        };
+        let plan = grant.prepare(&ticket.document, ticket.document_generation)?;
+        let native = plan.native_patch().clone();
+        self.performance
+            .sync_document(openpatch::control::DocumentExecutionContext {
+                document: &ticket.document,
+                document_generation: ticket.document_generation,
+                request: ticket.execution.clone(),
+                native_carrier: &native,
+                revision: ticket.revision,
+                fence_native: true,
+            });
+        let stamp = self.performance.native_intent_stamp();
+        let same_native = serde_json::to_value(&native).map_err(|e| e.to_string())?
+            == serde_json::to_value(&self.accepted_patch).map_err(|e| e.to_string())?;
+        let requested_values = (
+            plan.module().parameter("offset")?.to_bits(),
+            plan.module().parameter("scale")?.to_bits(),
+        );
+        if ticket.delta.is_empty()
+            && same_native
+            && stamp == self.hosted_native_intent
+            && self.hosted_control.as_ref().is_some_and(|control| {
+                let values = control.snapshot().requested;
+                (values.offset.to_bits(), values.scale.to_bits()) == requested_values
+                    && control
+                        .accepts_document(&ticket.document, ticket.document_generation)
+                        .unwrap_or(false)
+            })
+        {
+            // The bounded Session channel already admitted these commands.
+            // Keep the child and its input/ack clock across authored edits.
+            let control = self.hosted_control.as_ref().unwrap();
+            self.performance
+                .register_hosted_control(&ticket, control.clone())?;
+            self.hosted_authored_revision
+                .as_ref()
+                .unwrap()
+                .store(ticket.revision, Ordering::Release);
+            self.submitted_revision = ticket.revision;
+            self.accepted_document = Some(ticket);
+            return Ok(());
+        }
+        let reuse = donor.is_none()
+            && ticket.delta.is_empty()
+            && self.hosted_control.as_ref().is_some_and(|control| {
+                control.is_open()
+                    && control
+                        .accepts_document(&ticket.document, ticket.document_generation)
+                        .unwrap_or(false)
+            });
+        let (mut graph, control, proof) = if reuse {
+            let (engine, handle, proof) = plan.compile_attested(&ticket.banks)?;
+            let control = self.hosted_control.as_ref().unwrap().clone();
+            let mut graph = PreparedGraph::from(engine);
+            graph.hosted_transfer = Some((control.fence(), handle));
+            (graph, control, proof)
+        } else {
+            self.hosted_controller.ensure_config()?;
+            let prepared = self.hosted_controller.prepare(&ticket)?;
+            debug_assert_eq!(prepared.control.fence(), prepared.fence);
+            let mut graph = PreparedGraph::from(prepared.engine);
+            graph.hosted = Some(prepared.runner);
+            (graph, prepared.control, prepared.proof)
+        };
+        let authored = Arc::new(AtomicU64::new(ticket.revision));
+        graph.authored_revision = Some(authored.clone());
+        let generation = self
+            .scope_generation
+            .checked_add(1)
+            .ok_or("Scope generation exhausted");
+        let result = (|| {
+            let generation = generation?;
+            graph.modules =
+                self.performance
+                    .plan_hosted(&ticket, &graph.engine, control.clone(), &proof)?;
+            graph.revision = ticket.revision;
+            graph.contains_rackmcp_sequence = native
+                .nodes
+                .iter()
+                .any(|node| matches!(node.kind.as_str(), "rackmcp_sequencer" | "rackmcp_listen"));
+            graph.scope = ScopeSetup {
+                generation,
+                enabled: self.scope_binding.is_some(),
+                taps: self
+                    .scope_binding
+                    .as_ref()
+                    .map(|binding| binding.resolve(&native, &graph.engine, false))
+                    .transpose()?
+                    .unwrap_or([None; 2]),
+            };
+            graph.prepare_port_lights_for_control(
+                &native,
+                self.shared.port_light_control.load(Ordering::SeqCst),
+            )?;
+            let mut delta = self
+                .pending
+                .as_ref()
+                .map(|graph| graph.host_lifecycle.named.clone())
+                .unwrap_or_default();
+            delta.append(&ticket.delta);
+            graph.host_lifecycle = PreparedHostLifecycle::prepare(&graph.engine, delta)?;
+            self.performance
+                .register_hosted_control(&ticket, control.clone())?;
+            Ok::<_, String>(generation)
+        })();
+        let generation = match result {
+            Ok(generation) => generation,
+            Err(error) => {
+                self.dispose_graph(graph);
+                return Err(error);
+            }
+        };
+        if let Some(donor) = donor {
+            graph.resume_native_from(donor);
+        }
+        self.port_light_reader = graph.port_light_reader.as_ref().unwrap().clone();
+        if let Some(old) = self.pending.replace(graph) {
+            self.dispose_graph(old);
+        }
+        self.hosted_control = Some(control);
+        self.hosted_authored_revision = Some(authored);
+        self.hosted_native_intent = stamp;
+        self.accepted_patch = native;
+        self.prepared_wave_banks = ticket.banks.clone();
+        self.submitted_revision = ticket.revision;
+        self.accepted_document = Some(ticket);
+        self.scope_generation = generation;
+        self.service();
+        Ok(())
+    }
+
     pub fn output_devices() -> Result<Vec<String>, String> {
         let host = cpal::default_host();
         let devices = host.output_devices().map_err(|e| e.to_string())?;
@@ -559,7 +906,7 @@ impl Audio {
     }
 
     /// Fence the initial document before the stream can invoke its first callback.
-    pub fn new_with_device_and_wave_banks_and_execution(
+    fn new_with_device_and_wave_banks_and_execution(
         patch: &Patch,
         banks: Arc<PreparedWaveBanks>,
         selected: Option<&str>,
@@ -567,6 +914,36 @@ impl Audio {
         revision: u64,
         disposition: ExecutionDisposition,
     ) -> Result<Self, String> {
+        Self::new_configured(
+            patch,
+            banks,
+            selected,
+            port_lights_enabled,
+            revision,
+            disposition,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            None,
+        )
+    }
+
+    fn new_configured(
+        patch: &Patch,
+        banks: Arc<PreparedWaveBanks>,
+        selected: Option<&str>,
+        port_lights_enabled: bool,
+        revision: u64,
+        disposition: ExecutionDisposition,
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))] hosted: Option<(
+            Arc<HostLifecycleTicket>,
+            hosted_audio::HostedAudioConfig,
+        )>,
+    ) -> Result<Self, String> {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let mut controller = hosted_audio::HostedAudioController::default();
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if let Some((_, config)) = &hosted {
+            controller.set_config(config.clone());
+        }
         let host = cpal::default_host();
         let device = if let Some(name) = selected {
             host.output_devices()
@@ -585,13 +962,38 @@ impl Audio {
                 .any(|n| &n.id == id && n.kind == "audio_stereo")
         });
         let supported = choose_config(&device, patch.sample_rate, explicit_stereo)?;
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let supported = if hosted.is_some() {
+            choose_hosted_config(&device, explicit_stereo)?
+        } else {
+            supported
+        };
         let sample_rate = supported.sample_rate().0;
-        let config = supported.config();
+        #[allow(unused_mut)]
+        let mut config = supported.config();
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if hosted.is_some() {
+            config.buffer_size = cpal::BufferSize::Fixed(128);
+        }
         if config.channels == 0 {
             return Err("The output device reported zero audio channels.".into());
         }
         let mut device_patch = patch.clone();
         device_patch.sample_rate = sample_rate;
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let preparation = hosted
+            .as_ref()
+            .map(|(ticket, _)| controller.prepare(ticket))
+            .transpose()?;
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let (engine, hosted_parts) = match preparation {
+            Some(prepared) => (
+                prepared.engine,
+                Some((prepared.runner, prepared.control, prepared.proof)),
+            ),
+            None => (device_patch.compile_with_wave_banks(&banks)?, None),
+        };
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
         let engine = device_patch.compile_with_wave_banks(&banks)?;
         let (incoming, updates) = RingBuffer::new(QUEUE_SIZE);
         let (recycle, retired) = RingBuffer::new(QUEUE_SIZE);
@@ -610,6 +1012,26 @@ impl Audio {
             .unwrap()
             .clone();
         callback.prepare_initial_execution(patch, revision, disposition)?;
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let (hosted_control, hosted_authored_revision) =
+            if let Some((runner, control, proof)) = hosted_parts {
+                let ticket = &hosted.as_ref().unwrap().0;
+                callback.graphs.active.hosted = Some(runner);
+                callback.graphs.active.modules = callback.performance.plan_hosted(
+                    ticket,
+                    &callback.graphs.active.engine,
+                    control.clone(),
+                    &proof,
+                )?;
+                let authored = Arc::new(AtomicU64::new(revision));
+                callback.graphs.active.authored_revision = Some(authored.clone());
+                callback
+                    .performance
+                    .register_hosted_control(ticket, control.clone())?;
+                (Some(control), Some(authored))
+            } else {
+                (None, None)
+            };
         let performance = callback.performance.clone();
         let scope_packets = callback.scope_packets.take().unwrap();
         let midi_ui = callback.midi.take_ui().unwrap();
@@ -618,6 +1040,8 @@ impl Audio {
             timestamp: TimestampMapper::default(),
             rate: sample_rate,
         });
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let capture = callback.capture.take_control();
         let stream = match supported.sample_format() {
             cpal::SampleFormat::F32 => build_stream::<f32>(&device, &config, callback),
             cpal::SampleFormat::I16 => build_stream::<i16>(&device, &config, callback),
@@ -629,6 +1053,8 @@ impl Audio {
             .play()
             .map_err(|error| format!("Could not start audio stream: {error}"))?;
         Ok(Self {
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            capture,
             _stream: Some(stream),
             incoming,
             retired,
@@ -642,9 +1068,29 @@ impl Audio {
             scope_binding: None,
             scope_generation: 0,
             scope_packets,
-            performance,
+            performance: performance.clone(),
             submitted_revision: revision,
             accepted_patch: patch.clone(),
+            accepted_document: {
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                {
+                    hosted.map(|(ticket, _)| ticket)
+                }
+                #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+                {
+                    None
+                }
+            },
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_controller: controller,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_control,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_authored_revision,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_native_intent: performance.native_intent_stamp(),
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            last_hosted_retirement: None,
             prepared_wave_banks: banks,
             port_light_reader,
         })
@@ -663,7 +1109,7 @@ impl Audio {
         )
     }
 
-    pub fn submit_patch_with_host_lifecycle(
+    fn submit_patch_with_host_lifecycle(
         &mut self,
         patch: &Patch,
         revision: u64,
@@ -696,7 +1142,9 @@ impl Audio {
         combined.append(delta);
         graph.host_lifecycle = PreparedHostLifecycle::prepare(&graph.engine, combined)?;
         self.port_light_reader = graph.port_light_reader.as_ref().unwrap().clone();
-        self.pending = Some(graph);
+        if let Some(old) = self.pending.replace(graph) {
+            self.dispose_graph(old);
+        }
         self.submitted_revision = revision;
         self.accepted_patch = patch.clone();
         self.prepared_wave_banks = banks;
@@ -843,6 +1291,33 @@ impl Audio {
         _ui_patch: &Patch,
         selection: Option<ScopeSelection>,
     ) -> Result<u64, String> {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if let Some(ticket) = self.accepted_document.clone().filter(|ticket| {
+            matches!(
+                ticket.execution,
+                openpatch::control::DocumentExecutionRequest::HostedDelayed(_)
+            )
+        }) {
+            if self.capture_in_progress() {
+                return Err("Scope waits for hosted capture to finish".into());
+            }
+            let binding = selection
+                .map(|selection| ScopeBinding::new(&self.accepted_patch, selection))
+                .transpose()?;
+            let previous = std::mem::replace(&mut self.scope_binding, binding);
+            let stamp = std::mem::take(&mut self.hosted_native_intent);
+            match self.submit_hosted_document(ticket) {
+                Ok(()) => return Ok(self.scope_generation),
+                Err(error) => {
+                    self.scope_binding = previous;
+                    self.hosted_native_intent = stamp;
+                    return Err(error);
+                }
+            }
+        }
+        if let Some(ticket) = &self.accepted_document {
+            ticket.native_projection()?;
+        }
         // The UI may already show a revision beyond a retained Session ticket.
         // Rebuild the last accepted graph, including its pending ordered edges;
         // a subsequent ticket alone may advance patch/revision/banks together.
@@ -896,18 +1371,62 @@ impl Audio {
 
     /// A returned capture still owns graph state until serviced/collected.
     pub(crate) fn hosted_capture_busy(&self) -> bool {
-        false
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            self.capture.busy()
+        }
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        {
+            false
+        }
     }
 
     pub fn service(&mut self) {
-        while let Ok(engine) = self.retired.pop() {
-            drop(engine);
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        self.service_hosted_capture();
+        while let Ok(graph) = self.retired.pop() {
+            self.dispose_graph(graph);
         }
-        if let Some(engine) = self.pending.take() {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        for receipt in self.hosted_controller.service() {
+            self.last_hosted_retirement = Some(receipt);
+        }
+        if let Some(mut engine) = self.pending.take() {
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            if let Some(mut donor) = self.capture.recovery.take() {
+                engine.resume_native_from(&mut donor);
+                self.dispose_graph(donor);
+            }
             if let Err(PushError::Full(engine)) = self.incoming.push(engine) {
                 self.pending = Some(engine);
             }
         }
+    }
+
+    #[allow(unused_mut)] // Hosted runner extraction is macOS ARM only.
+    fn dispose_graph(&mut self, mut graph: PreparedGraph) {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if let Some(runner) = graph.hosted.take() {
+            if let Some(receipt) = self.hosted_controller.retire(runner) {
+                self.last_hosted_retirement = Some(receipt);
+            }
+        }
+        drop(graph);
+    }
+
+    /// Control-side diagnostics only. A retirement capture is not a coherent
+    /// project-save receipt and never changes the Session's saved baseline.
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[allow(dead_code)] // Developer/controller inspection; public panel activation follows the save barrier.
+    pub fn hosted_runtime_status(&self) -> serde_json::Value {
+        let owners: Vec<_> = self.hosted_controller.statuses().into_iter().map(|status|
+            serde_json::json!({"incarnation":status.fence.incarnation,"generation":status.fence.generation,
+                "plan_epoch":status.fence.revision,"process_id":status.process_id,
+                "retiring":status.retiring,"health_error":status.health_error})).collect();
+        serde_json::json!({"owners":owners,"retiring":self.hosted_controller.retiring_count(),
+            "last_retirement":self.last_hosted_retirement.as_ref().map(|receipt| serde_json::json!({
+                "incarnation":receipt.fence.incarnation,"generation":receipt.fence.generation,
+                "plan_epoch":receipt.fence.revision,"captured":receipt.captured.is_some(),"error":receipt.error}))})
     }
 
     pub fn set_playing(&self, playing: bool) {
@@ -999,7 +1518,47 @@ impl Drop for Audio {
         // queued-but-unapplied counters; retained MCP senders remain closed.
         drop(self._stream.take());
         self.performance.finish_close();
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        self.shutdown_hosted_capture();
+        if let Some(graph) = self.pending.take() {
+            self.dispose_graph(graph);
+        }
+        while let Ok(graph) = self.retired.pop() {
+            self.dispose_graph(graph);
+        }
+        // Stream teardown dropped the consumer. Destroy unread queued graph
+        // endpoints before their process owners/workspaces can be removed.
+        let (empty, consumer) = RingBuffer::new(QUEUE_SIZE);
+        drop(std::mem::replace(&mut self.incoming, empty));
+        drop(consumer);
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        self.hosted_controller.shutdown();
     }
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn choose_hosted_config(
+    device: &cpal::Device,
+    stereo: bool,
+) -> Result<cpal::SupportedStreamConfig, String> {
+    device
+        .supported_output_configs()
+        .map_err(|error| error.to_string())?
+        .find(|range| {
+            supported_format(range.sample_format())
+                && range.channels() > 0
+                && (!stereo || range.channels() >= 2)
+                && range.min_sample_rate().0 <= 48_000
+                && range.max_sample_rate().0 >= 48_000
+                && match range.buffer_size() {
+                    cpal::SupportedBufferSize::Range { min, max } => *min <= 128 && *max >= 128,
+                    cpal::SupportedBufferSize::Unknown => true,
+                }
+        })
+        .map(|range| range.with_sample_rate(cpal::SampleRate(48_000)))
+        .ok_or_else(|| {
+            "hosted playback requires a device supporting 48000 Hz / 128-frame buffers".into()
+        })
 }
 
 fn supported_format(format: cpal::SampleFormat) -> bool {
@@ -1125,6 +1684,10 @@ impl Gain {
 }
 
 struct Callback {
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    capture: hosted_capture::CaptureCallback,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    stream_rate: u32,
     graphs: Exchange<PreparedGraph>,
     shared: Arc<Shared>,
     gain: Gain,
@@ -1167,8 +1730,12 @@ impl Callback {
         let (performance, module_events, timing) = Performance::new(rate);
         let last_active_stereo = engine.output_channels() == 2;
         Self {
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            stream_rate: rate,
             performance,
             module_events,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            capture: hosted_capture::CaptureCallback::new(),
             timing,
             scope,
             scope_packets: Some(scope_packets),
@@ -1271,11 +1838,35 @@ impl Callback {
         self.graph_revision_high_water = self
             .graph_revision_high_water
             .max(self.graphs.active.revision);
+        self.graphs.active.revision = self.graphs.active.current_revision();
+        self.graph_revision_high_water = self
+            .graph_revision_high_water
+            .max(self.graphs.active.revision);
         let revision_floor = self.graph_revision_high_water;
-        let adopted = self.graphs.poll_if(|active, next| {
-            next.revision >= revision_floor
-                || !(active.contains_rackmcp_sequence || next.contains_rackmcp_sequence)
-        });
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let capture_blocks_adoption = self.poll_hosted_capture();
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        let capture_blocks_adoption = false;
+        let adopted = !capture_blocks_adoption
+            && self.graphs.poll_if(|active, next| {
+                let fenced = active.contains_rackmcp_sequence || next.contains_rackmcp_sequence;
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                let fenced = fenced || active.hosted.is_some() || next.hosted.is_some();
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                if let Some((fence, handle)) = next.hosted_transfer {
+                    if !active.hosted.as_ref().is_some_and(|runner| {
+                        runner.fence() == fence
+                            && runner.can_rebind(&active.engine, &next.engine, handle)
+                    }) {
+                        return false;
+                    }
+                }
+                next.current_revision() >= revision_floor || !fenced
+            });
+        self.graph_revision_high_water = self
+            .graph_revision_high_water
+            .max(self.graphs.active.revision);
+        self.graphs.active.revision = self.graphs.active.current_revision();
         self.graph_revision_high_water = self
             .graph_revision_high_water
             .max(self.graphs.active.revision);
@@ -1285,8 +1876,10 @@ impl Callback {
             .active
             .sync_port_light_control(control, control_changed);
         if adopted {
-            let mut moved = false;
-            if let Some(previous) = self.graphs.previous.as_mut() {
+            self.module_events.clear_hosted_status();
+            let resumed = self.graphs.active.resumed_from_capture;
+            let mut moved = resumed;
+            if let Some(previous) = self.graphs.previous.as_mut().filter(|_| !resumed) {
                 let active = &mut self.graphs.active;
                 moved = active.modules.handoff_state_with_host_exclusions(
                     &mut active.engine,
@@ -1319,7 +1912,30 @@ impl Callback {
                     }
                 }
             }
-            self.frozen_previous = moved.then_some((self.last_active_raw, self.last_active_stereo));
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            if let Some((_, handle)) = self.graphs.active.hosted_transfer.take() {
+                let previous = self
+                    .graphs
+                    .previous
+                    .as_mut()
+                    .expect("validated hosted donor");
+                let mut runner = previous.hosted.take().expect("validated hosted runner");
+                let rebound =
+                    runner.rebind(&previous.engine, &mut self.graphs.active.engine, handle);
+                debug_assert!(rebound, "prevalidated hosted continuation");
+                self.graphs.active.hosted = Some(runner);
+                moved = true;
+            }
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            let hosted_donor = self
+                .graphs
+                .previous
+                .as_ref()
+                .is_some_and(|graph| graph.hosted.is_some());
+            #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+            let hosted_donor = false;
+            self.frozen_previous =
+                (moved || hosted_donor).then_some((self.last_active_raw, self.last_active_stereo));
             // A donor with transferred Delay state is frozen; ordinary donors
             // still render the fade. Only the active graph runs observers.
             if let Some(previous) = self.graphs.previous.as_mut() {
@@ -1403,11 +2019,39 @@ impl Callback {
         if channels == 0 {
             return (adopted, false);
         }
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if let Some(hosted) = self.graphs.active.hosted.as_mut() {
+            if !output.len().is_multiple_of(channels)
+                || hosted
+                    .validate_callback(self.stream_rate, output.len() / channels)
+                    .is_err()
+            {
+                self.module_events.fail_hosted_execution(
+                    hosted
+                        .fault()
+                        .unwrap_or(openpatch::binary_host::runner::RunnerFault::UnsupportedProfile),
+                );
+                self.freeze_execution(output, channels);
+                return (adopted, false);
+            }
+        }
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let callback_end_frame = self
+            .frame_clock
+            .saturating_add((output.len() / channels) as u64);
         let crossfade = self.graphs.previous.is_some() && output.len() >= channels;
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let mut captured_this_callback = false;
         for chunk in output.chunks_mut(BLOCK_SIZE * channels) {
             let frames = chunk.len() / channels;
             let mut offset = 0;
             while offset < frames {
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                if self.try_hosted_capture() {
+                    captured_this_callback = true;
+                    self.freeze_execution(&mut chunk[offset * channels..], channels);
+                    break;
+                }
                 if !self
                     .module_events
                     .execution_permitted(&self.graphs.active.modules)
@@ -1484,16 +2128,55 @@ impl Callback {
                     (at.saturating_sub(self.frame_clock) as usize).clamp(1, remaining)
                 });
                 let count = if one_frame { 1 } else { count };
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                let count = self.capture_span(count);
                 let active = &mut self.graphs.active;
-                self.module_events.process_audio(
-                    &mut active.engine,
-                    &active.modules,
-                    &mut current[..count],
-                    active
-                        .scope
-                        .enabled
-                        .then_some((&active.scope.taps, &mut taps[..count])),
-                );
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                {
+                    if let Some(hosted) = active.hosted.as_mut() {
+                        if let Err(fault) = self.module_events.process_audio_hosted(
+                            &mut active.engine,
+                            &active.modules,
+                            hosted,
+                            &mut current[..count],
+                            active
+                                .scope
+                                .enabled
+                                .then_some((&active.scope.taps, &mut taps[..count])),
+                        ) {
+                            self.module_events.fail_hosted_execution(fault);
+                            self.freeze_execution::<T>(&mut [], channels);
+                            self.frame_clock = callback_end_frame;
+                            self.shared
+                                .frame_clock
+                                .store(self.frame_clock, Ordering::Release);
+                            output.fill(T::from_mono(0.));
+                            return (adopted, false);
+                        }
+                    } else {
+                        self.module_events.process_audio(
+                            &mut active.engine,
+                            &active.modules,
+                            &mut current[..count],
+                            active
+                                .scope
+                                .enabled
+                                .then_some((&active.scope.taps, &mut taps[..count])),
+                        );
+                    }
+                }
+                #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+                {
+                    self.module_events.process_audio(
+                        &mut active.engine,
+                        &active.modules,
+                        &mut current[..count],
+                        active
+                            .scope
+                            .enabled
+                            .then_some((&active.scope.taps, &mut taps[..count])),
+                    );
+                }
                 let active_stereo = self.graphs.active.output_channels() == 2;
                 let previous_stereo = self.frozen_previous.map_or_else(
                     || {
@@ -1568,6 +2251,13 @@ impl Callback {
             }
             // CPAL normally supplies complete frames; incomplete tails are silence.
             chunk[frames * channels..].fill(T::from_mono(0.0));
+        }
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        {
+            captured_this_callback |= self.try_hosted_capture();
+            if captured_this_callback {
+                return (adopted, crossfade);
+            }
         }
         if !self
             .module_events
@@ -1685,7 +2375,18 @@ fn build_stream<T: OutputSample>(
     let errors = callback.shared.clone();
     device.build_output_stream(
         config,
-        move |output: &mut [T], _| callback.render(output, channels),
+        move |output: &mut [T], info| {
+            #[cfg(test)]
+            if tests::device_tracking_enabled() {
+                tests::record_device_callback(info.timestamp(), || {
+                    callback.render(output, channels)
+                });
+                return;
+            }
+            #[cfg(not(test))]
+            let _ = info;
+            callback.render(output, channels);
+        },
         move |_| {
             errors.stream_error.store(true, Ordering::Relaxed);
         },
@@ -1832,7 +2533,37 @@ mod tests {
         }
     }
 
-    fn without_heap_activity(operation: impl FnOnce()) {
+    // Enabled only by the ignored real-device qualification. Counts the actual
+    // CPAL render invocation on its own callback thread, including first use.
+    pub(super) static DEVICE_TRACKING: AtomicBool = AtomicBool::new(false);
+    pub(super) static DEVICE_ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
+    pub(super) static DEVICE_DEALLOCATIONS: AtomicU64 = AtomicU64::new(0);
+    pub(super) static DEVICE_CALLBACKS: AtomicU64 = AtomicU64::new(0);
+    pub(super) static DEVICE_PLAYBACK_MIN_NS: AtomicU64 = AtomicU64::new(u64::MAX);
+    pub(super) static DEVICE_PLAYBACK_MAX_NS: AtomicU64 = AtomicU64::new(0);
+    pub(super) fn device_tracking_enabled() -> bool {
+        DEVICE_TRACKING.load(Ordering::Acquire)
+    }
+    pub(super) fn record_device_callback(
+        timestamp: cpal::OutputStreamTimestamp,
+        operation: impl FnOnce(),
+    ) {
+        ALLOCATIONS.with(|count| count.set(0));
+        DEALLOCATIONS.with(|count| count.set(0));
+        TRACKING.with(|tracking| tracking.set(true));
+        operation();
+        TRACKING.with(|tracking| tracking.set(false));
+        DEVICE_ALLOCATIONS.fetch_add(ALLOCATIONS.with(Cell::get) as u64, Ordering::Relaxed);
+        DEVICE_DEALLOCATIONS.fetch_add(DEALLOCATIONS.with(Cell::get) as u64, Ordering::Relaxed);
+        DEVICE_CALLBACKS.fetch_add(1, Ordering::Release);
+        if let Some(ahead) = timestamp.playback.duration_since(&timestamp.callback) {
+            let nanos = ahead.as_nanos().min(u128::from(u64::MAX)) as u64;
+            DEVICE_PLAYBACK_MIN_NS.fetch_min(nanos, Ordering::Relaxed);
+            DEVICE_PLAYBACK_MAX_NS.fetch_max(nanos, Ordering::Relaxed);
+        }
+    }
+
+    pub(super) fn without_heap_activity(operation: impl FnOnce()) {
         ALLOCATIONS.with(|count| count.set(0));
         DEALLOCATIONS.with(|count| count.set(0));
         TRACKING.with(|tracking| tracking.set(true));
@@ -6116,6 +6847,8 @@ mod tests {
     include!("random_audio_tests.rs");
     include!("port_light_host_tests.rs");
     include!("host_lifecycle_audio_tests.rs");
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    include!("audio_hosted_tests.rs");
 }
 
 #[cfg(test)]
@@ -6123,7 +6856,7 @@ mod tests {
 mod profile;
 
 // Real child + callback driver for app workflow tests, without opening a device.
-#[cfg(any())] // hosted plugin tests live on the host branch
+#[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 impl Audio {
     pub(crate) fn hosted_save_test_audio(
         patch: &Patch,

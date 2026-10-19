@@ -25,8 +25,12 @@ fn audio_callback(patch: &Patch, enabled: bool) -> (Audio, Callback) {
         .plan(patch, &callback.graphs.active.engine, 0)
         .unwrap();
     let audio = Audio {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        capture: callback.capture.take_control(),
         _stream: None,
-        prepared_wave_banks: patch.prepare_wave_banks(&openpatch_core::WavePreparationCache::default()).unwrap(),
+        prepared_wave_banks: patch
+            .prepare_wave_banks(&openpatch_core::WavePreparationCache::default())
+            .unwrap(),
         incoming,
         retired,
         pending: None,
@@ -42,6 +46,17 @@ fn audio_callback(patch: &Patch, enabled: bool) -> (Audio, Callback) {
         performance: callback.performance.clone(),
         submitted_revision: 0,
         accepted_patch: patch.clone(),
+        accepted_document: None,
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted_controller: hosted_audio::HostedAudioController::default(),
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted_control: None,
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted_authored_revision: None,
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted_native_intent: Vec::new(),
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        last_hosted_retirement: None,
         port_light_reader: reader(&callback),
     };
     (audio, callback)

@@ -836,7 +836,10 @@ mod tests {
         assert!(encoded.len() < MAX_DOCUMENT_BYTES);
         let envelope: Value = serde_json::from_slice(&encoded).unwrap();
         assert_eq!(envelope["format"], "openpatch-project");
-        assert_eq!(envelope["version"], 2);
+        assert_eq!(
+            envelope["version"],
+            openpatch::project_document::DOCUMENT_VERSION
+        );
         assert!(envelope["graph"]["assets"][&id]["data"].is_string());
         drop(envelope);
         drop(encoded);

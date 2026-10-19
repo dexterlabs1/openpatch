@@ -19,9 +19,7 @@ use eframe::{
     glow,
 };
 use openpatch::control::{execute_shared, SharedSession};
-use openpatch::project_document::{
-    DocumentNode, ExecutionDisposition, ProjectDocument, ProjectLayout,
-};
+use openpatch::project_document::{DocumentNode, ProjectDocument, ProjectLayout};
 use openpatch_core::{catalog, MidiEvent, Patch};
 include!("toolbar.rs");
 include!("app_import.rs");
@@ -420,6 +418,8 @@ pub struct OpenPatch {
     active_file: Option<String>,
     active_token: Option<FileToken>,
     after_save: Option<PendingAction>,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    hosted_save: Option<HostedSave>,
     deferred_action: Option<PendingAction>,
     deferred_manual_release: Option<(u64, crate::audio::ManualReleaseTicket)>,
     autosave_needed: bool,
@@ -478,16 +478,7 @@ impl OpenPatch {
         style.spacing.item_spacing = Vec2::new(8.0, 8.0);
         style.spacing.button_padding = Vec2::new(10.0, 5.0);
         cc.egui_ctx.set_style(style);
-        let (
-            patch,
-            project,
-            disposition,
-            wave_banks,
-            revision,
-            state_id,
-            layout_generation,
-            workspace,
-        ) = {
+        let (patch, project, audio_ticket, revision, state_id, layout_generation, workspace) = {
             let mut s = shared.lock().unwrap();
             // A fresh engine starts from this exact document, with no old
             // signal history to which earlier host edges could apply.
@@ -495,8 +486,7 @@ impl OpenPatch {
             (
                 s.patch().clone(),
                 s.project_document().clone(),
-                s.execution_disposition(),
-                s.prepared_wave_banks(),
+                s.audio_snapshot(),
                 s.revision(),
                 s.state_id(),
                 s.layout_generation(),
@@ -511,14 +501,19 @@ impl OpenPatch {
         let output_device = preferences["output_device"].as_str().map(str::to_owned);
         let midi_device = preferences["midi_device"].as_str().map(str::to_owned);
         let cable_presentation = CablePresentation::from_settings(&preferences);
-        let (mut audio, device) = Self::open_audio(
-            &patch,
-            wave_banks,
-            output_device.as_deref(),
-            cable_presentation.plug_brightness > 0.0,
-            revision,
-            disposition,
-        );
+        let (mut audio, device) = match &audio_ticket {
+            Ok(ticket) => Self::open_audio(
+                ticket.clone(),
+                output_device.as_deref(),
+                cable_presentation.plug_brightness > 0.0,
+            ),
+            Err(error) => (None, error.clone()),
+        };
+        if audio.is_some() {
+            if let (Ok(ticket), Ok(mut session)) = (&audio_ticket, shared.lock()) {
+                session.acknowledge_audio_snapshot(ticket.id);
+            }
+        }
         let midi_epoch = audio.as_ref().map_or(0, Audio::midi_epoch);
         let midi = audio
             .as_mut()
@@ -625,6 +620,8 @@ impl OpenPatch {
             active_file: startup.active_file,
             active_token: startup.active_token,
             after_save: None,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_save: None,
             deferred_action: None,
             deferred_manual_release: None,
             autosave_needed: false,
@@ -739,21 +736,11 @@ impl OpenPatch {
         self.rack.set_midi_gate_states(states);
     }
     fn open_audio(
-        patch: &Patch,
-        wave_banks: std::sync::Arc<openpatch_core::PreparedWaveBanks>,
+        ticket: std::sync::Arc<openpatch::control::HostLifecycleTicket>,
         device: Option<&str>,
         port_lights_enabled: bool,
-        revision: u64,
-        disposition: ExecutionDisposition,
     ) -> (Option<Audio>, String) {
-        let opened = Audio::new_with_device_and_wave_banks_and_execution(
-            patch,
-            wave_banks,
-            device,
-            port_lights_enabled,
-            revision,
-            disposition,
-        );
+        let opened = Audio::new_with_document(ticket, device, port_lights_enabled);
         match opened {
             Ok(audio) => {
                 let label = format!(
@@ -902,9 +889,9 @@ impl OpenPatch {
     }
     fn reopen_audio(&mut self, selected: Option<String>) {
         self.scope.reset_connection();
-        let (ticket, disposition) = match self.shared.lock() {
+        let ticket = match self.shared.lock() {
             Ok(mut session) => match session.audio_snapshot() {
-                Ok(ticket) => (ticket, session.execution_disposition()),
+                Ok(ticket) => ticket,
                 Err(error) => {
                     self.settings_status = error;
                     return;
@@ -916,12 +903,9 @@ impl OpenPatch {
             }
         };
         let (audio, label) = Self::open_audio(
-            &ticket.patch,
-            ticket.banks.clone(),
+            ticket.clone(),
             selected.as_deref(),
             self.rack.cable_presentation().plug_brightness > 0.0,
-            ticket.revision,
-            disposition,
         );
         if let Some(mut audio) = audio {
             // The new engine was compiled from this immutable ticket. Its
@@ -1675,6 +1659,39 @@ impl OpenPatch {
                 self.settings_status = error;
             }
         }
+        if audio_ticket.as_ref().is_some_and(|ticket| {
+            self.audio
+                .as_ref()
+                .is_some_and(|audio| audio.needs_hosted_device_restart(ticket))
+        }) {
+            // Native and MCP activation both enter the requested device
+            // profile. Preserve transport intent across this automatic reopen.
+            let was_playing = self.audio.as_ref().is_some_and(Audio::is_playing);
+            self.reopen_audio(self.output_device.clone());
+            if audio_ticket.as_ref().is_some_and(|ticket| {
+                self.audio
+                    .as_ref()
+                    .is_some_and(|audio| audio.needs_hosted_device_restart(ticket))
+            }) {
+                // A failed profile/configuration must wait for explicit Retry,
+                // rather than relaunching a companion on every UI frame.
+                self.status = format!("Hosted activation failed: {}", self.settings_status);
+                self.midi = None;
+                self.keyboard.release();
+                self.audio = None;
+                self.audio_revision = None;
+                self.attach_live_events();
+            } else if let Some(audio) = &self.audio {
+                audio.set_playing(was_playing);
+                self.status = if was_playing {
+                    "Hosted playback enabled"
+                } else {
+                    "Hosted playback enabled — press Play"
+                }
+                .into();
+            }
+            audio_ticket = None;
+        }
         let mut failure = None;
         if let Some(audio) = &mut self.audio {
             audio.service();
@@ -1683,12 +1700,7 @@ impl OpenPatch {
                 self.keyboard.release();
             }
             if let Some(ticket) = audio_ticket {
-                match audio.submit_patch_with_host_lifecycle(
-                    &ticket.patch,
-                    ticket.revision,
-                    ticket.banks.clone(),
-                    &ticket.delta,
-                ) {
+                match audio.submit_document(ticket.clone()) {
                     Ok(()) => {
                         self.audio_revision = Some(ticket.revision);
                         if let Ok(mut session) = self.shared.lock() {
@@ -8684,7 +8696,7 @@ mod project_workflow_tests {
     mod agent_follow_app_tests {
         include!("agent_follow_app_tests.rs");
     }
-    #[cfg(any())] // hosted plugin tests live on the host branch
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     mod hosted_save_app_tests {
         include!("hosted_save_app_tests.rs");
     }
@@ -8837,6 +8849,8 @@ mod project_workflow_tests {
             active_file: None,
             active_token: None,
             after_save: None,
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            hosted_save: None,
             deferred_action: None,
             deferred_manual_release: None,
             autosave_needed: false,

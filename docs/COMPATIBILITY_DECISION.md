@@ -37,17 +37,31 @@ durable state or pending layout is explicitly unavailable, never silently clean.
 
 A versioned Rust module manifest/API and a host for existing VCV C++ binaries are separate deliverables. New native extensions use the same identity/state/migration rules as imports. Existing binary compatibility remains an explicit open host-matrix gate; choose a separate compatibility host boundary before implementing it. Do not load an arbitrary existing VCV library directly into the Rust audio callback or claim that porting a few modules supplies ecosystem compatibility.
 
-The preferred **feasibility direction**, not an implemented or proven host, is
+The preferred **feasibility direction**, not an integrated application host, is
 a separate Rack-compatible companion process with a versioned native interface
-to Rust and explicit hosted-module document identities. A bounded later spike
-must load one actual existing macOS ARM plugin binary, process it and restore
-its state. Compiling plugin source into a new wrapper does not prove existing
-binary compatibility. Resolve exported C++ symbols/runtime dependencies,
+to Rust and explicit hosted-module document identities. The bounded first spike
+has now loaded an actual installed macOS ARM plugin binary, processed it and
+restored persistent state in a fresh child process. Compiling plugin source into
+a new wrapper would not establish this result. Resolve exported C++ symbols/runtime dependencies,
 context/engine/thread ownership, plugin UI callbacks, bounded audio transfer,
 failure/state capture and mixed-graph scheduling/feedback latency before
 committing to that architecture. Process isolation alone proves neither sample
-scheduling nor GUI compatibility. This tracked gate remains open; imported
-native sequencing/control is the next musical milestone.
+scheduling nor GUI compatibility. The wider host-matrix gate remains open.
+
+**Actual-binary feasibility checkpoint, 2026-10-17:** the separate
+[probe and reproducible command](../scripts/rack_binary_host/README.md) loads
+installed Bogaudio 2.6.47 `Bogaudio-Offset` against genuine Rack SDK 2.6.6.
+Two fresh children match six independent mono/poly16, gain, operation-order and
+limiter observations each, plus identical saved parameters/custom state. Loaded
+image paths and before/after hashes identify the actual binary/runtime tested;
+official distributed-build provenance is not authenticated. Engine uses its real
+cables/connection bookkeeping, with no widget, audio driver or user settings
+load. This is persistent state restoration, not transient DSP continuation.
+Internal Engine APIs and retained library lifetime remain explicit constraints.
+The probe is not packaged or connected to OpenPatch playback/import. Versioned
+transfer, crash/stall policy, state authority, mixed native/hosted scheduling,
+feedback latency and UI/redistribution policy still require implementation and
+qualification before hosted modules can be offered in the application.
 
 Pin supported module/version mappings and audit licenses/assets for each port or host. Keep source behavior, public plugin ABI, official distributed-binary identity and physical hardware accuracy as distinct claims. General-purpose on-the-fly DSP authoring does not block the usable import milestone.
 

@@ -442,30 +442,34 @@ mod tests {
         let patch = patch();
         let mut engine = patch.compile().unwrap();
         let (mut producer, reader) = prepare(&patch, &mut engine).unwrap();
+        // This checks concurrency/coherence, not wall-clock expiry. Keep the
+        // logical acquisition/read time fixed so runner scheduling cannot age
+        // the final packet out; the tests above exercise the exact lease.
+        let now = Instant::now();
         let writer = std::thread::spawn(move || {
             for sequence in 1..=500 {
                 advance(&mut engine);
-                assert!(producer.publish(&engine, 9, sequence * 64));
+                assert!(producer.publish_at(&engine, 9, sequence * 64, now));
             }
         });
         let other = reader.clone();
         let observer = std::thread::spawn(move || {
             for _ in 0..100 {
-                if let Some(frame) = other.read(9) {
+                if let Some(frame) = other.read_at(9, now) {
                     check(&frame);
                 }
                 std::thread::yield_now();
             }
         });
         while !writer.is_finished() {
-            if let Some(frame) = reader.read(9) {
+            if let Some(frame) = reader.read_at(9, now) {
                 check(&frame);
             }
             std::thread::yield_now();
         }
         writer.join().unwrap();
         observer.join().unwrap();
-        let last = reader.read(9).unwrap();
+        let last = reader.read_at(9, now).unwrap();
         check(&last);
         assert_eq!(
             last.sequence, 500,

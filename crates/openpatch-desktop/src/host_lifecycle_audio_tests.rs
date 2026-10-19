@@ -14,7 +14,7 @@ fn host_lifecycle_patch() -> Patch {
     .unwrap()
 }
 
-fn host_test_audio(patch: &Patch) -> (Audio, Callback) {
+pub(super) fn host_test_audio(patch: &Patch) -> (Audio, Callback) {
     let (mut callback, incoming, retired) = callback_for(patch);
     callback.performance.sync_patch(patch, 0);
     callback.graphs.active.modules = callback
@@ -22,6 +22,8 @@ fn host_test_audio(patch: &Patch) -> (Audio, Callback) {
         .plan(patch, &callback.graphs.active, 0)
         .unwrap();
     let audio = Audio {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        capture: callback.capture.take_control(),
         _stream: None,
         incoming,
         retired,
@@ -38,6 +40,17 @@ fn host_test_audio(patch: &Patch) -> (Audio, Callback) {
         performance: callback.performance.clone(),
         submitted_revision: 0,
         accepted_patch: patch.clone(),
+        accepted_document: None,
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted_controller: hosted_audio::HostedAudioController::default(),
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted_control: None,
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted_authored_revision: None,
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        hosted_native_intent: Vec::new(),
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        last_hosted_retirement: None,
         prepared_wave_banks: patch
             .prepare_wave_banks(&WavePreparationCache::default())
             .unwrap(),
@@ -217,14 +230,7 @@ fn scope_rebuild_uses_sealed_accepted_graph_not_newer_session_patch() {
     let current_ui_patch = session.patch().clone();
     assert!(session.revision() > sealed.revision);
     assert!(Arc::ptr_eq(&sealed, &session.audio_snapshot().unwrap()));
-    audio
-        .submit_patch_with_host_lifecycle(
-            &sealed.patch,
-            sealed.revision,
-            sealed.banks.clone(),
-            &sealed.delta,
-        )
-        .unwrap();
+    audio.submit_document(sealed.clone()).unwrap();
     assert!(session.acknowledge_audio_snapshot(sealed.id));
     assert!(audio.pending.is_some());
     let selection = ScopeSelection {
@@ -236,6 +242,10 @@ fn scope_rebuild_uses_sealed_accepted_graph_not_newer_session_patch() {
         y: None,
     };
     audio.set_scope(&current_ui_patch, Some(selection)).unwrap();
+    assert!(Arc::ptr_eq(
+        audio.accepted_document.as_ref().unwrap(),
+        &sealed
+    ));
     let pending = audio.pending.as_ref().unwrap();
     assert_eq!(pending.revision, sealed.revision);
     assert_eq!(pending.host_lifecycle.named, sealed.delta);
@@ -286,14 +296,7 @@ fn scope_rebuild_uses_sealed_accepted_graph_not_newer_session_patch() {
         .all(|value| value.to_bits() == 0));
     let latest = session.audio_snapshot().unwrap();
     assert_eq!(latest.revision, session.revision());
-    audio
-        .submit_patch_with_host_lifecycle(
-            &latest.patch,
-            latest.revision,
-            latest.banks.clone(),
-            &latest.delta,
-        )
-        .unwrap();
+    audio.submit_document(latest.clone()).unwrap();
     assert!(session.acknowledge_audio_snapshot(latest.id));
     // The existing Mid tap automatically accompanies the new ticket; the new
     // endpoint also becomes bindable only after that ticket is accepted.

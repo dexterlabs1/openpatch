@@ -2323,6 +2323,7 @@ dependencies = [
  "base64",
  "libc",
  "openpatch-core",
+ "rtrb",
  "serde",
  "serde_json",
  "sha2",

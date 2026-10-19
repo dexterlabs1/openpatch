@@ -58,7 +58,10 @@ fn native_single_file_roundtrip_and_save_existing_include_graph_and_layout() {
     let bytes = read(&directory, "voice.openpatch");
     let envelope: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(envelope["format"], "openpatch-project");
-    assert_eq!(envelope["version"], 2);
+    assert_eq!(
+        envelope["version"],
+        openpatch::project_document::DOCUMENT_VERSION
+    );
     let decoded = openpatch::project_document::ProjectDocument::decode(&bytes).unwrap();
     assert_eq!(
         serde_json::to_value(decoded).unwrap(),

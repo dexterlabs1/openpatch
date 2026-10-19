@@ -417,3 +417,61 @@ fn first_and_steady_callbacks_adoption_bypass_and_initialize_use_no_heap_activit
     assert_eq!(ALLOCS.with(Cell::get), 0);
     assert_eq!(DEALLOCS.with(Cell::get), 0);
 }
+
+#[test]
+fn explicit_external_frame_exchange_and_rejection_use_no_heap_activity() {
+    use crate::{ExternalFrameIo, ExternalModuleSpec};
+    let graph: Patch = serde_json::from_value(json!({
+        "version":2,"nodes":[{"id":"listen","kind":"rackmcp_listen"}]
+    }))
+    .unwrap();
+    let specs = [ExternalModuleSpec {
+        id: "binary".into(),
+        inputs: vec!["in".into()],
+        outputs: vec!["out".into()],
+    }];
+    let routes = serde_json::from_value::<Vec<crate::Cable>>(json!([
+        {"id":"loop","from":"binary","to":"binary","input":"in"},
+        {"id":"native","from":"binary","to":"listen","input":"left"}
+    ]))
+    .unwrap();
+    let banks = graph
+        .prepare_wave_banks(&crate::WavePreparationCache::default())
+        .unwrap();
+    let mut engine =
+        Engine::compile_with_externals(&graph, &specs, &routes, Some("listen"), "left", &banks)
+            .unwrap();
+    let mut receiving =
+        Engine::compile_with_externals(&graph, &specs, &routes, Some("listen"), "left", &banks)
+            .unwrap();
+    let mut io = [ExternalFrameIo::new(
+        engine.resolve_external_module("binary").unwrap(),
+    )];
+    io[0].outputs[0] = PortFrame {
+        channels: 16,
+        values: [2.0; 16],
+    };
+    let mut receiving_io = [ExternalFrameIo::new(
+        receiving.resolve_external_module("binary").unwrap(),
+    )];
+    ALLOCS.with(|count| count.set(0));
+    DEALLOCS.with(|count| count.set(0));
+    TRACKING.with(|tracking| tracking.set(true));
+    for _ in 0..129 {
+        std::hint::black_box(engine.process_audio_frame_with_externals(&mut io).unwrap());
+    }
+    receiving.adopt_state_from(&engine);
+    std::hint::black_box(
+        receiving
+            .process_audio_frame_with_externals(&mut receiving_io)
+            .unwrap(),
+    );
+    assert!(receiving
+        .process_audio_frame_with_externals(&mut io)
+        .is_err());
+    io[0].outputs[0].channels = 17;
+    assert!(engine.process_audio_frame_with_externals(&mut io).is_err());
+    TRACKING.with(|tracking| tracking.set(false));
+    assert_eq!(ALLOCS.with(Cell::get), 0);
+    assert_eq!(DEALLOCS.with(Cell::get), 0);
+}

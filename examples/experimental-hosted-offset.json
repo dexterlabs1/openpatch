@@ -1,0 +1,134 @@
+{
+  "format": "openpatch-project",
+  "version": 3,
+  "graph": {
+    "version": 2,
+    "sample_rate": 48000,
+    "assets": {},
+    "nodes": [
+      {
+        "type": "native",
+        "node": {
+          "id": "source",
+          "kind": "stock_vco",
+          "params": {
+            "frequency": -12.0
+          }
+        }
+      },
+      {
+        "type": "hosted",
+        "id": "binary",
+        "module": {
+          "schema_version": 1,
+          "identity": {
+            "plugin": "Bogaudio",
+            "model": "Bogaudio-Offset",
+            "version": "2.6.47",
+            "rack_version": "2.6.6",
+            "plugin_sha256": "264e55e1389274c3873439372c5c51f48f63168bd6c98fb2c6ffec170224b6f6",
+            "runtime_sha256": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c"
+          },
+          "ports": [
+            {
+              "direction": "input",
+              "index": 0,
+              "key": "offset_cv"
+            },
+            {
+              "direction": "input",
+              "index": 1,
+              "key": "scale_cv"
+            },
+            {
+              "direction": "input",
+              "index": 2,
+              "key": "in"
+            },
+            {
+              "direction": "output",
+              "index": 0,
+              "key": "out"
+            }
+          ],
+          "state": {
+            "plugin": "Bogaudio",
+            "model": "Bogaudio-Offset",
+            "version": "2.6.47",
+            "id": 2,
+            "params": [
+              {
+                "id": 0,
+                "value": 0.0
+              },
+              {
+                "id": 1,
+                "value": 0.25
+              }
+            ],
+            "data": {
+              "offset_first": true,
+              "disableOutputLimit": false
+            }
+          }
+        }
+      },
+      {
+        "type": "native",
+        "node": {
+          "id": "amp",
+          "kind": "gain",
+          "params": {
+            "gain": 0.025
+          }
+        }
+      }
+    ],
+    "cables": [
+      {
+        "route": {
+          "id": "host-in",
+          "from": "source",
+          "output": "sine",
+          "to": "binary",
+          "input": "in"
+        }
+      },
+      {
+        "route": {
+          "id": "host-out",
+          "from": "binary",
+          "output": "out",
+          "to": "amp",
+          "input": "signal"
+        }
+      }
+    ],
+    "output": "amp",
+    "output_port": "out"
+  },
+  "layout": {
+    "version": 1,
+    "zoom": 1.0,
+    "pan": [
+      0.0,
+      0.0
+    ],
+    "positions": {
+      "source": [
+        0.0,
+        0.0
+      ],
+      "binary": [
+        360.0,
+        0.0
+      ],
+      "amp": [
+        540.0,
+        0.0
+      ]
+    }
+  },
+  "sources": {},
+  "source_blobs": {}
+}

@@ -50,6 +50,14 @@ pub(super) fn geometry_changed(before: &ProjectDocument, after: &ProjectDocument
                 DocumentNode::Unresolved { source: old, .. },
                 DocumentNode::Unresolved { source: new, .. },
             ) => old.package != new.package || old.index != new.index,
+            (
+                DocumentNode::Hosted { module: old, .. },
+                DocumentNode::Hosted { module: new, .. },
+            ) => {
+                old.identity.plugin != new.identity.plugin
+                    || old.identity.model != new.identity.model
+                    || old.ports != new.ports
+            }
             _ => true,
         }
     })
@@ -188,6 +196,10 @@ impl Session {
     }
 
     pub(super) fn require_document_execution(&self) -> Result<(), String> {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        if self.hosted_execution_grant.is_some() {
+            return Err("this operation requires full hosted execution; native-only rendering or analysis would omit hosted modules".into());
+        }
         if self.execution_disposition().is_runnable() {
             Ok(())
         } else {
@@ -282,9 +294,7 @@ impl Session {
             .graph
             .nodes
             .iter()
-            .filter_map(|node| {
-                matches!(node, DocumentNode::Unresolved { .. }).then_some(node.id().to_owned())
-            })
+            .filter_map(|node| (!node.is_native()).then_some(node.id().to_owned()))
             .collect();
         document.graph.cables.retain(|cable| {
             let opaque =
@@ -421,10 +431,26 @@ impl Session {
         )?;
         self.reconcile_midi_cc_learn()?;
         let mut effects = EditEffects::default();
-        effects.retired = self.module_ids();
-        effects.retired_cables = self.cable_ids();
+        // A load retires every document incarnation, including hosted/source
+        // nodes omitted from the native state carrier. History must retain this
+        // fence even for an identical graph with no native modules at all.
+        effects.retired = self
+            .document
+            .graph
+            .nodes
+            .iter()
+            .map(|node| node.id().to_owned())
+            .collect();
+        effects.retired_cables = self
+            .document
+            .graph
+            .cables
+            .iter()
+            .filter_map(|cable| cable.route.id.clone())
+            .collect();
         effects.replacement_document = Some(document);
         effects.playback_mode = Some(PlaybackMode::Exact);
+        effects.next_document_generation = Some(next_generation);
         let revision = self.commit_with_layout(
             carrier.patch,
             expected_revision,
@@ -432,7 +458,6 @@ impl Session {
             &effects,
             prepared_layout,
         )?;
-        self.project_save.begin_document(next_generation)?;
         self.layout_origin = if prepared_layout {
             None
         } else {
@@ -526,6 +551,87 @@ impl Session {
         self.capture_document_state(expected_revision, true)
     }
 
+    pub fn set_hosted_parameter(
+        &mut self,
+        id: &str,
+        parameter: &str,
+        value: f32,
+        expected_revision: Option<u64>,
+    ) -> Result<u64, String> {
+        self.set_hosted_parameter_with_group(id, parameter, value, expected_revision, None)
+    }
+    fn set_hosted_parameter_with_group(
+        &mut self,
+        id: &str,
+        parameter: &str,
+        value: f32,
+        expected_revision: Option<u64>,
+        group: Option<(String, String, String)>,
+    ) -> Result<u64, String> {
+        let index = match parameter {
+            "offset" => 0,
+            "scale" => 1,
+            _ => return Err("unsupported hosted parameter".into()),
+        };
+        self.edit_hosted_module(
+            id,
+            expected_revision,
+            Some((index, value)),
+            group,
+            |module| module.with_parameter(parameter, value),
+        )
+    }
+    pub fn set_hosted_option(
+        &mut self,
+        id: &str,
+        option: &str,
+        value: bool,
+        expected_revision: Option<u64>,
+    ) -> Result<u64, String> {
+        self.edit_hosted_module(id, expected_revision, None, None, |module| {
+            module.with_option(option, value)
+        })
+    }
+    fn edit_hosted_module(
+        &mut self,
+        id: &str,
+        expected_revision: Option<u64>,
+        assignment: Option<(u16, f32)>,
+        group: Option<(String, String, String)>,
+        edit: impl FnOnce(
+            &crate::project_document::hosted::HostedModule,
+        ) -> Result<crate::project_document::hosted::HostedModule, String>,
+    ) -> Result<u64, String> {
+        self.check_open()?;
+        self.check_revision(expected_revision)?;
+        let mut document = self.document.clone();
+        let module = document
+            .graph
+            .nodes
+            .iter_mut()
+            .find_map(|node| match node {
+                DocumentNode::Hosted {
+                    id: node_id,
+                    module,
+                    ..
+                } if node_id == id => Some(module),
+                _ => None,
+            })
+            .ok_or("hosted module not found")?;
+        *module = edit(module)?;
+        let carrier = document.state_carrier()?;
+        let mut effects = EditEffects::default();
+        if let Some((parameter, value)) = assignment {
+            effects.hosted_parameters.push(HostedParameterAssignment {
+                module_id: id.to_owned(),
+                parameter,
+                value,
+            });
+        }
+        effects.replacement_document = Some(document);
+        self.commit(carrier.patch, expected_revision, group, &effects)
+    }
+
     fn capture_document_state(
         &self,
         expected_revision: Option<u64>,
@@ -537,6 +643,13 @@ impl Session {
             return Err(
                 "host layout placement is pending; retry document capture after placement".into(),
             );
+        }
+        if self
+            .live_module_events
+            .as_ref()
+            .is_some_and(|backend| backend.requires_hosted_capture_barrier())
+        {
+            return Err("live hosted project capture requires a coherent audio/companion save barrier; no saved baseline was changed".into());
         }
         if !self.execution_disposition().is_runnable() {
             return Ok(ProjectDocumentSnapshot {
@@ -613,7 +726,43 @@ impl Session {
     }
 
     pub fn document_execution_status(&self) -> Value {
-        execution_status(&self.document, self.playback_mode)
+        let status = execution_status(&self.document, self.playback_mode);
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let status = {
+            let mut status = status;
+            let runtime = self.hosted_execution_grant.as_ref().and_then(|_| {
+                self.live_module_events
+                    .as_ref()
+                    .and_then(|backend| backend.hosted_execution_status())
+            });
+            status["delayed_hosted_request"] = self.hosted_execution_grant.as_ref().map_or(
+                json!({"status":"not_requested"}),
+                |grant| {
+                    json!({"status":"requested", "document_generation":grant.document_generation(),
+                    "topology_key":grant.topology_key(), "profile":grant.profile(),
+                    "active":runtime.as_ref().is_some_and(|status| status["active"] == true),
+                    "runtime":runtime})
+                },
+            );
+            if self.hosted_execution_grant.is_some() {
+                let state = if status["delayed_hosted_request"]["active"] == true {
+                    "running"
+                } else if status["delayed_hosted_request"]["runtime"]["runtime"]["status"]
+                    == "suspended_fault"
+                {
+                    "suspended_fault"
+                } else {
+                    "requested"
+                };
+                if let Some(modules) = status["hosted_modules"].as_array_mut() {
+                    for module in modules {
+                        module["execution"] = json!(state);
+                    }
+                }
+            }
+            status
+        };
+        status
     }
 
     pub(super) fn document_tool(
@@ -628,6 +777,9 @@ impl Session {
                 | "load_document"
                 | "save_document"
                 | "set_document_playback"
+                | "set_hosted_execution"
+                | "set_hosted_parameter"
+                | "set_hosted_option"
         ) {
             return None;
         }
@@ -657,6 +809,22 @@ impl Session {
                 let captured = self.capture_project_document(expected_revision(args)?)?;
                 write_document_snapshot(&path, string(args, "filename")?, captured)
             }
+            "set_hosted_execution" => {
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                {
+                    let enabled = args["enabled"]
+                        .as_bool()
+                        .ok_or("enabled must be a boolean")?;
+                    if enabled {
+                        self.request_delayed_hosted_execution(expected_revision(args)?)?;
+                    } else {
+                        self.revoke_delayed_hosted_execution(expected_revision(args)?)?;
+                    }
+                    Ok(self.snapshot())
+                }
+                #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+                Err("experimental hosted execution currently requires macOS ARM".into())
+            }
             "set_document_playback" => {
                 let mode = match string(args, "mode")? {
                     "exact" => PlaybackMode::Exact,
@@ -664,6 +832,42 @@ impl Session {
                     _ => return Err("mode must be exact or partial".into()),
                 };
                 self.set_document_playback(mode, expected_revision(args)?)?;
+                Ok(self.snapshot())
+            }
+            "set_hosted_parameter" => {
+                let value = args["value"]
+                    .as_f64()
+                    .filter(|v| v.is_finite() && (-1.0..=1.0).contains(v))
+                    .ok_or("hosted parameter must be finite and in -1..=1")?;
+                let id = string(args, "id")?;
+                let parameter = string(args, "parameter")?;
+                let group = args
+                    .get("history_group")
+                    .map(|_| {
+                        Ok::<_, String>((
+                            history_group_key(args)?.into(),
+                            id.into(),
+                            format!("hosted:{parameter}"),
+                        ))
+                    })
+                    .transpose()?;
+                self.set_hosted_parameter_with_group(
+                    id,
+                    parameter,
+                    value as f32,
+                    expected_revision(args)?,
+                    group,
+                )?;
+                Ok(self.snapshot())
+            }
+            "set_hosted_option" => {
+                let value = args["value"].as_bool().ok_or("value must be Boolean")?;
+                self.set_hosted_option(
+                    string(args, "id")?,
+                    string(args, "option")?,
+                    value,
+                    expected_revision(args)?,
+                )?;
                 Ok(self.snapshot())
             }
             _ => unreachable!(),
@@ -678,6 +882,7 @@ fn has_source(document: &ProjectDocument) -> bool {
             matches!(
                 node,
                 DocumentNode::Unresolved { .. }
+                    | DocumentNode::Hosted { .. }
                     | DocumentNode::Native {
                         source: Some(_),
                         ..
@@ -693,13 +898,7 @@ fn disposition(document: &ProjectDocument, mode: PlaybackMode) -> ExecutionDispo
     };
     if mode == PlaybackMode::Partial {
         ExecutionDisposition::RunnablePartial
-    } else if !automation.is_empty()
-        || document
-            .graph
-            .nodes
-            .iter()
-            .any(|node| matches!(node, DocumentNode::Unresolved { .. }))
-    {
+    } else if !automation.is_empty() || document.graph.nodes.iter().any(|node| !node.is_native()) {
         ExecutionDisposition::SuspendedUnresolved
     } else {
         ExecutionDisposition::RunnableExact
@@ -714,7 +913,7 @@ pub(super) fn execution_status(document: &ProjectDocument, mode: PlaybackMode) -
         .graph
         .nodes
         .iter()
-        .filter_map(|node| matches!(node, DocumentNode::Unresolved { .. }).then_some(node.id()))
+        .filter_map(|node| (!node.is_native()).then_some(node.id()))
         .collect();
     let omitted: Vec<_> = document
         .graph
@@ -747,7 +946,11 @@ pub(super) fn execution_status(document: &ProjectDocument, mode: PlaybackMode) -
             _ => None,
         })
         .collect();
-    json!({"substitutions":substitutions,"mode":if mode == PlaybackMode::Exact {"exact"} else {"partial"},
+    let hosted:Vec<_>=document.graph.nodes.iter().filter_map(|node|match node {
+        DocumentNode::Hosted{id,module,..}=>Some(json!({"id":id,"identity":module.identity,
+            "state_sha256":module.state.id(),"execution":"not_active", "capability_error":module.validate_supported_offset().err()})),_=>None,
+    }).collect();
+    json!({"substitutions":substitutions,"hosted_modules":hosted,"mode":if mode == PlaybackMode::Exact {"exact"} else {"partial"},
         "requested_disposition":disposition(document,mode),"unresolved_modules":unresolved,
         "omitted_routes":omitted,"omitted_output":document.graph.output.as_ref().filter(|id|unresolved.contains(id.as_str())),
         "omitted_automation":omitted_automation,"automation_error":automation_error,

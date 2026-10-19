@@ -4,8 +4,10 @@ use super::*;
 #[derive(Default)]
 pub(super) struct EditEffects {
     pub parameters: super::parameters::ParameterEffects,
+    pub hosted_parameters: Vec<HostedParameterAssignment>,
     pub sequence_loads: Vec<String>,
     pub replacement_document: Option<ProjectDocument>,
+    pub next_document_generation: Option<u64>,
     pub playback_mode: Option<PlaybackMode>,
     pub source_copies: BTreeMap<String, String>,
     pub cleared_source_routes: bool,

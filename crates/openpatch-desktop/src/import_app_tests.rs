@@ -2,6 +2,128 @@ use super::*;
 use openpatch::project_document::{ExecutionDisposition, PlaybackMode};
 
 #[test]
+fn hosted_document_native_app_history_save_and_inactive_panel_preserve_authority() {
+    use openpatch::project_document::hosted::{HostedIdentity, HostedModule};
+    let directory = tempfile::tempdir().unwrap();
+    let patch = serde_json::from_value(json!({"version":2,"sample_rate":48000,
+        "nodes":[{"id":"dc","kind":"constant","params":{"value":0.5}}],
+        "cables":[],"output":"dc"}))
+    .unwrap();
+    let mut document = ProjectDocument::from_patch(patch, ProjectLayout::default()).unwrap();
+    document.graph.nodes.push(DocumentNode::Hosted {
+        id: "offset".into(),
+        source: None,
+        module: HostedModule::offset(
+            HostedIdentity {
+                plugin: "Bogaudio".into(),
+                model: "Bogaudio-Offset".into(),
+                version: "2.6.47".into(),
+                rack_version: "2.6.6".into(),
+                plugin_sha256: "264e55e1389274c3873439372c5c51f48f63168bd6c98fb2c6ffec170224b6f6"
+                    .into(),
+                runtime_sha256: "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c"
+                    .into(),
+            },
+            0.25,
+            0.5,
+            true,
+            false,
+        )
+        .unwrap(),
+    });
+    document.graph.cables.push(
+        serde_json::from_value(json!({"route":{
+        "id":"host-in","from":"dc","output":"out","to":"offset","input":"in"}}))
+        .unwrap(),
+    );
+    document.layout.positions.insert("dc".into(), [0., 0.]);
+    document
+        .layout
+        .positions
+        .insert("offset".into(), [180., 0.]);
+    std::fs::write(
+        directory.path().join("hosted.json"),
+        document.encode().unwrap(),
+    )
+    .unwrap();
+    let mut app = host(directory.path());
+    app.load_document("hosted.json", false);
+    assert_eq!(app.project.graph.nodes.len(), 2, "{}", app.status);
+    assert_eq!(app.patch.nodes.len(), 1);
+    assert!(app.audio.is_none());
+    let original = serde_json::to_value(&app.project).unwrap();
+    let positions = app.rack.layout()["positions"].clone();
+    app.save_document("before.openpatch", true);
+    let ctx = egui::Context::default();
+    crate::panel_skin::install_fonts(&ctx);
+    let size = egui::vec2(1200., 800.);
+    let mut capture = crate::headless_review::CpuCapture::default();
+    for frame in 0..2 {
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                time: Some(frame as f64 * 0.1),
+                ..Default::default()
+            },
+            |ctx| app.rack_workspace(ctx, None),
+        );
+        capture.observe(&output);
+        if frame == 1 {
+            let text: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) => Some(text.galley.job.text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert!(text.contains(&"EXPERIMENTAL HOST"), "{text:?}");
+            assert!(text.contains(&"Hosted execution stopped"), "{text:?}");
+            assert!(
+                text.contains(&"Start experimental hosted playback"),
+                "{text:?}"
+            );
+            assert!(!text.contains(&"Hosted audio running"), "{text:?}");
+            assert!(text.contains(&"OFFSET CV"), "{text:?}");
+            assert!(text.contains(&"SCALE CV"), "{text:?}");
+            assert!(text.contains(&"Click for playback controls"), "{text:?}");
+            assert!(!text.contains(&"Click to inspect / repair"), "{text:?}");
+            if let Some(path) = std::env::var_os("OPENPATCH_HOSTED_DOCUMENT_REVIEW") {
+                let path = PathBuf::from(path);
+                std::fs::create_dir_all(&path).unwrap();
+                capture.save(&ctx, output, size, path.join("hosted-inactive.png"));
+            }
+        }
+    }
+    assert!(
+        app.command(
+            "set_hosted_parameter",
+            json!({"id":"offset","parameter":"offset","value":0.125})
+        ),
+        "{}",
+        app.status
+    );
+    app.observe_document();
+    assert!(app.dirty());
+    assert_eq!(app.rack.layout()["positions"], positions);
+    let edited = serde_json::to_value(&app.project).unwrap();
+    assert!(app.command("undo", json!({})), "{}", app.status);
+    app.observe_document();
+    assert!(!app.dirty());
+    assert_eq!(serde_json::to_value(&app.project).unwrap(), original);
+    assert!(app.command("redo", json!({})), "{}", app.status);
+    app.save_document("after.openpatch", true);
+    let mut reopened = host(directory.path());
+    reopened.load_document("after.openpatch", false);
+    assert_eq!(serde_json::to_value(&reopened.project).unwrap(), edited);
+    assert_eq!(
+        reopened.shared.lock().unwrap().execution_disposition(),
+        ExecutionDisposition::SuspendedUnresolved
+    );
+    assert!(reopened.audio.is_none());
+}
+
+#[test]
 fn imported_review_repair_history_and_native_save_preserve_source() {
     let directory = tempfile::tempdir().unwrap();
     let source =
