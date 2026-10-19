@@ -504,7 +504,16 @@ pub(super) fn choose(
                     0.0
                 };
             let w = (0.5 + a).powi(2)
-                * rating(x.name).powf(3.0 - 2.0 * weird)
+                * {
+                    // passed-over designs are pushed far down; liked ones keep their plain ratio so the
+                    // palette stays varied (weirdness flattens both)
+                    let r = rating(x.name);
+                    r.powf(if r < 0.6 {
+                        3.0 - 2.0 * weird
+                    } else {
+                        1.5 - weird
+                    })
+                }
                 * if avoid.contains(&x.name) { 0.1 } else { 1.0 };
             (x.name, w)
         })
