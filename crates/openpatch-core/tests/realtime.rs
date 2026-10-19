@@ -863,7 +863,7 @@ fn recall_random_bridge_capture_initialize_scale_adoption_and_bypass_use_no_heap
         let h = a.resolve_module_lights("recall").unwrap();
         let mut data = RecallRandomData::default();
         data.scales[0].degrees[0].voltage = -0.005;
-        patch.nodes[0].content = Some(ModuleContent::RecallRandom(data));
+        patch.nodes[0].content = Some(ModuleContent::RecallRandom(data.into()));
         let mut b = patch.compile().unwrap();
         let hb = b.resolve_module_lights("recall").unwrap();
         patch.nodes[0].bypassed = true;

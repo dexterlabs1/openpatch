@@ -137,7 +137,7 @@ fn weighted_content() -> openpatch_core::ModuleContent {
             },
         ],
     };
-    openpatch_core::ModuleContent::RecallRandom(data)
+    openpatch_core::ModuleContent::RecallRandom(data.into())
 }
 #[test]
 fn recall_random_weighted_content_history_presets_initialize_and_disk_reopen_share_exact_data() {
@@ -174,7 +174,7 @@ fn recall_random_weighted_content_history_presets_initialize_and_disk_reopen_sha
         s.snapshot()["patch"]["nodes"][0]["content"],
         preset["content"]
     );
-    s.execute("set_module_content",json!({"id":"r","content":openpatch_core::ModuleContent::RecallRandom(RecallRandomData::default())})).unwrap();
+    s.execute("set_module_content",json!({"id":"r","content":openpatch_core::ModuleContent::RecallRandom(RecallRandomData::default().into())})).unwrap();
     s.execute("apply_module_preset", json!({"id":"r","preset":preset}))
         .unwrap();
     assert_eq!(
@@ -362,7 +362,7 @@ fn recall_random_identical_scale_commit_consumes_receipt_even_when_shared_conten
     session
         .execute(
             "set_module_content",
-            json!({"id":"r","content":openpatch_core::ModuleContent::RecallRandom(data)}),
+            json!({"id":"r","content":openpatch_core::ModuleContent::RecallRandom(data.into())}),
         )
         .unwrap();
     capture(&mut session, "begin").unwrap();
@@ -390,7 +390,7 @@ fn recall_random_noop_commit_distinguishes_backend_replacement_from_same_backend
     session
         .execute(
             "set_module_content",
-            json!({"id":"r","content":openpatch_core::ModuleContent::RecallRandom(data)}),
+            json!({"id":"r","content":openpatch_core::ModuleContent::RecallRandom(data.into())}),
         )
         .unwrap();
     let revision = session.revision();

@@ -13,7 +13,7 @@ pub const DEFAULT_BLANK_WIDTH_HP: u16 = 10;
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ModuleContent {
     FrameScene(crate::FrameSceneData),
-    RecallRandom(crate::RecallRandomData),
+    RecallRandom(Box<crate::RecallRandomData>),
     Notes {
         text: String,
     },

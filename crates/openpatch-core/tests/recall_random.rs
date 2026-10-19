@@ -112,7 +112,7 @@ fn receiving_controls_scales_and_selector_survive_runtime_adoption() {
             },
         ],
     };
-    changed.nodes[2].content = Some(ModuleContent::RecallRandom(data));
+    changed.nodes[2].content = Some(ModuleContent::RecallRandom(data.into()));
     let mut receiving = changed.compile().unwrap();
     receiving.adopt_state_from(&old);
     let a = render(&mut receiving, 8192);
@@ -130,7 +130,7 @@ fn weighted_content_validates_negative_degrees_and_rejects_empty_masks_and_bad_o
     let mut data = RecallRandomData::default();
     data.scales[0].degrees[0].voltage = -0.001;
     data.validate().unwrap();
-    let content = ModuleContent::RecallRandom(data.clone());
+    let content = ModuleContent::RecallRandom(data.clone().into());
     let json = serde_json::to_value(&content).unwrap();
     assert_eq!(json["type"], "recall_random");
     assert_eq!(
@@ -154,7 +154,7 @@ fn weighted_content_validates_negative_degrees_and_rejects_empty_masks_and_bad_o
     let mut p = patch(32000);
     let mut data = RecallRandomData::default();
     data.scales[0].base_interval = f32::MIN_POSITIVE;
-    p.nodes[2].content = Some(ModuleContent::RecallRandom(data));
+    p.nodes[2].content = Some(ModuleContent::RecallRandom(data.into()));
     p.nodes[2].params.insert("x_steps".into(), 1.);
     assert!(render(&mut p.compile().unwrap(), 4096)
         .iter()
@@ -273,7 +273,7 @@ fn actual_engine_matches_genuine_cpp_all_t_models_and_six_weighted_scales_at_dec
         p.nodes[2].params = serde_json::from_value(case["params"].clone()).unwrap();
         let mut data = RecallRandomData::default();
         data.active_slot = case["active_slot"].as_u64().unwrap() as u8;
-        p.nodes[2].content = Some(ModuleContent::RecallRandom(data));
+        p.nodes[2].content = Some(ModuleContent::RecallRandom(data.into()));
         let expected = case["source_gate_highs_and_cv_bits"].as_array().unwrap();
         let actual = render(&mut p.compile().unwrap(), expected.len() + 8);
         for (source_frame, expected) in expected.iter().enumerate() {
@@ -304,7 +304,7 @@ fn randomize_and_initialize_keep_authored_weighted_scales_and_randomize_keeps_se
     let mut data = RecallRandomData::default();
     data.active_slot = 4;
     data.scales[4].degrees[0].voltage = -0.02;
-    p.nodes[2].content = Some(ModuleContent::RecallRandom(data));
+    p.nodes[2].content = Some(ModuleContent::RecallRandom(data.into()));
     let content = p.nodes[2].content.clone();
     actions.randomize(&mut p.nodes[2], 397).unwrap();
     assert_eq!(p.nodes[2].params["seed"], 17.);

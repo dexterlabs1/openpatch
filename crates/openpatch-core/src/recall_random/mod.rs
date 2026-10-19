@@ -106,9 +106,10 @@ pub(crate) fn catalog() -> Value {
     result["params"]["y_ratio"]["labels"] =
         json!(["/64", "/48", "/32", "/24", "/16", "/12", "/8", "/6", "/4", "/3", "/2", "×1"]);
     result["content_schema"] = RecallRandomData::content_schema();
-    result["content_schema"]["default"] =
-        serde_json::to_value(ModuleContent::RecallRandom(RecallRandomData::default()))
-            .expect("finite preset scales");
+    result["content_schema"]["default"] = serde_json::to_value(ModuleContent::RecallRandom(
+        RecallRandomData::default().into(),
+    ))
+    .expect("finite preset scales");
     result
 }
 pub(crate) fn annotate(module: &mut Value) {
@@ -351,7 +352,7 @@ impl RecallRandom {
             return Err("Recall Random host rate must be an integer8000..192000Hz".into());
         }
         let data = match &node.content {
-            Some(ModuleContent::RecallRandom(data)) => data.clone(),
+            Some(ModuleContent::RecallRandom(data)) => data.as_ref().clone(),
             None => RecallRandomData::default(),
             _ => return Err("Recall Random content type mismatch".into()),
         };
