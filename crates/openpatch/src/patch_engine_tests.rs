@@ -212,3 +212,138 @@ fn minecraft_mode_builds_quietly_and_in_key() {
         }
     }
 }
+
+/// Every kind, port and parameter a build emits exists in the module catalog, and every parameter value is
+/// inside its catalog range. Sampled across words and seeds until every instrument design has been built.
+#[test]
+fn builds_use_catalog_kinds_ports_and_parameter_ranges() {
+    let catalog = openpatch_core::catalog();
+    let spec: HashMap<&str, &Value> = catalog["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| (m["kind"].as_str().unwrap(), m))
+        .collect();
+    let names = |m: &Value, key: &str| -> Vec<String> {
+        m[key]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|p| p.as_str().or(p["name"].as_str()).unwrap_or("").to_string())
+                    .collect()
+            })
+            .unwrap_or_else(|| vec!["out".into()])
+    };
+    let mut built: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut fails = vec![];
+    let mut check = |r: &Recipe, tag: &str| {
+        let p = r.patch();
+        let mut kinds = HashMap::new();
+        for n in p["nodes"].as_array().unwrap() {
+            let kind = n["kind"].as_str().unwrap();
+            kinds.insert(n["id"].as_str().unwrap().to_string(), kind.to_string());
+            let Some(m) = spec.get(kind) else {
+                fails.push(format!("{tag}: unknown kind {kind}"));
+                continue;
+            };
+            for (k, v) in n["params"].as_object().unwrap() {
+                let Some(range) = m["params"].get(k) else {
+                    fails.push(format!("{tag}: {kind} has no parameter {k}"));
+                    continue;
+                };
+                let x = v.as_f64().unwrap();
+                let (lo, hi) = (range["min"].as_f64(), range["max"].as_f64());
+                if lo.is_some_and(|lo| x < lo - 1e-6) || hi.is_some_and(|hi| x > hi + 1e-6) {
+                    fails.push(format!("{tag}: {kind}.{k} = {x} outside {lo:?}..{hi:?}"));
+                }
+            }
+        }
+        for cab in p["cables"].as_array().unwrap() {
+            let (f, o, t, i) = (
+                cab["from"].as_str().unwrap(),
+                cab["output"].as_str().unwrap(),
+                cab["to"].as_str().unwrap(),
+                cab["input"].as_str().unwrap(),
+            );
+            if let Some(m) = kinds.get(f).and_then(|k| spec.get(k.as_str())) {
+                if !names(m, "outputs").iter().any(|x| x == o) {
+                    fails.push(format!("{tag}: {} has no output {o}", kinds[f]));
+                }
+            }
+            if let Some(m) = kinds.get(t).and_then(|k| spec.get(k.as_str())) {
+                if !names(m, "inputs").iter().any(|x| x == i) {
+                    fails.push(format!("{tag}: {} has no input {i}", kinds[t]));
+                }
+            }
+        }
+        for v in r.kinds.values() {
+            built.insert(v.clone());
+        }
+    };
+    for (n, g) in GENRES.iter().enumerate() {
+        for (k, m) in MOODS.iter().enumerate() {
+            for seed in 1..=6u64 {
+                let t = TEXTURES[(n + k + seed as usize) % TEXTURES.len()];
+                let tag = format!("{g}|{m}|{t}|{seed}");
+                check(&Recipe::new(g, m, t, seed).unwrap(), &tag);
+                check(
+                    &Recipe::with_budget(g, m, t, seed, Some(18.0)).unwrap(),
+                    &format!("{tag} light"),
+                );
+            }
+        }
+    }
+    // rarely chosen designs: pin each one into builds until it appears (a lead needs a build that has a melody)
+    for d in instruments::DESIGNS {
+        PINNED.with(|p| *p.borrow_mut() = vec![d.name]);
+        for seed in 1..=40u64 {
+            let r = Recipe::new("Deep House", "Dreamy", "Liquid", seed).unwrap();
+            let hit = r.kinds.values().any(|v| v == d.name);
+            check(&r, &format!("pinned {} {seed}", d.name));
+            if hit {
+                break;
+            }
+        }
+        PINNED.with(|p| p.borrow_mut().clear());
+    }
+    assert!(
+        fails.is_empty(),
+        "{} failures: {:?}",
+        fails.len(),
+        &fails[..fails.len().min(8)]
+    );
+    let missing: Vec<&str> = instruments::DESIGNS
+        .iter()
+        .map(|d| d.name)
+        .filter(|n| !built.contains(*n) && *n != "piano")
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "designs never built by the sample: {missing:?}"
+    );
+}
+
+#[test]
+fn light_builds_fit_their_budget_and_every_plan_fits_construction() {
+    for g in GENRES {
+        for m in MOODS {
+            for (i, t) in TEXTURES.iter().enumerate() {
+                let seed = 100 + i as u64;
+                let full = Recipe::new(g, m, t, seed).unwrap();
+                assert!(
+                    full.ops.len() <= MAX_PLAN_EDITS,
+                    "{g}|{m}|{t}: {} edits",
+                    full.ops.len()
+                );
+                let light = Recipe::with_budget(g, m, t, seed, Some(18.0)).unwrap();
+                assert!(light.ops.len() <= MAX_PLAN_EDITS);
+                assert!(
+                    light.cpu_estimate() <= 18.0
+                        || light.notes.iter().any(|n| n.ends_with("open hat")),
+                    "{g}|{m}|{t}: light build {}",
+                    light.cpu_estimate()
+                );
+            }
+        }
+    }
+}

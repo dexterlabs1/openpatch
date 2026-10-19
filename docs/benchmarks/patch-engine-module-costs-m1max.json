@@ -1,0 +1,128 @@
+{
+ "platform": "macOS 26.7.1 arm64, Apple M1 Max",
+ "script": "scripts/patch_engine_costs.py",
+ "source_commit_base": "4debf2a",
+ "note": "Offline throughput, % of one core per live instance at 48 kHz (30 s render, 6 instances, minus a same-plumbing baseline, best of two). Units of patch_engine.rs module_cost. Calibration kinds (stock_vcf, svf_filter, multi_vco, stock_vca) reproduce the existing table within ~0.15. Not live callback deadlines; Steam Deck cores are ~3-3.5x slower.",
+ "rows": [
+  {
+   "kind": "stock_vcf",
+   "mono": 1.62,
+   "four_voice": 1.67
+  },
+  {
+   "kind": "svf_filter",
+   "mono": 1.34,
+   "four_voice": 4.56
+  },
+  {
+   "kind": "analog_vco",
+   "mono": 0.13,
+   "four_voice": 0.29
+  },
+  {
+   "kind": "multi_vco",
+   "mono": 0.35,
+   "four_voice": 0.86
+  },
+  {
+   "kind": "stock_vca",
+   "mono": 0.08,
+   "four_voice": 0.12
+  },
+  {
+   "kind": "macro_voice:0",
+   "mono": 0.58,
+   "four_voice": 1.34
+  },
+  {
+   "kind": "macro_voice:1",
+   "mono": 1.58,
+   "four_voice": 5.19
+  },
+  {
+   "kind": "macro_voice:2",
+   "mono": 2.41,
+   "four_voice": 8.56
+  },
+  {
+   "kind": "macro_voice:3",
+   "mono": 0.84,
+   "four_voice": 2.17
+  },
+  {
+   "kind": "macro_voice:4",
+   "mono": 0.83,
+   "four_voice": 2.16
+  },
+  {
+   "kind": "macro_voice:5",
+   "mono": 0.61,
+   "four_voice": 1.44
+  },
+  {
+   "kind": "macro_voice:6",
+   "mono": 0.86,
+   "four_voice": 2.42
+  },
+  {
+   "kind": "macro_voice:7",
+   "mono": 0.59,
+   "four_voice": 1.47
+  },
+  {
+   "kind": "modal_resonator",
+   "mono": 0.5,
+   "four_voice": 1.26
+  },
+  {
+   "kind": "wavetable_vco",
+   "mono": 0.49,
+   "four_voice": 0.79
+  },
+  {
+   "kind": "rack264_vco",
+   "mono": 0.6,
+   "four_voice": 0.67
+  },
+  {
+   "kind": "stock_vco",
+   "mono": 0.48,
+   "four_voice": 0.49
+  },
+  {
+   "kind": "rack264_vcf",
+   "mono": 1.32,
+   "four_voice": 1.32
+  },
+  {
+   "kind": "ladder_vcf",
+   "mono": 7.19,
+   "four_voice": 22.32
+  },
+  {
+   "kind": "analog_vca",
+   "mono": 3.19,
+   "four_voice": 5.3
+  },
+  {
+   "kind": "stock_delay",
+   "mono": 0.57,
+   "four_voice": 0.63
+  },
+  {
+   "kind": "tidal_functions",
+   "mono": 0.31,
+   "four_voice": 0.32
+  },
+  {
+   "kind": "wavetable_lfo",
+   "mono": 0.44,
+   "four_voice": 0.41
+  },
+  {
+   "kind": "mid_side",
+   "mono": 0.34,
+   "four_voice": 0.4
+  }
+ ]
+}
