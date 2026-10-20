@@ -637,6 +637,12 @@ impl DocumentExecutionFence {
         *self == Self::capture(session)
     }
 
+    /// The document is unchanged apart from camera (pan/zoom) publications and
+    /// a completed placement checkpoint, the same tolerance builds use.
+    pub fn allows(&self, session: &Session) -> bool {
+        self.check(session).is_ok()
+    }
+
     fn check(&self, session: &Session) -> Result<(), String> {
         let current = Self::capture(session);
         // A pending native geometry checkpoint may be completed once by the

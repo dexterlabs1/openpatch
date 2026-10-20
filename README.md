@@ -14,17 +14,17 @@
   <a href="docs/ROADMAP.md">Roadmap</a>
 </p>
 
-![OpenPatch with the Patch Engine and a modular music patch](docs/images/patch-engine-steamdeck.png)
+![OpenPatch with a Melancholy Ambient song built by the Patch Engine](docs/images/patch-engine-hero.png)
 
 ## Download
 
-**OpenPatch 0.3.1 · build 11**
+**OpenPatch 0.3.2 · build 15**
 
 | Your computer | Download |
 |---|---|
-| Mac with Apple silicon · macOS 12 or later | [Download for Mac](https://github.com/dexterlabs1/openpatch/releases/download/v0.3.1/OpenPatch-macos-arm64.zip) |
-| Windows PC · 64-bit Intel or AMD | [Download for Windows](https://github.com/dexterlabs1/openpatch/releases/download/v0.3.1/OpenPatch-windows-x86_64.zip) |
-| Steam Deck or Linux PC · 64-bit Intel or AMD | [Download for Steam Deck / Linux](https://github.com/dexterlabs1/openpatch/releases/download/v0.3.1/OpenPatch-linux-x86_64.tar.gz) |
+| Mac with Apple silicon · macOS 12 or later | [Download for Mac](https://github.com/dexterlabs1/openpatch/releases/download/v0.3.2/OpenPatch-macos-arm64.zip) |
+| Windows PC · 64-bit Intel or AMD | [Download for Windows](https://github.com/dexterlabs1/openpatch/releases/download/v0.3.2/OpenPatch-windows-x86_64.zip) |
+| Steam Deck or Linux PC · 64-bit Intel or AMD | [Download for Steam Deck / Linux](https://github.com/dexterlabs1/openpatch/releases/download/v0.3.2/OpenPatch-linux-x86_64.tar.gz) |
 
 Extract the download, then:
 
@@ -34,21 +34,27 @@ Extract the download, then:
 
 The Mac app is not notarized by Apple. The Windows app is unsigned.
 
-[Release notes and checksums](https://github.com/dexterlabs1/openpatch/releases/tag/v0.3.1)
+[Release notes and checksums](https://github.com/dexterlabs1/openpatch/releases/tag/v0.3.2)
 
 ## Get started
 
 1. Open OpenPatch and press **F1** to open the **Patch Engine**.
-2. Pick a genre, mood and texture, then choose **Build**. Try **Surprise me** for a random combination.
-3. Turn knobs, drag cables between ports, and add modules to change the sound.
-4. Save your patch with **Cmd-S** on Mac or **Ctrl-S** on Windows/Linux.
+2. Pick a genre, mood and texture, then choose **Build**. Try **Surprise** for a random combination.
+3. Like it? Choose **New sounds** to keep the song with different instruments, **New song** to keep the instruments with a new song, or **Evolve** for a small change to both.
+4. Turn knobs, drag cables between ports, and add modules to change the sound.
+5. Save your patch with **Cmd-S** on Mac or **Ctrl-S** on Windows/Linux.
 
-Keep a patch's seed to generate the same composition again. Choose **Reveal**, **Showtime** or **Instant** to change how quickly it appears in the rack.
+There are 13 genres, from Deep House and Dub Techno to Progressive House, Hypnagogic, Berlin School, IDM and Melodic Techno, plus a C418 mode. Scroll down in the panel for **Controls**: energy, complexity, weirdness, space and song length.
+
+Every song has a short **genome** code, shown in the panel and saved in the patch notes. The same code always builds the same song. Choose **Reveal**, **Showtime** or **Instant** to change how quickly a song appears in the rack. [Patch Engine guide](docs/PATCH_ENGINE.md)
+
+![A Hypnagogic song built from the words Mysterious and Echoing](docs/images/patch-engine-hypnagogic.png)
 
 To build from scratch, close the Patch Engine and press **Enter** to open the module library. **Space** starts or pauses playback when the Patch Engine is closed.
 
 ## What you can do
 
+- **Generate whole songs:** the Patch Engine writes the chords, bass, melody, drums and song structure, then builds the patch from the best instruments in the module library: FM and wavefolding voices, wavetables, physical models and analog-style filters. Every result is an ordinary patch you can change.
 - **Make music:** combine oscillators, filters, envelopes, sequencers, drums and effects. Studio Mixer has up to 16 channels and two effects send/return loops.
 - **Explore new instruments:** Tidal Functions, Frame Scene, Segment Garden, Event Fork, Rhythm Terrain and Recall Random add evolving modulation, scene mixing, envelopes, random gates, drum patterns and repeating pitch phrases. [Module guide](docs/MODULE_COVERAGE.md)
 - **Keep a patch readable:** organize modules into rows, highlight signal paths, change cable styles, and dim the room to see the lights.
@@ -80,7 +86,7 @@ Install stable Rust and your platform's build tools. On Mac, install Xcode Comma
 ```sh
 git clone https://github.com/dexterlabs1/openpatch.git
 cd openpatch
-git checkout v0.3.1
+git checkout v0.3.2
 cargo build --locked --release -p openpatch-desktop -p openpatch --bins
 cargo run --locked --release -p openpatch-desktop
 ```
@@ -91,4 +97,4 @@ The app and command-line tool are in `target/release`. To package the Mac app, r
 
 Original OpenPatch code is [MIT licensed](LICENSE). The distributed app also includes GPL code and is provided under [GPL-3.0-or-later](crates/openpatch-core/LICENSE-GPL-3.0.txt). See the [third-party notices](crates/openpatch-core/LICENSE-THIRD-PARTY) for details.
 
-OpenPatch is an independent project and is not affiliated with VCV. [Release source code](https://github.com/dexterlabs1/openpatch/tree/v0.3.1)
+OpenPatch is an independent project and is not affiliated with VCV. [Release source code](https://github.com/dexterlabs1/openpatch/tree/v0.3.2)

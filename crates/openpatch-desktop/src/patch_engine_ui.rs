@@ -268,23 +268,34 @@ impl GeneratedDocument {
         }
         Some(Self {
             fence,
-            content: live.project_edit_content(Some(fence.revision)).ok()?,
+            content: authored(&live),
         })
     }
 
+    /// Still the untouched generated song: camera moves and playback (live random
+    /// state) don't count as edits; any authored change, save or replacement does.
     pub(crate) fn matches(&self, session: &Session) -> bool {
-        self.fence.matches(session)
+        self.fence.allows(session)
+            && authored(session) == self.content
             && session
                 .project_edit_content(Some(self.fence.revision))
                 .is_ok_and(|content| {
                     let status = session
                         .project_save_baseline()
                         .status_from_content(Some(&content));
-                    content == self.content
-                        && status["target"].is_null()
-                        && status["saved_revision"].is_null()
+                    status["target"].is_null() && status["saved_revision"].is_null()
                 })
     }
+}
+
+/// The authored document without the camera, which pans and zooms freely.
+fn authored(session: &Session) -> Value {
+    let mut view = session.project_document().reference_view();
+    if let Some(layout) = view.get_mut("layout").and_then(Value::as_object_mut) {
+        layout.remove("zoom");
+        layout.remove("pan");
+    }
+    view
 }
 
 struct Built {
@@ -1087,8 +1098,9 @@ impl Panel {
                 }
                 if let Some(e) = &self.error { ui.label(RichText::new(e).font(face(ui, 13.0)).color(Color32::from_rgb(222, 140, 100))); }
                 if self.remaining.is_some() && ui.button("Resume build").clicked() { self.resume(session); }
-                // word matrices
-                egui::ScrollArea::vertical().id_salt("patch-engine-words").auto_shrink([false, true]).max_height(ui.available_height() - 96.0).show(ui, |ui| {
+                // word matrices; a thin, always-visible handle shows the Controls below the fold
+                ui.spacing_mut().scroll = egui::style::ScrollStyle::thin();
+                egui::ScrollArea::vertical().id_salt("patch-engine-words").auto_shrink([false, true]).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible).max_height(ui.available_height() - 96.0).show(ui, |ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
                     let mut genres: Vec<&str> = GENRES.to_vec();
                     genres.push("C418");

@@ -33,13 +33,23 @@ was removed; user patches/settings and Claude's separate preview were preserved.
 This installation does not establish native-window/audio-device qualification.
 Keep the installed build stable until the user requests another upgrade.
 
-## Patch Engine v2 (in progress, branch `work/patch-engine-v2`)
+## Release candidate: 0.3.2 build 15 (branch `work/release-0.3.2`)
 
-Milestone 1 of four ([guide](PATCH_ENGINE.md)): chords, pad layer, bass and lead choose among tagged
-instrument designs from the whole catalog (macro voice engines, modal resonator, wavetable VCO, Fundamental
-2.6.4 VCO/VCF, circuit ladder) next to the classic voices, with measured costs, light stand-ins, catalog
-validation, calibrated levels and an offline QA gate. Next: per-voice motion and generative layers, longer
-forms; then artist-style genres and controls; then genome/mutate. Not installed.
+Packages merged Patch Engine v2 ([guide](PATCH_ENGINE.md)) and two app fixes for macOS ARM, Windows x64 and
+Steam Deck/Linux x64:
+
+- [PR #43](https://github.com/dexterlabs1/openpatch/pull/43) with stacked #46–#48: catalog instrument designs
+  chosen by listening ratings, motif hooks and bass lines, classic/long/progressive/collage forms, drift arps,
+  tape echo, width, five new genres (Progressive House, Hypnagogic, Berlin School, IDM, Melodic Techno),
+  energy/complexity/weirdness/space/length controls, and a genome with New sounds / New song / Evolve.
+- [PR #44](https://github.com/dexterlabs1/openpatch/pull/44): camera pan/zoom no longer fails native build fences
+  ("document changed since native build preparation").
+- [PR #45](https://github.com/dexterlabs1/openpatch/pull/45): rack mouse control stays live while the Patch
+  Engine panel is open.
+- The Patch Engine word list shows its scrollbar so Controls below the fold are discoverable.
+
+A local 0.3.1 build 14 with the same Patch Engine and fixes is installed on the user's Mac at their request;
+publication uses CI-built archives only.
 
 ## Repository integration queue (2026-10-18)
 
