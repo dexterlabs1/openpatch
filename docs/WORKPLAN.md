@@ -2,40 +2,14 @@
 
 Updated 2026-10-19. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
 
-## Latest public release: 0.3.1 build 11
+## Latest public release: 0.3.2 build 15
 
-[OpenPatch 0.3.1](https://github.com/dexterlabs1/openpatch/releases/tag/v0.3.1)
-is published for macOS ARM, Windows x64 and Steam Deck/Linux x64 through
-[PR #41](https://github.com/dexterlabs1/openpatch/pull/41). It adds Recall Random,
-experimental Mac binary hosting for one separately configured pinned Bogaudio
-OFFSET, and constructor-stack and telemetry-test corrections.
-
-[Full three-platform CI](https://github.com/dexterlabs1/openpatch/actions/runs/39267303832)
-passes strict lint, Rust correctness/allocation, optimized binaries, packaged
-signature/launch/installer checks, Python/MCP, browser integration and Linux
-native/Mesa captures. Published archives match the CI hashes and source tree;
-versions, architectures, licenses and examples are verified. The downloaded Mac
-archive also passes strict/deep signature and bundled CLI catalog checks.
-Release checksums and build provenance identify the exact tested files.
-
-The Mac app was upgraded to 0.3.1 build 11 at the user’s explicit request
-after publication; the installed release matches the verified public archive. Windows audio and Deck hardware/game mode still require hands-on
-qualification. Existing binary-host device evidence covers only the documented
-Mac profile; general VCV plugin compatibility remains unfinished.
-
-## Installed Mac build
-
-**OpenPatch 0.3.1 build 11 is installed at `~/Applications/OpenPatch.app`.**
-The user requested the upgrade after publication. The installation used the
-verified public macOS ARM archive: its SHA-256 checksum, GUI/CLI binary hashes
-and deep/strict ad-hoc signature matched. The previous installed 0.3.0 bundle
-was removed; user patches/settings and Claude's separate preview were preserved.
-This installation does not establish native-window/audio-device qualification.
-Keep the installed build stable until the user requests another upgrade.
-
-## Release candidate: 0.3.2 build 15 (branch `work/release-0.3.2`)
-
-Packages merged Patch Engine v2 ([guide](PATCH_ENGINE.md)) and two app fixes for macOS ARM, Windows x64 and
+[OpenPatch 0.3.2](https://github.com/dexterlabs1/openpatch/releases/tag/v0.3.2) is published for macOS ARM,
+Windows x64 and Steam Deck/Linux x64 through [PR #49](https://github.com/dexterlabs1/openpatch/pull/49) at
+`53b2585`. [Full three-platform CI](https://github.com/dexterlabs1/openpatch/actions/runs/39360451846) passes;
+published archives match the CI hashes and the tested source tree `21960ec`, the downloaded Mac archive passes
+strict/deep signature and bundled CLI catalog checks (92 kinds), and SHA256SUMS verifies after download.
+The release packages merged Patch Engine v2 ([guide](PATCH_ENGINE.md)) and two app fixes for macOS ARM, Windows x64 and
 Steam Deck/Linux x64:
 
 - [PR #43](https://github.com/dexterlabs1/openpatch/pull/43) with stacked #46–#48: catalog instrument designs
@@ -47,9 +21,10 @@ Steam Deck/Linux x64:
 - [PR #45](https://github.com/dexterlabs1/openpatch/pull/45): rack mouse control stays live while the Patch
   Engine panel is open.
 - The Patch Engine word list shows its scrollbar so Controls below the fold are discoverable.
+- Rebuilding an untouched generated song no longer asks to save after pan, zoom or playback.
 
-A local 0.3.1 build 14 with the same Patch Engine and fixes is installed on the user's Mac at their request;
-publication uses CI-built archives only.
+Installed Mac app: a local 0.3.2 build 15 from the same source (`0dd8dfd`, tree `21960ec`), installed at the
+user's request before publication; the published archive is CI-built. Fallback: local build 14.
 
 ## Repository integration queue (2026-10-18)
 
