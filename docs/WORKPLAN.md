@@ -2,10 +2,13 @@
 
 Updated 2026-10-20. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
 
-## Release candidate: 0.3.3 build 16
+## Latest public release: 0.3.3 build 16
 
-Steam Deck Game Mode fixes requested after 0.3.2 was tried on the Deck, for macOS ARM, Windows x64 and Steam
-Deck/Linux x64:
+[OpenPatch 0.3.3](https://github.com/dexterlabs1/openpatch/releases/tag/v0.3.3) is published for macOS ARM,
+Windows x64 and Steam Deck/Linux x64 through [PR #52](https://github.com/dexterlabs1/openpatch/pull/52) at
+`1e5952c`. [Full three-platform CI](https://github.com/dexterlabs1/openpatch/actions/runs/39446528165) passes;
+published archives match the CI hashes and the tested source tree `8ad65ef`, the downloaded Mac archive passes
+strict/deep signature checks and reports 0.3.3 (16), and SHA256SUMS verifies after download.
 
 - [PR #50](https://github.com/dexterlabs1/openpatch/pull/50): Settings › Display › Interface size (75–200%,
   Auto). On Steam Deck / gamescope, Auto draws one point per pixel so the chrome fits 1280×800; the Patch Engine's
@@ -13,9 +16,10 @@ Deck/Linux x64:
 - [PR #51](https://github.com/dexterlabs1/openpatch/pull/51): native game controller input from Linux evdev
   (Steam Input's default Gamepad layout), mapped onto the existing keys.
 
-Not yet qualified on Deck hardware; awaiting a Game Mode check on the device.
+Not yet qualified on Deck hardware; awaiting a Game Mode check on the device. The installed Mac app is still the
+local 0.3.2 build 15.
 
-## Latest public release: 0.3.2 build 15
+## Previous public release: 0.3.2 build 15
 
 [OpenPatch 0.3.2](https://github.com/dexterlabs1/openpatch/releases/tag/v0.3.2) is published for macOS ARM,
 Windows x64 and Steam Deck/Linux x64 through [PR #49](https://github.com/dexterlabs1/openpatch/pull/49) at
