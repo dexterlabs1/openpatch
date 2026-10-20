@@ -268,23 +268,34 @@ impl GeneratedDocument {
         }
         Some(Self {
             fence,
-            content: live.project_edit_content(Some(fence.revision)).ok()?,
+            content: authored(&live),
         })
     }
 
+    /// Still the untouched generated song: camera moves and playback (live random
+    /// state) don't count as edits; any authored change, save or replacement does.
     pub(crate) fn matches(&self, session: &Session) -> bool {
-        self.fence.matches(session)
+        self.fence.allows(session)
+            && authored(session) == self.content
             && session
                 .project_edit_content(Some(self.fence.revision))
                 .is_ok_and(|content| {
                     let status = session
                         .project_save_baseline()
                         .status_from_content(Some(&content));
-                    content == self.content
-                        && status["target"].is_null()
-                        && status["saved_revision"].is_null()
+                    status["target"].is_null() && status["saved_revision"].is_null()
                 })
     }
+}
+
+/// The authored document without the camera, which pans and zooms freely.
+fn authored(session: &Session) -> Value {
+    let mut view = session.project_document().reference_view();
+    if let Some(layout) = view.get_mut("layout").and_then(Value::as_object_mut) {
+        layout.remove("zoom");
+        layout.remove("pan");
+    }
+    view
 }
 
 struct Built {

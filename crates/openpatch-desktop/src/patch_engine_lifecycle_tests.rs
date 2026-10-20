@@ -35,6 +35,33 @@ fn unchanged_generated_document_regenerates_without_prompt_with_fresh_handoff() 
 }
 
 #[test]
+fn panning_and_zooming_a_generated_song_regenerates_without_prompt() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = host(dir.path());
+    app.replace_now(openpatch_core::demo_patch(), "Generated");
+    mark_generated(&mut app);
+    {
+        let mut live = app.shared.lock().unwrap();
+        let mut layout = live.project_document().layout.clone();
+        layout.zoom = 0.37;
+        layout.pan = [-240.0, 120.0];
+        let (revision, state, generation) =
+            (live.revision(), live.state_id(), live.layout_generation());
+        live.publish_host_layout(
+            revision,
+            state,
+            generation,
+            layout,
+            openpatch::control::LayoutIntent::Camera,
+        )
+        .unwrap();
+    }
+    app.prepare_patch_engine("Next song");
+    assert!(app.confirm_discard.is_none());
+    assert!(matches!(app.patch_engine_wait, Some(Some(_))));
+}
+
+#[test]
 fn manual_edit_to_generated_song_requires_discard_and_cancel_keeps_the_edit() {
     let dir = tempfile::tempdir().unwrap();
     let mut app = host(dir.path());
