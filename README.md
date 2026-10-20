@@ -14,7 +14,7 @@
   <a href="docs/ROADMAP.md">Roadmap</a>
 </p>
 
-![OpenPatch building a Progressive House song with the Patch Engine](docs/images/patch-engine-hero.png)
+![OpenPatch with a Melancholy Ambient song built by the Patch Engine](docs/images/patch-engine-hero.png)
 
 ## Download
 
