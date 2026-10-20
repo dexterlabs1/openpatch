@@ -82,6 +82,147 @@ impl Controls {
     }
 }
 
+/// Everything that defines a Patch Engine piece: the three words, the controls and three independent seeds — the
+/// song (tempo, key, harmony, melody, rhythm, form), the sound (instrument designs) and the detail (envelopes, mix,
+/// effects settings). A plain seed uses it for all three. Shareable as text:
+/// `Genre|Mood|Texture|song.sound.detail[|energy.complexity.weirdness.space.length]` (controls in percent).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Genome {
+    pub genre: String,
+    pub mood: String,
+    pub texture: String,
+    pub song: u64,
+    pub sound: u64,
+    pub detail: u64,
+    pub controls: Controls,
+}
+impl Genome {
+    pub fn new(genre: &str, mood: &str, texture: &str, seed: u64, controls: Controls) -> Self {
+        Self {
+            genre: genre.into(),
+            mood: mood.into(),
+            texture: texture.into(),
+            song: seed,
+            sound: seed,
+            detail: seed,
+            controls,
+        }
+    }
+
+    /// A related genome. `sound`: new instruments and details, same song. `song`: new song, same instruments.
+    /// `evolve`: new details and a small drift of the controls. `entropy` makes repeated mutations differ.
+    pub fn mutate(&self, kind: &str, entropy: u64) -> Result<Genome, String> {
+        let mut rng = Rng::new(&format!("mutate|{kind}|{entropy}|{self}"));
+        let mut g = self.clone();
+        match kind {
+            "sound" => {
+                g.sound = rng.int(1, 99_999) as u64;
+                g.detail = rng.int(1, 99_999) as u64;
+            }
+            "song" => g.song = rng.int(1, 99_999) as u64,
+            "evolve" => {
+                g.detail = rng.int(1, 99_999) as u64;
+                let c = &mut g.controls;
+                for v in [
+                    &mut c.energy,
+                    &mut c.complexity,
+                    &mut c.weirdness,
+                    &mut c.space,
+                ] {
+                    *v = r3((*v + rng.uni(-0.12, 0.12)).clamp(0.0, 1.0));
+                }
+            }
+            _ => return Err("mutation must be sound, song or evolve".into()),
+        }
+        Ok(g)
+    }
+
+    /// Cross two genomes: the words and song of `self`, the instruments and details of `other`, the controls
+    /// in between.
+    pub fn breed(&self, other: &Genome) -> Genome {
+        let (a, b) = (self.controls, other.controls);
+        let mid = |x: f64, y: f64| r3((x + y) / 2.0);
+        Genome {
+            sound: other.sound,
+            detail: other.detail,
+            controls: Controls {
+                energy: mid(a.energy, b.energy),
+                complexity: mid(a.complexity, b.complexity),
+                weirdness: mid(a.weirdness, b.weirdness),
+                space: mid(a.space, b.space),
+                length: a.length,
+            },
+            ..self.clone()
+        }
+    }
+}
+impl std::fmt::Display for Genome {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}|{}|{}|{}.{}.{}",
+            self.genre, self.mood, self.texture, self.song, self.sound, self.detail
+        )?;
+        let c = self.controls;
+        if c != Controls::default() {
+            let pct = |v: f64| (v * 100.0).round() as i64;
+            write!(
+                f,
+                "|{}.{}.{}.{}.{}",
+                pct(c.energy),
+                pct(c.complexity),
+                pct(c.weirdness),
+                pct(c.space),
+                c.length
+            )?;
+        }
+        Ok(())
+    }
+}
+impl std::str::FromStr for Genome {
+    type Err = String;
+    fn from_str(text: &str) -> Result<Self, String> {
+        let parts: Vec<&str> = text.trim().split('|').collect();
+        if !(4..=5).contains(&parts.len()) {
+            return Err("genome must be Genre|Mood|Texture|song.sound.detail[|controls]".into());
+        }
+        let seeds: Vec<u64> = parts[3]
+            .split('.')
+            .map(|x| x.parse::<u64>().map_err(|_| format!("bad seed {x}")))
+            .collect::<Result<_, _>>()?;
+        let [song, sound, detail] = seeds[..] else {
+            return Err("genome needs three seeds: song.sound.detail".into());
+        };
+        let mut controls = Controls::default();
+        if let Some(c) = parts.get(4) {
+            let v: Vec<f64> = c
+                .split('.')
+                .map(|x| x.parse::<f64>().map_err(|_| format!("bad control {x}")))
+                .collect::<Result<_, _>>()?;
+            let [e, cx, w, sp, len] = v[..] else {
+                return Err("genome controls need energy.complexity.weirdness.space.length".into());
+            };
+            controls = Controls {
+                energy: e / 100.0,
+                complexity: cx / 100.0,
+                weirdness: w / 100.0,
+                space: sp / 100.0,
+                length: len as u32,
+            };
+            controls.validate()?;
+        }
+        Ok(Genome {
+            genre: parts[0].into(),
+            mood: parts[1].into(),
+            texture: parts[2].into(),
+            song,
+            sound,
+            detail,
+            controls,
+        })
+    }
+}
+
 /// The original genre whose drum sounds, chord colour and mix details a newer genre borrows; each newer genre
 /// keeps its own tempo, grooves, instruments, melodies and song forms.
 fn parent(genre: &str) -> &str {
@@ -1007,10 +1148,14 @@ pub struct Recipe {
     /// Bars where the song's main drops start (for listening checks and renders).
     drops: Vec<f64>,
     pub controls: Controls,
+    pub genome: Genome,
 }
 
 struct Ctx {
+    /// The song stream during composition; the detail stream while the graph is assembled.
     rng: Rng,
+    /// The sound stream (instrument designs).
+    srng: Rng,
     g: GenreDef,
     m: MoodDef,
     genre: &'static str,
@@ -1123,18 +1268,23 @@ impl Recipe {
         budget: Option<f64>,
         ctl: Controls,
     ) -> Result<Recipe, String> {
-        ctl.validate()?;
+        Self::from_genome(&Genome::new(genre, mood, texture, seed, ctl), budget)
+    }
+
+    /// Build the piece a genome describes (see `Genome`), within an optional CPU budget.
+    pub fn from_genome(genome: &Genome, budget: Option<f64>) -> Result<Recipe, String> {
+        genome.controls.validate()?;
         let over_cpu = |r: &Recipe| budget.is_some_and(|b| r.cpu_estimate() > b);
-        let mut r = Self::build(genre, mood, texture, seed, false, 0, ctl)?;
+        let mut r = Self::build(genome, false, 0)?;
         let light = over_cpu(&r);
         if light {
-            r = Self::build(genre, mood, texture, seed, true, 0, ctl)?;
+            r = Self::build(genome, true, 0)?;
         }
         for drop in 1..=DROP_ORDER.len() {
             if !over_cpu(&r) && r.ops.len() <= MAX_PLAN_EDITS {
                 break;
             }
-            r = Self::build(genre, mood, texture, seed, light, drop, ctl)?;
+            r = Self::build(genome, light, drop)?;
             r.notes.push(format!(
                 "light mode: left out {}",
                 DROP_ORDER[..drop].join(", ")
@@ -1161,15 +1311,14 @@ impl Recipe {
         r3(1.2 * (1.0 + modules + 0.01 * self.cid as f64))
     }
 
-    fn build(
-        genre: &str,
-        mood: &str,
-        texture: &str,
-        seed: u64,
-        light: bool,
-        drop: usize,
-        ctl: Controls,
-    ) -> Result<Recipe, String> {
+    fn build(genome: &Genome, light: bool, drop: usize) -> Result<Recipe, String> {
+        let (genre, mood, texture, seed, ctl) = (
+            genome.genre.as_str(),
+            genome.mood.as_str(),
+            genome.texture.as_str(),
+            genome.song,
+            genome.controls,
+        );
         let genre = if genre == "Minecraft" {
             "Minecraft"
         } else {
@@ -1178,6 +1327,16 @@ impl Recipe {
         let mood_name = find(&MOODS, mood).ok_or("unknown mood")?;
         let texture = find(&TEXTURES, texture).ok_or("unknown texture")?;
         let mut rng = Rng::new(&format!("{genre}|{mood_name}|{texture}|{seed}"));
+        // instrument designs and details draw from their own streams, so a song keeps its notes when its sounds
+        // mutate (and the other way round)
+        let mut srng = Rng::new(&format!(
+            "sound|{genre}|{mood_name}|{texture}|{}",
+            genome.sound
+        ));
+        let drng = Rng::new(&format!(
+            "detail|{genre}|{mood_name}|{texture}|{}",
+            genome.detail
+        ));
         let g = genre_def(genre);
         let m = mood_def(mood_name);
         let tonic = rng.pick(m.keys);
@@ -1237,10 +1396,10 @@ impl Recipe {
         // instrument designs: the genre's classic voices plus every catalog design, weighted by the three words
         let minecraft = genre == "Minecraft";
         let voice = if minecraft {
-            rng.pick(g.voices)
+            srng.pick(g.voices)
         } else {
             choose(
-                &mut rng,
+                &mut srng,
                 ctl.weirdness,
                 Role::Chords,
                 genre,
@@ -1252,13 +1411,14 @@ impl Recipe {
             )
         };
         let voice_pad = instruments::design(voice).is_some_and(|x| x.tags.contains(&"pad"));
-        let pad = !voice_pad && !minimal && rng.chance((g.pad * (1.5 - ctl.energy)).min(1.0));
+        let pad_roll = srng.chance((g.pad * (1.5 - ctl.energy)).min(1.0));
+        let pad = !voice_pad && !minimal && pad_roll;
         let bass_style = rng.pick(g.bass);
         let bass_design = if minecraft || bass_style == "drone" {
             "sine"
         } else {
             choose(
-                &mut rng,
+                &mut srng,
                 ctl.weirdness,
                 Role::Bass,
                 genre,
@@ -1275,7 +1435,7 @@ impl Recipe {
             "classic"
         } else {
             choose(
-                &mut rng,
+                &mut srng,
                 ctl.weirdness,
                 Role::Lead,
                 genre,
@@ -1365,6 +1525,7 @@ impl Recipe {
         };
         let mut c = Ctx {
             rng,
+            srng,
             genre,
             texture,
             tonic,
@@ -1430,9 +1591,11 @@ impl Recipe {
             kinds: BTreeMap::new(),
             drops: vec![],
             controls: ctl,
+            genome: genome.clone(),
         };
         r.compose(&mut c);
         r.stretch_form(ctl.length);
+        c.rng = drng;
         r.assemble(&mut c);
         Ok(r)
     }
@@ -3799,7 +3962,7 @@ impl Recipe {
             );
             // the held layer needs a sustaining pad design that contrasts with the chord voice
             let pad_kind = choose(
-                &mut c.rng,
+                &mut c.srng,
                 c.ctl.weirdness,
                 Role::Chords,
                 c.genre,
@@ -4132,11 +4295,12 @@ impl Recipe {
         }
 
         let about = format!(
-            "PATCH ENGINE · {} · seed {}\n\n{}\n\n{}",
+            "PATCH ENGINE · {} · seed {}\n\n{}\n\n{}\n\ngenome {}",
             self.title.to_uppercase(),
             self.seed,
             self.description,
-            self.notes.join(" · ")
+            self.notes.join(" · "),
+            self.genome
         );
         self.modules.insert(
             "about".into(),
@@ -4722,7 +4886,8 @@ impl Recipe {
                "key": self.key_name, "chords": self.chord_names, "modules": self.modules.len(), "cables": self.cid,
                "strips": self.strips.iter().map(|s| s.name.clone()).collect::<Vec<_>>(), "kinds": self.kinds, "drops": self.drops, "cpu": self.cpu_estimate(),
                "controls": {"energy": self.controls.energy, "complexity": self.controls.complexity, "weirdness": self.controls.weirdness,
-                            "space": self.controls.space, "length": self.controls.length}})
+                            "space": self.controls.space, "length": self.controls.length},
+               "genome": self.genome.to_string()})
     }
     pub fn cable_count(&self) -> usize {
         self.cid

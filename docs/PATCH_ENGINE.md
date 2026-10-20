@@ -22,6 +22,17 @@ Energy (tempo ±5 BPM, percussion density, pad layer), Complexity (ghost bass no
 rolls), Weirdness (collage forms, generative arps, rarer designs: the rating weight flattens), Space (reverb/echo
 depth) and Length (the 64-bar form stretched to 32 or 128 bars). The centre (0.5, 64 bars) reproduces every seed.
 
+## Genome, mutate and evolve
+
+A genome is everything that defines a piece: `Genre|Mood|Texture|song.sound.detail[|energy.complexity.weirdness.space.length]`.
+The song seed drives tempo, key, harmony, melody, rhythm and form; the sound seed the instrument designs; the detail
+seed envelopes, mix and effect settings. A plain seed uses it for all three. Mutations: **sound** (same song, new
+instruments and details — drums, bass line and melody stay note for note), **song** (new song on the same
+instruments), **evolve** (new details, controls drift by up to ±0.12); **breed** takes the words and song of one
+genome and the sounds of another. The panel shows the genome under the build buttons with New sounds / New song /
+Evolve, and Recent replays any earlier genome. CLI: `patch-engine --genome CODE [--mutate KIND] [--entropy N]
+[--with CODE]`. The genome is also written into the patch's About note.
+
 ## Song forms
 
 Each seed picks a form its genre suits: classic (intro · build · drop · breakdown · drop · outro), long layering
