@@ -18,23 +18,23 @@
 
 ## Download
 
-**OpenPatch 0.3.2 · build 15**
+**OpenPatch 0.3.3 · build 16**
 
 | Your computer | Download |
 |---|---|
-| Mac with Apple silicon · macOS 12 or later | [Download for Mac](https://github.com/dexterlabs1/openpatch/releases/download/v0.3.2/OpenPatch-macos-arm64.zip) |
-| Windows PC · 64-bit Intel or AMD | [Download for Windows](https://github.com/dexterlabs1/openpatch/releases/download/v0.3.2/OpenPatch-windows-x86_64.zip) |
-| Steam Deck or Linux PC · 64-bit Intel or AMD | [Download for Steam Deck / Linux](https://github.com/dexterlabs1/openpatch/releases/download/v0.3.2/OpenPatch-linux-x86_64.tar.gz) |
+| Mac with Apple silicon · macOS 12 or later | [Download for Mac](https://github.com/dexterlabs1/openpatch/releases/download/v0.3.3/OpenPatch-macos-arm64.zip) |
+| Windows PC · 64-bit Intel or AMD | [Download for Windows](https://github.com/dexterlabs1/openpatch/releases/download/v0.3.3/OpenPatch-windows-x86_64.zip) |
+| Steam Deck or Linux PC · 64-bit Intel or AMD | [Download for Steam Deck / Linux](https://github.com/dexterlabs1/openpatch/releases/download/v0.3.3/OpenPatch-linux-x86_64.tar.gz) |
 
 Extract the download, then:
 
 - **Mac:** move `OpenPatch.app` to Applications and open it.
 - **Windows:** open `openpatch-desktop.exe`. Keep the extracted files together.
-- **Linux / Steam Deck:** run `./install.sh` from the extracted folder, then open OpenPatch from your application menu. On Deck, install in Desktop Mode; the included `STEAM-DECK.txt` explains controller setup.
+- **Linux / Steam Deck:** run `./install.sh` from the extracted folder, then open OpenPatch from your application menu. On Deck, install in Desktop Mode, then add it to Steam. In Game Mode the Deck's controls work with Steam's default Gamepad layout, and the interface fits the screen. The included `STEAM-DECK.txt` lists the buttons.
 
 The Mac app is not notarized by Apple. The Windows app is unsigned.
 
-[Release notes and checksums](https://github.com/dexterlabs1/openpatch/releases/tag/v0.3.2)
+[Release notes and checksums](https://github.com/dexterlabs1/openpatch/releases/tag/v0.3.3)
 
 ## Get started
 
@@ -86,7 +86,7 @@ Install stable Rust and your platform's build tools. On Mac, install Xcode Comma
 ```sh
 git clone https://github.com/dexterlabs1/openpatch.git
 cd openpatch
-git checkout v0.3.2
+git checkout v0.3.3
 cargo build --locked --release -p openpatch-desktop -p openpatch --bins
 cargo run --locked --release -p openpatch-desktop
 ```
@@ -97,4 +97,4 @@ The app and command-line tool are in `target/release`. To package the Mac app, r
 
 Original OpenPatch code is [MIT licensed](LICENSE). The distributed app also includes GPL code and is provided under [GPL-3.0-or-later](crates/openpatch-core/LICENSE-GPL-3.0.txt). See the [third-party notices](crates/openpatch-core/LICENSE-THIRD-PARTY) for details.
 
-OpenPatch is an independent project and is not affiliated with VCV. [Release source code](https://github.com/dexterlabs1/openpatch/tree/v0.3.2)
+OpenPatch is an independent project and is not affiliated with VCV. [Release source code](https://github.com/dexterlabs1/openpatch/tree/v0.3.3)
