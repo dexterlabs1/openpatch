@@ -146,8 +146,9 @@ GATE = {"rms_min": -30.0, "rms_max": -8.0, "peak_max": 0.98, "silence": -45.0}
 def gate_job(args):
     g, m, t, seed = args
     patch = engine(g, m, t, seed)
+    drops = engine(g, m, t, seed, "--info").get("drops") or [16, 40]
     rows = []
-    for off in (16, 40):
+    for off in [int(d) for d in drops][:2]:
         r = render(at_bar(json.loads(json.dumps(patch)), off), f"g{seed}_{off}_{os.getpid()}")
         bad = []
         if r["clip"]: bad.append(f"{r['clip']} clipped samples")
