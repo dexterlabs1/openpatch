@@ -477,6 +477,8 @@ pub struct Session {
     layout_host_attached: bool,
     layout_generation: u64,
     layout_pending: bool,
+    /// Camera-only (pan/zoom) layout publications so far; native build fences tolerate them.
+    camera_moves: u64,
     layout_origin: Option<LayoutOrigin>,
     workspace: PathBuf,
     undo: VecDeque<HistoryEntry>,
@@ -514,6 +516,7 @@ impl Clone for Session {
             layout_host_attached: false,
             layout_generation: self.layout_generation,
             layout_pending: false,
+            camera_moves: self.camera_moves,
             layout_origin: self.layout_origin,
             workspace: self.workspace.clone(),
             undo: self.undo.clone(),
@@ -616,6 +619,7 @@ pub struct DocumentExecutionFence {
     pub revision: u64,
     pub layout_generation: u64,
     pub layout_pending: bool,
+    pub camera_moves: u64,
 }
 
 impl DocumentExecutionFence {
@@ -625,6 +629,7 @@ impl DocumentExecutionFence {
             revision: session.revision(),
             layout_generation: session.layout_generation(),
             layout_pending: session.layout_pending(),
+            camera_moves: session.camera_moves,
         }
     }
 
@@ -635,13 +640,19 @@ impl DocumentExecutionFence {
     fn check(&self, session: &Session) -> Result<(), String> {
         let current = Self::capture(session);
         // A pending native geometry checkpoint may be completed once by the
-        // host without changing document identity or authored graph revision.
-        let completed_placement = self.generation == current.generation
+        // host without changing document identity or authored graph revision,
+        // and the host may publish its camera (pan/zoom) any number of times:
+        // neither changes what a build edits.
+        let completed_placement = self.layout_pending && !current.layout_pending;
+        let cameras = current.camera_moves.checked_sub(self.camera_moves);
+        let allowed = self.generation == current.generation
             && self.revision == current.revision
-            && self.layout_pending
-            && !current.layout_pending
-            && self.layout_generation.checked_add(1) == Some(current.layout_generation);
-        if self.matches(session) || completed_placement {
+            && (self.layout_pending == current.layout_pending || completed_placement)
+            && cameras.and_then(|c| {
+                self.layout_generation
+                    .checked_add(c + completed_placement as u64)
+            }) == Some(current.layout_generation);
+        if self.matches(session) || allowed {
             Ok(())
         } else {
             Err("document changed since native build preparation".into())
@@ -866,6 +877,7 @@ impl Session {
             layout_host_attached: false,
             layout_generation: 0,
             layout_pending: false,
+            camera_moves: 0,
             layout_origin: None,
             undo: VecDeque::new(),
             redo: Vec::new(),
