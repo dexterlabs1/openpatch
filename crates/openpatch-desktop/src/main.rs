@@ -10,6 +10,7 @@ mod construction_motion;
 mod construction_ui;
 mod document_state;
 mod expression;
+mod gamepad;
 #[cfg(test)]
 mod headless_review;
 mod keyboard;
