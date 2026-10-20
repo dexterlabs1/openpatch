@@ -15,7 +15,8 @@ import array, concurrent.futures as cf, json, math, os, random, subprocess, sys,
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLI = os.environ.get("PE_CLI") or os.path.join(ROOT, "target/release/openpatch")
-GENRES = ["Deep House", "Dub Techno", "Techno", "Ambient", "Lo-fi Hip Hop", "Synthwave", "Downtempo", "UK Garage"]
+GENRES = ["Deep House", "Dub Techno", "Techno", "Ambient", "Lo-fi Hip Hop", "Synthwave", "Downtempo", "UK Garage",
+          "Progressive House", "Hypnagogic", "Berlin School", "IDM", "Melodic Techno"]
 MOODS = ["Dreamy", "Dark", "Euphoric", "Melancholy", "Hypnotic", "Warm", "Mysterious", "Playful"]
 TEXTURES = ["Glitchy", "Dusty", "Spacious", "Crisp", "Liquid", "Minimal", "Echoing", "Pulsing"]
 SECS = 12
@@ -203,7 +204,7 @@ if __name__ == "__main__":
         trims_report(sys.argv[2]); sys.exit(0)
     mode, n = sys.argv[1], int(sys.argv[2])
     rng = random.Random(int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3].isdigit() else 5)
-    combos = [(GENRES[i % 8], rng.choice(MOODS), rng.choice(TEXTURES), rng.randrange(1, 99999)) for i in range(n)]
+    combos = [(GENRES[i % len(GENRES)], rng.choice(MOODS), rng.choice(TEXTURES), rng.randrange(1, 99999)) for i in range(n)]
     if mode == "variety":
         combos = [(g, m, t, rng.randrange(1, 99999)) for g, m, t, _ in combos for _ in range(6)]
     job = {"stems": stems_job, "gate": gate_job, "variety": variety_job}.get(mode, mix_job)

@@ -3,7 +3,44 @@
 Three words (genre · mood · texture) plus a seed compose a complete, laid-out patch: key, progression,
 voicing, drums, bass, chords, melody, song form and sound design. Source: `crates/openpatch/src/patch_engine.rs`
 with instrument designs in `crates/openpatch/src/patch_engine/instruments.rs`. CLI:
-`openpatch patch-engine GENRE MOOD TEXTURE [--seed N] [--budget PCT] [--info|--reveal|--showtime]`.
+`openpatch patch-engine GENRE MOOD TEXTURE [--seed N] [--budget PCT] [--energy|--complexity|--weirdness|--space 0..1]
+[--length 32|64|128] [--info|--reveal|--showtime]`.
+
+## Genres
+
+Deep House, Dub Techno, Techno, Ambient, Lo-fi Hip Hop, Synthwave, Downtempo, UK Garage, plus five newer genres with
+their own tempo, grooves, instruments, melodies and song forms (drum kit, chord colour and mix details come from a
+parent genre): **Progressive House** (Pryda-style rolling bass, plucks, long filter builds; parent Deep House),
+**Hypnagogic** (Oneohtrix Point Never-style drones, generative arps, collage cuts; Ambient), **Berlin School**
+(sequenced ostinato bass, generative arps, no drums; Synthwave), **IDM** (broken beats, generative and riff leads,
+collage; Downtempo), **Melodic Techno** (rolling bass, big pads, arps, progressive builds; Techno). The C418 mode
+stays after the genre words.
+
+## Controls
+
+Energy (tempo ±5 BPM, percussion density, pad layer), Complexity (ghost bass notes, counter-lines, arp breathing, hat
+rolls), Weirdness (collage forms, generative arps, rarer designs: the rating weight flattens), Space (reverb/echo
+depth) and Length (the 64-bar form stretched to 32 or 128 bars). The centre (0.5, 64 bars) reproduces every seed.
+
+## Genome, mutate and evolve
+
+A genome is everything that defines a piece: `Genre|Mood|Texture|song.sound.detail[|energy.complexity.weirdness.space.length]`.
+The song seed drives tempo, key, harmony, melody, rhythm and form; the sound seed the instrument designs; the detail
+seed envelopes, mix and effect settings. A plain seed uses it for all three. Mutations: **sound** (same song, new
+instruments and details — drums, bass line and melody stay note for note), **song** (new song on the same
+instruments), **evolve** (new details, controls drift by up to ±0.12); **breed** takes the words and song of one
+genome and the sounds of another. The panel shows the genome under the build buttons with New sounds / New song /
+Evolve, and Recent replays any earlier genome. CLI: `patch-engine --genome CODE [--mutate KIND] [--entropy N]
+[--with CODE]`. The genome is also written into the patch's About note.
+
+## Song forms
+
+Each seed picks a form its genre suits: classic (intro · build · drop · breakdown · drop · outro), long layering
+(16-bar sections), progressive (30-bar filter build into the drop at 32, breakdown at 48, last drop at 56) or collage
+(abrupt 3–8 bar scene cuts, sometimes changing key). Inside the 4-bar loops, per-pass step probability adds ghost
+bass notes, breathing arps and hat rolls. The "drift" lead is a recall_random generative arp quantized to the key's
+pentatonic. Effects add a mono tape echo with wobbling time (Dusty and some lo-fi/dub/collage builds) and mid/side
+widening (Spacious, Liquid, Ambient).
 
 ## Instrument designs
 
@@ -47,7 +84,7 @@ counter-lines only take sustaining designs. The pad layer avoids repeating the c
 `scripts/patch_engine_qa.py` renders offline WAVs with the release CLI (nothing plays through speakers):
 
 - `stems N` then `trims FILE`: per-design levels relative to the kick, the source of `trim_db`.
-- `gate N`: both drops of N builds; exits 1 on clipping, peaks over 0.98, silence or RMS outside −30…−8 dBFS.
+- `gate N`: both drops (from `--info` `drops`) of N builds; exits 1 on clipping, peaks over 0.98, silence or RMS outside −30…−8 dBFS.
 - `variety K`: K word combinations × 6 seeds; exits 1 when two seeds of the same words render near-identical
   feature vectors (loudness, brightness, low weight, noisiness, onset rate, dynamics, width).
 
