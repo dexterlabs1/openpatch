@@ -33,6 +33,14 @@ was removed; user patches/settings and Claude's separate preview were preserved.
 This installation does not establish native-window/audio-device qualification.
 Keep the installed build stable until the user requests another upgrade.
 
+## Patch Engine v2 (in progress, branch `work/patch-engine-v2`)
+
+Milestone 1 of four ([guide](PATCH_ENGINE.md)): chords, pad layer, bass and lead choose among tagged
+instrument designs from the whole catalog (macro voice engines, modal resonator, wavetable VCO, Fundamental
+2.6.4 VCO/VCF, circuit ladder) next to the classic voices, with measured costs, light stand-ins, catalog
+validation, calibrated levels and an offline QA gate. Next: per-voice motion and generative layers, longer
+forms; then artist-style genres and controls; then genome/mutate. Not installed.
+
 ## Repository integration queue (2026-10-18)
 
 Both product lines left by the branch audit are now finished and merged:

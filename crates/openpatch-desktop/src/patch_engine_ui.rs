@@ -3,7 +3,7 @@ use eframe::egui::{self, text::LayoutJob, Color32, FontId, RichText, TextFormat}
 pub(crate) use openpatch::control::DocumentExecutionFence as DocumentFence;
 use openpatch::control::{execute_shared, execute_shared_fenced, Session, SharedSession};
 use openpatch::patch_engine::{
-    genre_noun, texture_phrase, texture_text, Recipe, GENRES, MOODS, TEXTURES,
+    genre_noun, texture_phrase, texture_text, Controls, Genome, Recipe, GENRES, MOODS, TEXTURES,
 };
 use serde_json::{json, Value};
 use std::sync::mpsc;
@@ -39,8 +39,8 @@ const TEXTURE_KEYS: [egui::Key; 8] = [
     egui::Key::J,
     egui::Key::K,
 ];
-/// Genre index used for the Minecraft (C418-style) mode, after the eight genre words.
-const MINECRAFT: usize = 8;
+/// Genre index used for the Minecraft (C418-style) mode, after the genre words.
+const MINECRAFT: usize = GENRES.len();
 fn genre_name(i: usize) -> &'static str {
     if i == MINECRAFT {
         "Minecraft"
@@ -321,6 +321,13 @@ pub(crate) struct Panel {
     cursor: usize,
     demo: Option<Demo>,
     light: bool,
+    /// Energy, complexity, weirdness, space and length for the next build.
+    ctl: Controls,
+    /// Genome of the latest build (mutations start from it), the one a mutation or replay asked for next, and
+    /// the genome of each history entry.
+    genome: Option<Genome>,
+    next_genome: Option<Genome>,
+    history_genomes: Vec<Genome>,
     first_frame: bool,
     armed: Option<Armed>,
     prepare_sent: bool,
@@ -340,6 +347,7 @@ struct Armed {
     mode: Mode,
     interval: u32,
     budget: Option<f64>,
+    genome: Genome,
 }
 
 /// Demo/capture mode for pitches and documentation screenshots, driven by environment variables:
@@ -433,6 +441,10 @@ impl Default for Panel {
             cursor: 0,
             demo: Demo::from_env(),
             light: cfg!(target_os = "linux"),
+            ctl: Controls::default(),
+            genome: None,
+            next_genome: None,
+            history_genomes: vec![],
             first_frame: true,
             armed: None,
             prepare_sent: false,
@@ -537,6 +549,9 @@ impl Panel {
             if let Some(h) = self.history.first() {
                 if h.4 == 0.0 {
                     self.history.remove(0);
+                    if !self.history_genomes.is_empty() {
+                        self.history_genomes.remove(0);
+                    }
                 }
             }
         }
@@ -549,9 +564,26 @@ impl Panel {
         if !self.ready() {
             return;
         }
-        if !self.keep_seed || self.seed == 0 {
-            self.seed = next_seed(&mut self.rng);
-        }
+        let words = (genre_name(g), MOODS[m], TEXTURES[t]);
+        let same = |x: &Genome| (x.genre.as_str(), x.mood.as_str(), x.texture.as_str()) == words;
+        // a mutation or replay applies only to the words it was made for; a kept seed rebuilds the latest genome
+        let queued = self.next_genome.take().filter(|x| same(x)).or_else(|| {
+            self.genome.clone().filter(|x| {
+                self.keep_seed && same(x) && x.song == self.seed && x.controls == self.ctl
+            })
+        });
+        let genome = match queued {
+            Some(genome) => {
+                self.seed = genome.song;
+                genome
+            }
+            None => {
+                if !self.keep_seed || self.seed == 0 {
+                    self.seed = next_seed(&mut self.rng);
+                }
+                Genome::new(genre_name(g), MOODS[m], TEXTURES[t], self.seed, self.ctl)
+            }
+        };
         let seed = self.seed;
         let (mode, interval) = (self.mode, self.interval_ms);
         self.started = Some(Instant::now());
@@ -563,6 +595,9 @@ impl Panel {
         self.label = "Composing…".into();
         self.history.insert(0, (g, m, t, seed, 0.0));
         self.history.truncate(8);
+        self.history_genomes.insert(0, genome.clone());
+        self.history_genomes.truncate(8);
+        self.genome = Some(genome.clone());
         let budget = self.light.then_some(LIGHT_BUDGET);
         let _ = session;
         self.armed = Some(Armed {
@@ -573,6 +608,7 @@ impl Panel {
             mode,
             interval,
             budget,
+            genome,
         });
         self.prepare_sent = false;
         self.label = "Starting a new document…".into();
@@ -588,6 +624,7 @@ impl Panel {
             mode,
             interval,
             budget,
+            genome,
         }) = self.armed.take()
         else {
             return;
@@ -600,7 +637,8 @@ impl Panel {
         std::thread::spawn(move || {
             let result = (|| -> Result<Built, String> {
                 let mut fence = fence;
-                let r = Recipe::with_budget(genre_name(g), MOODS[m], TEXTURES[t], seed, budget)?;
+                let _ = (g, m, t, seed);
+                let r = Recipe::from_genome(&genome, budget)?;
                 let title = format!("Patch Engine · {}", r.title);
                 let steps = match mode {
                     Mode::Instant => {
@@ -833,7 +871,10 @@ impl Panel {
                 1 => &mut self.mood,
                 _ => &mut self.texture,
             };
-            *slot = Some(slot.map_or(0, |i| (i + step) % 8));
+            // genres include the C418 mode after the genre words; moods and textures have eight words
+            let n = if self.cursor == 0 { MINECRAFT + 1 } else { 8 };
+            let step = if step == 7 { n - 1 } else { step };
+            *slot = Some(slot.map_or(0, |i| (i + step) % n));
         }
         if pressed(egui::Key::Enter) {
             self.start(session);
@@ -847,7 +888,7 @@ impl Panel {
     }
 
     fn surprise(&mut self, session: &SharedSession) {
-        self.genre = Some((next_seed(&mut self.rng) % 9) as usize);
+        self.genre = Some((next_seed(&mut self.rng) % (MINECRAFT as u64 + 1)) as usize);
         self.mood = Some((next_seed(&mut self.rng) % 8) as usize);
         self.texture = Some((next_seed(&mut self.rng) % 8) as usize);
         self.keep_seed = false;
@@ -1018,6 +1059,32 @@ impl Panel {
                     ui.painter().text(r.center() + egui::vec2(0.0, 8.0), egui::Align2::CENTER_CENTER, if kept { "kept" } else { "new each build" }, face(ui, 11.0), DIM);
                     if resp.on_hover_text("Every build composes a new song. Click to keep this seed and rebuild the same one.").clicked() { self.keep_seed = !self.keep_seed; }
                 });
+                // mutations of the latest build: same song with new sounds, a new song on the same sounds, a small drift
+                if let Some(current) = self.genome.clone().filter(|_| !busy && !self.history.is_empty()) {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing = egui::vec2(6.0, 0.0);
+                        let w = (width - 12.0) / 3.0;
+                        for (label, kind, tip) in [
+                            ("New sounds", "sound", "Same song, new instruments and details"),
+                            ("New song", "song", "Same instruments, a new song (key, chords, melody, rhythm, form)"),
+                            ("Evolve", "evolve", "Small drift: new details and slightly moved controls"),
+                        ] {
+                            let (r, resp) = ui.allocate_exact_size(egui::vec2(w, 26.0), egui::Sense::click());
+                            ui.painter().rect(r, 3.0_f32, if resp.hovered() { RAISED } else { CELL }, egui::Stroke::new(1.0_f32, LINE), egui::StrokeKind::Inside);
+                            ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, label, face(ui, 13.0), INK);
+                            if resp.on_hover_text(tip).clicked() {
+                                if let Ok(next) = current.mutate(kind, next_seed(&mut self.rng)) {
+                                    self.ctl = next.controls;
+                                    self.next_genome = Some(next);
+                                    self.start(session);
+                                }
+                            }
+                        }
+                    });
+                    let text = format!("genome {current}");
+                    ui.add(egui::Label::new(RichText::new(text).font(face(ui, 11.5)).color(DIM)).selectable(true))
+                        .on_hover_text("Everything that defines this piece: words, song.sound.detail seeds and controls");
+                }
                 if let Some(e) = &self.error { ui.label(RichText::new(e).font(face(ui, 13.0)).color(Color32::from_rgb(222, 140, 100))); }
                 if self.remaining.is_some() && ui.button("Resume build").clicked() { self.resume(session); }
                 // word matrices
@@ -1035,6 +1102,30 @@ impl Panel {
                     ui.add_space(4.0);
                     Self::section(ui, "Texture", self.cursor == 2);
                     if let Some(i) = matrix(ui, &TEXTURES, self.texture, 3, Some(texture_text)) { self.texture = Some(i); }
+                    ui.add_space(6.0);
+                    Self::section(ui, "Controls", false);
+                    let w = ui.available_width();
+                    for (label, v, tip) in [
+                        ("Energy", &mut self.ctl.energy, "Tempo and how many layers play"),
+                        ("Complexity", &mut self.ctl.complexity, "Ghost notes, counter-lines and variation from pass to pass"),
+                        ("Weirdness", &mut self.ctl.weirdness, "Collage forms, generative arps and rarer sounds"),
+                        ("Space", &mut self.ctl.space, "Reverb and echo depth"),
+                    ] {
+                        ui.horizontal(|ui| {
+                            ui.add_sized([86.0, 20.0], egui::Label::new(RichText::new(label).font(face(ui, 13.0)).color(if (*v - 0.5).abs() > 0.01 { INK } else { DIM })));
+                            ui.spacing_mut().slider_width = (w - 100.0).max(60.0);
+                            ui.add(egui::Slider::new(v, 0.0..=1.0).show_value(false)).on_hover_text(tip);
+                        });
+                    }
+                    ui.horizontal(|ui| {
+                        ui.add_sized([86.0, 20.0], egui::Label::new(RichText::new("Length").font(face(ui, 13.0)).color(DIM)));
+                        let lengths = [32u32, 64, 128];
+                        let cur = lengths.iter().position(|&l| l == self.ctl.length).unwrap_or(1);
+                        if let Some(i) = segmented(ui, &["32 bars", "64", "128"], cur, ui.available_width()) { self.ctl.length = lengths[i]; }
+                    });
+                    if self.ctl != Controls::default() && ui.add(egui::Label::new(RichText::new("Reset controls").font(face(ui, 12.5)).color(AMBER)).sense(egui::Sense::click())).clicked() {
+                        self.ctl = Controls::default();
+                    }
                     if self.history.len() > 1 {
                         ui.add_space(6.0);
                         Self::section(ui, "Recent", false);
@@ -1047,6 +1138,10 @@ impl Panel {
                         if let Some(i) = replay {
                             let (g, m, t, seed, _) = self.history[i];
                             (self.genre, self.mood, self.texture, self.seed, self.keep_seed) = (Some(g), Some(m), Some(t), seed, true);
+                            if let Some(genome) = self.history_genomes.get(i) {
+                                self.ctl = genome.controls;
+                                self.next_genome = Some(genome.clone());
+                            }
                         }
                     }
                 });

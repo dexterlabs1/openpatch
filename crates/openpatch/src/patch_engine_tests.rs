@@ -212,3 +212,242 @@ fn minecraft_mode_builds_quietly_and_in_key() {
         }
     }
 }
+
+/// Every kind, port and parameter a build emits exists in the module catalog, and every parameter value is
+/// inside its catalog range. Sampled across words and seeds until every instrument design has been built.
+#[test]
+fn builds_use_catalog_kinds_ports_and_parameter_ranges() {
+    let catalog = openpatch_core::catalog();
+    let spec: HashMap<&str, &Value> = catalog["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| (m["kind"].as_str().unwrap(), m))
+        .collect();
+    let names = |m: &Value, key: &str| -> Vec<String> {
+        m[key]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|p| p.as_str().or(p["name"].as_str()).unwrap_or("").to_string())
+                    .collect()
+            })
+            .unwrap_or_else(|| vec!["out".into()])
+    };
+    let mut built: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut fails = vec![];
+    let mut check = |r: &Recipe, tag: &str| {
+        let p = r.patch();
+        let mut kinds = HashMap::new();
+        for n in p["nodes"].as_array().unwrap() {
+            let kind = n["kind"].as_str().unwrap();
+            kinds.insert(n["id"].as_str().unwrap().to_string(), kind.to_string());
+            let Some(m) = spec.get(kind) else {
+                fails.push(format!("{tag}: unknown kind {kind}"));
+                continue;
+            };
+            for (k, v) in n["params"].as_object().unwrap() {
+                let Some(range) = m["params"].get(k) else {
+                    fails.push(format!("{tag}: {kind} has no parameter {k}"));
+                    continue;
+                };
+                let x = v.as_f64().unwrap();
+                let (lo, hi) = (range["min"].as_f64(), range["max"].as_f64());
+                if lo.is_some_and(|lo| x < lo - 1e-6) || hi.is_some_and(|hi| x > hi + 1e-6) {
+                    fails.push(format!("{tag}: {kind}.{k} = {x} outside {lo:?}..{hi:?}"));
+                }
+            }
+        }
+        for cab in p["cables"].as_array().unwrap() {
+            let (f, o, t, i) = (
+                cab["from"].as_str().unwrap(),
+                cab["output"].as_str().unwrap(),
+                cab["to"].as_str().unwrap(),
+                cab["input"].as_str().unwrap(),
+            );
+            if let Some(m) = kinds.get(f).and_then(|k| spec.get(k.as_str())) {
+                if !names(m, "outputs").iter().any(|x| x == o) {
+                    fails.push(format!("{tag}: {} has no output {o}", kinds[f]));
+                }
+            }
+            if let Some(m) = kinds.get(t).and_then(|k| spec.get(k.as_str())) {
+                if !names(m, "inputs").iter().any(|x| x == i) {
+                    fails.push(format!("{tag}: {} has no input {i}", kinds[t]));
+                }
+            }
+        }
+        for v in r.kinds.values() {
+            built.insert(v.clone());
+        }
+    };
+    for (n, g) in GENRES.iter().enumerate() {
+        for (k, m) in MOODS.iter().enumerate() {
+            for seed in 1..=6u64 {
+                let t = TEXTURES[(n + k + seed as usize) % TEXTURES.len()];
+                let tag = format!("{g}|{m}|{t}|{seed}");
+                check(&Recipe::new(g, m, t, seed).unwrap(), &tag);
+                check(
+                    &Recipe::with_budget(g, m, t, seed, Some(18.0)).unwrap(),
+                    &format!("{tag} light"),
+                );
+            }
+        }
+    }
+    // rarely chosen designs: pin each one into builds until it appears (a lead needs a build that has a melody)
+    for d in instruments::DESIGNS {
+        PINNED.with(|p| *p.borrow_mut() = vec![d.name]);
+        for seed in 1..=40u64 {
+            let r = Recipe::new("Deep House", "Dreamy", "Liquid", seed).unwrap();
+            let hit = r.kinds.values().any(|v| v == d.name);
+            check(&r, &format!("pinned {} {seed}", d.name));
+            if hit {
+                break;
+            }
+        }
+        PINNED.with(|p| p.borrow_mut().clear());
+    }
+    assert!(
+        fails.is_empty(),
+        "{} failures: {:?}",
+        fails.len(),
+        &fails[..fails.len().min(8)]
+    );
+    let missing: Vec<&str> = instruments::DESIGNS
+        .iter()
+        .map(|d| d.name)
+        .filter(|n| !built.contains(*n) && *n != "piano")
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "designs never built by the sample: {missing:?}"
+    );
+}
+
+#[test]
+fn light_builds_fit_their_budget_and_every_plan_fits_construction() {
+    for g in GENRES {
+        for m in MOODS {
+            for (i, t) in TEXTURES.iter().enumerate() {
+                let seed = 100 + i as u64;
+                let full = Recipe::new(g, m, t, seed).unwrap();
+                assert!(
+                    full.ops.len() <= MAX_PLAN_EDITS,
+                    "{g}|{m}|{t}: {} edits",
+                    full.ops.len()
+                );
+                let light = Recipe::with_budget(g, m, t, seed, Some(18.0)).unwrap();
+                assert!(light.ops.len() <= MAX_PLAN_EDITS);
+                assert!(
+                    light.cpu_estimate() <= 18.0
+                        || light.notes.iter().any(|n| n.ends_with("open hat")),
+                    "{g}|{m}|{t}: light build {}",
+                    light.cpu_estimate()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn controls_shape_builds_and_the_centre_reproduces_every_seed() {
+    let centre = Controls::default();
+    for g in GENRES {
+        let a = Recipe::new(g, "Dark", "Liquid", 3).unwrap();
+        let b = Recipe::with_controls(g, "Dark", "Liquid", 3, None, centre).unwrap();
+        assert_eq!(
+            a.patch(),
+            b.patch(),
+            "{g}: centre controls must reproduce the seed"
+        );
+        for (lo, len) in [(0.0, 32), (1.0, 128)] {
+            let ctl = Controls {
+                energy: lo,
+                complexity: lo,
+                weirdness: lo,
+                space: lo,
+                length: len,
+            };
+            let r = Recipe::with_controls(g, "Dark", "Liquid", 3, Some(18.0), ctl).unwrap();
+            assert!(r.ops.len() <= MAX_PLAN_EDITS, "{g} {len}: plan too large");
+            for score in r.scores.values() {
+                for lane in score["lanes"].as_array().into_iter().flatten() {
+                    assert_eq!(lane["length_bars"], json!(len));
+                    for p in lane["points"].as_array().unwrap() {
+                        assert!(
+                            p["bar"].as_f64().unwrap() <= len as f64,
+                            "{g}: lane point past the form"
+                        );
+                    }
+                }
+            }
+            assert!(
+                r.drops.iter().all(|&d| d < len as f64),
+                "{g}: drops {:?}",
+                r.drops
+            );
+        }
+    }
+    let bad = Controls {
+        length: 48,
+        ..centre
+    };
+    assert!(Recipe::with_controls("Techno", "Dark", "Liquid", 1, None, bad).is_err());
+}
+
+#[test]
+fn genomes_round_trip_and_mutations_change_only_their_domain() {
+    let tracks = |r: &Recipe, id: &str, k: usize| r.scores[id]["tracks"][k].clone();
+    for (n, g) in GENRES.iter().enumerate() {
+        let base = Genome::new(
+            g,
+            MOODS[n % 8],
+            TEXTURES[(n + 3) % 8],
+            11 + n as u64,
+            Controls::default(),
+        );
+        assert_eq!(base.to_string().parse::<Genome>().unwrap(), base);
+        let a = Recipe::from_genome(&base, None).unwrap();
+        assert_eq!(a.info()["genome"], json!(base.to_string()));
+        // new sounds: the drums, bass line and melody stay note for note
+        let sound = base.mutate("sound", 5).unwrap();
+        assert_eq!((sound.song, sound.genre.as_str()), (base.song, *g));
+        let b = Recipe::from_genome(&sound, None).unwrap();
+        assert_eq!(a.bpm, b.bpm);
+        assert_eq!(a.chord_names, b.chord_names);
+        assert_eq!(
+            a.scores["seq_drums"], b.scores["seq_drums"],
+            "{g}: drums changed"
+        );
+        for k in [1, 2, 3] {
+            assert_eq!(
+                tracks(&a, "seq_music", k),
+                tracks(&b, "seq_music", k),
+                "{g}: track {k}"
+            );
+        }
+        // new song: the chord instrument stays
+        let song = base.mutate("song", 5).unwrap();
+        assert_eq!((song.sound, song.detail), (base.sound, base.detail));
+        let c = Recipe::from_genome(&song, None).unwrap();
+        assert_eq!(
+            a.kinds.get("chords"),
+            c.kinds.get("chords"),
+            "{g}: chord design changed"
+        );
+        // evolve drifts the controls a little and keeps them valid
+        let e = base.mutate("evolve", 9).unwrap();
+        let (x, y) = (base.controls, e.controls);
+        assert!((x.energy - y.energy).abs() <= 0.12 + 1e-9 && e.song == base.song);
+        Recipe::from_genome(&e.to_string().parse().unwrap(), Some(18.0)).unwrap();
+        // breed: words and song from the first, sounds from the second
+        let child = base.breed(&sound);
+        assert_eq!((child.song, child.sound), (base.song, sound.sound));
+    }
+    assert!("Techno|Dark".parse::<Genome>().is_err());
+    assert!("Techno|Dark|Liquid|1.2".parse::<Genome>().is_err());
+    assert!(
+        Genome::new("Techno", "Dark", "Liquid", 1, Controls::default())
+            .mutate("drums", 1)
+            .is_err()
+    );
+}
