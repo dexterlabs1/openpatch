@@ -1,6 +1,19 @@
 # Current work plan
 
-Updated 2026-10-19. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
+Updated 2026-10-20. This is the compact execution plan; [ROADMAP.md](ROADMAP.md) and [MODULE_COVERAGE.md](MODULE_COVERAGE.md) retain the full objective and parity inventory.
+
+## Release candidate: 0.3.3 build 16
+
+Steam Deck Game Mode fixes requested after 0.3.2 was tried on the Deck, for macOS ARM, Windows x64 and Steam
+Deck/Linux x64:
+
+- [PR #50](https://github.com/dexterlabs1/openpatch/pull/50): Settings › Display › Interface size (75–200%,
+  Auto). On Steam Deck / gamescope, Auto draws one point per pixel so the chrome fits 1280×800; the Patch Engine's
+  build options are a reserved bottom panel and no longer cover the genre buttons.
+- [PR #51](https://github.com/dexterlabs1/openpatch/pull/51): native game controller input from Linux evdev
+  (Steam Input's default Gamepad layout), mapped onto the existing keys.
+
+Not yet qualified on Deck hardware; awaiting a Game Mode check on the device.
 
 ## Latest public release: 0.3.2 build 15
 
