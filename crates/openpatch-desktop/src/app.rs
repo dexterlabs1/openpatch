@@ -368,6 +368,7 @@ pub struct OpenPatch {
     settings_open: bool,
     ui_scale: f32,
     handheld: bool,
+    gamepad: Option<crate::gamepad::Gamepad>,
     settings_status: String,
     audio_performance_open: bool,
     audio_timing_history: AudioTimingHistory,
@@ -574,6 +575,11 @@ impl OpenPatch {
             settings_open: false,
             ui_scale: 1.0,
             handheld: crate::ui_scale::handheld(),
+            gamepad: if smoke_test.is_none() {
+                crate::gamepad::Gamepad::start(&cc.egui_ctx)
+            } else {
+                None
+            },
             settings_status: String::new(),
             audio_performance_open: false,
             audio_timing_history: AudioTimingHistory::default(),
@@ -1077,6 +1083,14 @@ impl OpenPatch {
                         if scale != self.ui_scale {
                             self.ui_scale = scale;
                             self.save_host_settings();
+                        }
+                        if let Some(gamepad) = &self.gamepad {
+                            let names = gamepad.names();
+                            ui.label(if names.is_empty() {
+                                "Controller: none connected".to_owned()
+                            } else {
+                                format!("Controller: {}", names.join(", "))
+                            });
                         }
                         ui.separator();
                         ui.heading("Audio & MIDI");
@@ -8249,6 +8263,11 @@ include!("ferrofluid_fixture.rs");
 include!("studio_mixer_fixture.rs");
 impl eframe::App for OpenPatch {
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
+        if let Some(gamepad) = &mut self.gamepad {
+            if gamepad.service(ctx, input) {
+                self.toggle_play();
+            }
+        }
         let tail_id = egui::Id::new("native-smoke-noise-tail");
         if let Some(mut tail) = ctx.data(|d| d.get_temp::<NoiseSmokeCapture>(tail_id)) {
             if matches!(tail.index, 141 | 144 | 151 | 152) && !tail.query_sent {
@@ -8837,6 +8856,7 @@ mod project_workflow_tests {
             settings_open: false,
             ui_scale: 1.0,
             handheld: false,
+            gamepad: None,
             settings_status: String::new(),
             audio_performance_open: false,
             audio_timing_history: AudioTimingHistory::default(),

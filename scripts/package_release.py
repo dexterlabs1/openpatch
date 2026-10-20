@@ -101,12 +101,18 @@ You can also run ./openpatch-desktop directly without installing. The bundled
 a working desktop session and the standard ALSA, X11/Wayland and OpenGL runtime
 libraries; no system packages or SteamOS files are changed by this installer.
 
-Patch Engine controls: F1 toggles the overlay; Up/Down chooses the row and
-Left/Right chooses an option; Enter starts; Space or / chooses a surprise; Esc
-closes the overlay. Touch the visible controls to do the same. Steam Input can
-map the D-pad to arrow keys, A to Enter, X to Space, B to Esc and a back button
-to F1. Configure this keyboard mapping explicitly; native gamepad button input
-is not assumed. R selects a mood and is not the surprise shortcut.
+Controller: OpenPatch reads game controllers natively, including the Steam
+Deck's controls with Steam Input's default Gamepad layout; no keyboard layout
+is needed. D-pad or left stick: choose the row and word (pan the rack when the
+Patch Engine is closed). A builds, X picks a surprise (play/stop on the rack),
+B closes, Y opens or closes the Patch Engine. LB/RB move focus across buttons,
+LT/RT zoom, View fits the rack and Menu plays or stops. Controller input is
+read only while OpenPatch has focus; Settings shows the connected controller.
+
+Keyboard: F1 toggles the Patch Engine; Up/Down chooses the row and Left/Right
+chooses an option; Enter starts; Space or / chooses a surprise; Esc closes it.
+Touch the visible controls to do the same. R selects a mood and is not the
+surprise shortcut.
 
 Interface size: on Steam Deck (Game Mode or Desktop Mode) OpenPatch draws one
 point per screen pixel so everything fits 1280x800. Change it under the gear
