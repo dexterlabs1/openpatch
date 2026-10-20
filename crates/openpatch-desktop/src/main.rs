@@ -33,6 +33,7 @@ mod scope;
 mod scope_transport;
 mod smoke_schedule;
 mod startup;
+mod ui_scale;
 mod visuals;
 
 use openpatch::control::SharedSession;

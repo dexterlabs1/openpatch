@@ -107,6 +107,10 @@ closes the overlay. Touch the visible controls to do the same. Steam Input can
 map the D-pad to arrow keys, A to Enter, X to Space, B to Esc and a back button
 to F1. Configure this keyboard mapping explicitly; native gamepad button input
 is not assumed. R selects a mood and is not the surprise shortcut.
+
+Interface size: on Steam Deck (Game Mode or Desktop Mode) OpenPatch draws one
+point per screen pixel so everything fits 1280x800. Change it under the gear
+(Settings) > Display > Interface size; the choice is saved with your settings.
 """
 
 

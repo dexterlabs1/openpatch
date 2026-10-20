@@ -994,6 +994,32 @@ impl Panel {
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing = egui::vec2(6.0, 8.0);
                 let width = ui.available_width();
+                // build options, pinned to the bottom; reserved first so nothing above can run under them
+                let footer = egui::TopBottomPanel::bottom("patch-engine-options")
+                    .frame(egui::Frame::new().fill(SHEET).inner_margin(egui::Margin { left: 0, right: 0, top: 8, bottom: 0 }))
+                    .show_separator_line(false)
+                    .resizable(false)
+                    .show_inside(ui, |ui| {
+                        ui.spacing_mut().item_spacing = egui::vec2(8.0, 6.0);
+                        ui.horizontal(|ui| {
+                            let modes = [Mode::Reveal, Mode::Showtime, Mode::Instant];
+                            let cur = modes.iter().position(|&m| m == self.mode).unwrap_or(0);
+                            let w = if self.mode == Mode::Instant { width } else { width * 0.6 };
+                            if let Some(i) = segmented(ui, &["Reveal", "Showtime", "Instant"], cur, w) { self.mode = modes[i]; }
+                            if self.mode != Mode::Instant {
+                                let speeds = [100u32, 150, 250];
+                                let cur = speeds.iter().position(|&v| v == self.interval_ms).unwrap_or(1);
+                                if let Some(i) = segmented(ui, &["Fast", "Med", "Slow"], cur, ui.available_width()) { self.interval_ms = speeds[i]; }
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            check(ui, "Autoplay", &mut self.autoplay, "Start playback when a build begins");
+                            check(ui, "Light", &mut self.light, "Keep each song within one Steam Deck core: optional layers are left out when a song would be too heavy");
+                        });
+                    });
+                ui.ctx().data_mut(|data| data.insert_temp(egui::Id::new("patch-engine-options-rect"), footer.response.rect));
+                egui::CentralPanel::default().frame(egui::Frame::new()).show_inside(ui, |ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(6.0, 8.0);
                 // header
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Patch Engine").font(face(ui, 17.0)).color(INK));
@@ -1100,7 +1126,7 @@ impl Panel {
                 if self.remaining.is_some() && ui.button("Resume build").clicked() { self.resume(session); }
                 // word matrices; a thin, always-visible handle shows the Controls below the fold
                 ui.spacing_mut().scroll = egui::style::ScrollStyle::thin();
-                egui::ScrollArea::vertical().id_salt("patch-engine-words").auto_shrink([false, true]).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible).max_height(ui.available_height() - 96.0).show(ui, |ui| {
+                let words = egui::ScrollArea::vertical().id_salt("patch-engine-words").auto_shrink([false, true]).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible).max_height(ui.available_height().max(0.0)).min_scrolled_height(0.0).show(ui, |ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
                     let mut genres: Vec<&str> = GENRES.to_vec();
                     genres.push("C418");
@@ -1157,24 +1183,7 @@ impl Panel {
                         }
                     }
                 });
-                // build options, pinned to the bottom
-                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-                    ui.spacing_mut().item_spacing = egui::vec2(8.0, 6.0);
-                    ui.horizontal(|ui| {
-                        check(ui, "Autoplay", &mut self.autoplay, "Start playback when a build begins");
-                        check(ui, "Light", &mut self.light, "Keep each song within one Steam Deck core: optional layers are left out when a song would be too heavy");
-                    });
-                    ui.horizontal(|ui| {
-                        let modes = [Mode::Reveal, Mode::Showtime, Mode::Instant];
-                        let cur = modes.iter().position(|&m| m == self.mode).unwrap_or(0);
-                        let w = if self.mode == Mode::Instant { width } else { width * 0.6 };
-                        if let Some(i) = segmented(ui, &["Reveal", "Showtime", "Instant"], cur, w) { self.mode = modes[i]; }
-                        if self.mode != Mode::Instant {
-                            let speeds = [100u32, 150, 250];
-                            let cur = speeds.iter().position(|&v| v == self.interval_ms).unwrap_or(1);
-                            if let Some(i) = segmented(ui, &["Fast", "Med", "Slow"], cur, ui.available_width()) { self.interval_ms = speeds[i]; }
-                        }
-                    });
+                ui.ctx().data_mut(|data| data.insert_temp(egui::Id::new("patch-engine-words-rect"), words.inner_rect));
                 });
             });
         if close {
@@ -1195,6 +1204,11 @@ impl Panel {
         }
         requests
     }
+}
+
+#[cfg(test)]
+mod patch_engine_layout_tests {
+    include!("patch_engine_layout_tests.rs");
 }
 
 #[cfg(test)]

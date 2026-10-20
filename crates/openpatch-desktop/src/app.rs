@@ -366,6 +366,8 @@ pub struct OpenPatch {
     midi_device: Option<String>,
     midi_epoch: u64,
     settings_open: bool,
+    ui_scale: f32,
+    handheld: bool,
     settings_status: String,
     audio_performance_open: bool,
     audio_timing_history: AudioTimingHistory,
@@ -570,6 +572,8 @@ impl OpenPatch {
             midi_device,
             midi_epoch,
             settings_open: false,
+            ui_scale: 1.0,
+            handheld: crate::ui_scale::handheld(),
             settings_status: String::new(),
             audio_performance_open: false,
             audio_timing_history: AudioTimingHistory::default(),
@@ -786,6 +790,7 @@ impl OpenPatch {
     }
     fn apply_host_preferences(&mut self, preferences: &Value) {
         self.recent_files = recent_files_from_settings(&preferences["recent_files"]);
+        self.ui_scale = crate::ui_scale::from_settings(preferences);
         self.organize_rows = preferences["organize_rows"]
             .as_u64()
             .filter(|rows| (1..=8).contains(rows))
@@ -846,7 +851,8 @@ impl OpenPatch {
                 "cable_finish": self.rack.cable_presentation().finish.key(),
                 "cable_tension": self.rack.cable_presentation().tension,
                 "plug_light_brightness": self.rack.cable_presentation().plug_brightness,
-                "cable_palette": self.cable_palette.settings()
+                "cable_palette": self.cable_palette.settings(),
+                "ui_scale": self.ui_scale
             }))
             .map_err(|e| e.to_string())?;
             let mut file = std::fs::OpenOptions::new()
@@ -1049,6 +1055,30 @@ impl OpenPatch {
                     .id_salt("audio-settings-scroll")
                     .max_height(max_height)
                     .show(ui, |ui| {
+                        ui.heading("Display");
+                        let mut scale = self.ui_scale;
+                        ui.horizontal(|ui| {
+                            ui.label("Interface size");
+                            egui::ComboBox::from_id_salt("ui-scale")
+                                .selected_text(crate::ui_scale::label(scale))
+                                .show_ui(ui, |ui| {
+                                    for step in crate::ui_scale::STEPS {
+                                        ui.selectable_value(
+                                            &mut scale,
+                                            step,
+                                            crate::ui_scale::label(step),
+                                        );
+                                    }
+                                });
+                        });
+                        if self.handheld {
+                            ui.label("Steam Deck: Auto draws one point per screen pixel.");
+                        }
+                        if scale != self.ui_scale {
+                            self.ui_scale = scale;
+                            self.save_host_settings();
+                        }
+                        ui.separator();
                         ui.heading("Audio & MIDI");
                         ui.add_space(4.0);
                         ui.heading("Audio output");
@@ -8361,6 +8391,9 @@ impl eframe::App for OpenPatch {
 
 impl OpenPatch {
     fn update_frame(&mut self, ctx: &egui::Context) {
+        if crate::ui_scale::apply(ctx, self.ui_scale, self.handheld) {
+            ctx.request_repaint();
+        }
         self.poll_wavetable_import();
         if self.wavetable_import.is_some() {
             ctx.request_repaint_after(Duration::from_millis(16));
@@ -8802,6 +8835,8 @@ mod project_workflow_tests {
             midi_device: None,
             midi_epoch: 0,
             settings_open: false,
+            ui_scale: 1.0,
+            handheld: false,
             settings_status: String::new(),
             audio_performance_open: false,
             audio_timing_history: AudioTimingHistory::default(),
@@ -11429,6 +11464,23 @@ mod project_workflow_tests {
         }
         app.rack.set_room_brightness(f32::NAN);
         assert_eq!(app.rack.room_brightness(), 1.0);
+    }
+
+    #[test]
+    fn interface_size_persists_as_host_preference() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = host(dir.path());
+        assert_eq!(app.ui_scale, 1.0);
+        app.ui_scale = 1.3;
+        app.save_host_settings();
+        let preferences: Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join(".host-settings.json")).unwrap())
+                .unwrap();
+        app.ui_scale = 1.0;
+        app.apply_host_preferences(&preferences);
+        assert_eq!(app.ui_scale, 1.3);
+        app.apply_host_preferences(&json!({}));
+        assert_eq!(app.ui_scale, 1.0);
     }
 
     #[test]
