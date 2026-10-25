@@ -111,6 +111,8 @@ Recall Random is the sixth creative instrument, now shipped in 0.3.1;
 five shipped in 0.3.0 and fourteen remain after it. Broader parity, compatibility and
 device requirements remain open.
 
+**Physical synthesis family, `work/string-field` (stacked on `work/grain-weather`):** [String Field](STRING_FIELD.md) adapts the pinned Rings resonator: modal, sympathetic-string, inharmonic-string, FM, chord-string and string-with-reverb models, one to four voices with source voice allocation, internal exciters, external/note-change/onset strums and odd/even outputs, at the native 48 kHz behind the shared host-rate resampler. The production Rust kernel matches 7,862,400/7,862,400 int16 samples and every strum flag across 71 C++ reference cases with the source RNG seeded identically and no excluded samples; no pinned-revision source bug required a deviation. Native fixture, lifecycle, five-rate no-heap across model/polyphony changes, shared panel/UI, MCP/history/presets/reopen and an offline example have focused Mac evidence. Not installed; PR and release gate pending.
+
 ## User-requested rack workflow and creative expansion (2026-10-17)
 
 The first creative family is merged through [PR #34](https://github.com/dexterlabs1/openpatch/pull/34)

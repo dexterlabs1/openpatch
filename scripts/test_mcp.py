@@ -4226,6 +4226,54 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("load_patch", {"filename": "grain-weather.json"})
         self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
 
+    def test_string_field_source_outputs_history_presets_and_saved_reopen(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["string_field"]
+        self.assertEqual(descriptor["outputs"], ["odd", "even"])
+        self.assertEqual(descriptor["inputs"], ["in", "strum", "v_oct", "frequency_cv", "structure_cv",
+                                                "brightness_cv", "damping_cv", "position_cv"])
+        self.assertEqual(descriptor["polyphony"]["maximum_channels"], 1)
+        self.assertEqual(descriptor["bypass"]["routes"], [{"input": "in", "output": "odd"}, {"input": "in", "output": "even"}])
+        self.assertIn("48 kHz", descriptor["processing_policy"])
+        self.assertIn("never string or reverb memory", descriptor["state_policy"])
+        self.assertIn("internal exciter", descriptor["normalization_policy"])
+        self.assertEqual(descriptor["params"]["model"]["labels"], ["Modal", "Sympathetic strings", "Inharmonic string",
+                                                                   "FM voice", "Chord strings", "String and reverb"])
+        self.assertEqual(descriptor["params"]["polyphony"]["values"], [1, 2, 3, 4])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "clock", "kind": "stock_lfo", "params": {"rate": 3, "offset": 0}},
+                      {"id": "strings", "kind": "string_field", "params": {"model": 2, "polyphony": 2, "brightness": 0.7}}],
+            "cables": [{"from": "clock", "output": "square", "to": "strings", "input": "strum"}],
+            "output": "strings", "output_port": "odd"}})
+        original = self.patch_snapshot()
+        for port in descriptor["outputs"]:
+            trace = self.payload(self.require_tool_success("capture_signal", {
+                "id": "strings", "port": port, "seconds": .5, "points": 64,
+                "expected_revision": original["revision"]}))
+            self.assertEqual(trace["summary"]["active_frames"], 24000)
+            self.assertTrue(all(math.isfinite(point["mean"]) for point in trace["bins"]))
+            self.assertGreater(max(max(abs(point["min"]), abs(point["max"])) for point in trace["bins"]), .1)
+        self.assertEqual(self.patch_snapshot(), original, "capture must remain observational")
+        self.require_tool_success("set_parameter", {"id": "strings", "parameter": "model", "value": 4})
+        self.require_tool_success("set_parameter", {"id": "strings", "parameter": "polyphony", "value": 3})
+        changed = self.patch_snapshot()
+        self.require_tool_success("undo")
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
+        self.require_tool_success("redo")
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], changed["patch"])
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "strings"}))["preset"]
+        self.assertEqual(preset["params"]["model"], 4)
+        self.assertEqual(preset["params"]["polyphony"], 3)
+        self.assertLess(len(json.dumps(preset)), 2048, "presets store controls, not string memory")
+        self.require_tool_success("save_patch", {"filename": "string-field.json"})
+        before = self.patch_snapshot()
+        for name, value in [("model", 2.5), ("model", 6), ("polyphony", 0), ("structure", 1.5), ("frequency", 61)]:
+            self.require_tool_error("set_parameter", {"id": "strings", "parameter": name, "value": value})
+            self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": []}})
+        self.require_tool_success("load_patch", {"filename": "string-field.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
+
     def test_stock_lfo_source_polarity_phase_origins_and_named_outputs_through_mcp(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         descriptor = modules["stock_lfo"]

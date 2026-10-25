@@ -1,5 +1,16 @@
 # Rust module coverage
 
+Development addition (not installed): [String Field](STRING_FIELD.md) is the
+95th catalog kind and the ninth of the twenty creative instruments. Its Rings
+resonator (modal, sympathetic, inharmonic, FM, chord and string-with-reverb
+models, one to four voices, internal exciters, strum and onset detection,
+odd/even outputs) is a pinned MIT Rust source adaptation running at the native
+48 kHz behind the shared host-rate resampler. The raw kernel matches 7,862,400
+of 7,862,400 int16 samples and every strum flag across 71 source cases with no
+exclusions. Native lifecycle, callback no-heap, shared panel and MCP workflows
+have focused Mac checks. This adds no VCV import mapping, binary compatibility
+or hardware claim.
+
 Development addition (not installed): [Grain Weather](GRAIN_WEATHER.md) is the
 94th catalog kind and the eighth of the twenty creative instruments. Its Clouds
 granular processor (granular, WSOLA stretch, looping delay and spectral modes,
