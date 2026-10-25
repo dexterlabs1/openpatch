@@ -81,6 +81,8 @@ fn policy(kind: &str, name: &str) -> Randomization {
         ("tidal_functions", "frequency") => Log2,
         ("tidal_functions", "ramp_mode" | "output_mode" | "range" | "clock_ratio") => Enum,
         ("tidal_functions", _) => Linear,
+        ("cross_matter", "carrier" | "mode") => Enum,
+        ("cross_matter", _) => Linear,
         ("stock_lfo", "rate" | "pulse_width") => Linear,
         ("stock_lfo", "offset" | "invert") => Enum,
         ("stock_lfo", _) => Disabled,

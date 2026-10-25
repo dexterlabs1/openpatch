@@ -3,6 +3,7 @@
 //! storage are resolved/allocated only during compilation.
 use crate::adsr_eg::{self, AdsrEg};
 use crate::colored_noise::{self, ColoredNoise};
+use crate::cross_matter::{self, CrossMatter};
 use crate::event_fork::{self, EventFork};
 use crate::frame_scene::{self, FrameScene};
 use crate::gates::{self, Gates};
@@ -152,6 +153,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "stock_noise"
                 | "stock_lfo"
                 | "tidal_functions"
+                | "cross_matter"
                 | "frame_scene"
                 | "rhythm_terrain"
                 | "recall_random"
@@ -232,6 +234,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "tidal_functions" => tidal_functions::INPUTS
             .iter()
             .position(|port| *port == name),
+        "cross_matter" => cross_matter::INPUTS.iter().position(|port| *port == name),
         "multi_lfo" => multi_lfo::INPUTS.iter().position(|port| *port == name),
         "multi_vco" => multi_vco::INPUTS.iter().position(|port| *port == name),
         "stock_seq3" => stock_seq3::INPUTS.iter().position(|port| *port == name),
@@ -375,6 +378,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         tidal_functions::OUTPUTS
             .iter()
             .position(|port| *port == name)
+    } else if kind == "cross_matter" {
+        cross_matter::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "stock_lfo" {
         stock_lfo::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "multi_lfo" {
@@ -632,6 +637,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect()
+    } else if kind == "cross_matter" {
+        cross_matter::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
     } else if kind == "stock_lfo" {
         stock_lfo::OUTPUTS
             .iter()
@@ -855,6 +865,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "tidal_functions" {
         tidal_functions::annotate(module);
     }
+    if kind == "cross_matter" {
+        cross_matter::annotate(module);
+    }
     if kind == "frame_scene" {
         frame_scene::annotate(module);
     }
@@ -983,6 +996,7 @@ enum Model {
     MultiLfo(Box<MultiLfo>),
     StockLfo(Box<StockLfo>),
     TidalFunctions(Box<TidalFunctions>),
+    CrossMatter(Box<CrossMatter>),
     FrameScene(Box<FrameScene>),
     SegmentGarden(Box<SegmentGarden>),
     EventFork(EventFork),
@@ -1177,6 +1191,9 @@ impl Model {
             return Ok(Self::TidalFunctions(Box::new(TidalFunctions::build(
                 node, rate,
             )?)));
+        }
+        if node.kind == "cross_matter" {
+            return Ok(Self::CrossMatter(Box::new(CrossMatter::build(node, rate)?)));
         }
         if node.kind == "stock_lfo" {
             return Ok(Self::StockLfo(Box::new(StockLfo::build(node, rate)?)));
@@ -2135,6 +2152,7 @@ impl PolyEngine {
             Some(Model::Mixing(m)) => m.lights(),
             Some(Model::StockLfo(s)) => Some(s.lights()),
             Some(Model::TidalFunctions(s)) => Some(s.lights()),
+            Some(Model::CrossMatter(s)) => Some(s.lights()),
             Some(Model::FrameScene(s)) => Some(s.lights()),
             Some(Model::SegmentGarden(s)) => Some(s.lights()),
             Some(Model::EventFork(s)) => Some(s.lights()),
@@ -2696,6 +2714,7 @@ impl PolyEngine {
             Model::MultiLfo(lfo) => lfo.initialize_state(),
             Model::StockLfo(lfo) => lfo.initialize_state(),
             Model::TidalFunctions(tidal) => tidal.initialize_state(),
+            Model::CrossMatter(cross) => cross.initialize_state(),
             Model::FrameScene(scene) => scene.initialize_state(),
             Model::SegmentGarden(garden) => garden.initialize_state(),
             Model::EventFork(fork) => fork.initialize_state(),
@@ -2936,6 +2955,7 @@ impl PolyEngine {
                     "multi_lfo" => multi_lfo::OUTPUTS.len(),
                     "stock_lfo" => stock_lfo::OUTPUTS.len(),
                     "tidal_functions" => tidal_functions::OUTPUTS.len(),
+                    "cross_matter" => cross_matter::OUTPUTS.len(),
                     "frame_scene" => frame_scene::OUTPUTS.len(),
                     "segment_garden" => segment_garden::OUTPUTS.len(),
                     "event_fork" => event_fork::OUTPUTS.len(),
@@ -3993,6 +4013,20 @@ impl PolyEngine {
                             [node.output_start..node.output_start + tidal_functions::OUTPUTS.len()],
                     );
                 }
+                Model::CrossMatter(cross) => {
+                    let mut inputs = [PortFrame::default(); 6];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    cross.process(
+                        &inputs,
+                        node.connected_mask as u16,
+                        &mut self.outputs
+                            [node.output_start..node.output_start + cross_matter::OUTPUTS.len()],
+                    );
+                }
                 Model::StockLfo(lfo) => {
                     let mut inputs = [PortFrame::default(); 4];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -4610,6 +4644,7 @@ impl PolyEngine {
                 (Model::Stereo(s), Model::Stereo(old)) => s.adopt(old),
                 (Model::StockLfo(s), Model::StockLfo(old)) => s.adopt(old),
                 (Model::TidalFunctions(s), Model::TidalFunctions(old)) => s.adopt(old),
+                (Model::CrossMatter(s), Model::CrossMatter(old)) => s.adopt(old),
                 (Model::FrameScene(s), Model::FrameScene(old)) => s.adopt(old),
                 (Model::SegmentGarden(s), Model::SegmentGarden(old)) => s.adopt(old),
                 (Model::EventFork(s), Model::EventFork(old)) => s.adopt(old),

@@ -2174,6 +2174,65 @@ fn event_fork_first_edges_normaling_seed_changes_and_state_handoff_use_no_heap()
 }
 
 #[test]
+fn cross_matter_every_path_rate_bridge_initialize_bypass_and_adoption_use_no_heap() {
+    // Vocoder (algorithm 0.9), dual-oscillator transition with the noise
+    // carrier (knob 0.7, saw), cross-modulation and frequency shifter.
+    let settings: [&[(&str, f32)]; 4] = [
+        &[("algorithm", 0.9), ("carrier", 0.0)],
+        &[("algorithm", 0.7), ("carrier", 3.0)],
+        &[("algorithm", 0.3), ("carrier", 1.0)],
+        &[("mode", 1.0), ("carrier", 2.0)],
+    ];
+    let mut engines: Vec<_> = [8000, 44100, 48000, 96000, 192000]
+        .into_iter()
+        .flat_map(|rate| settings.iter().map(move |params| (rate, *params)))
+        .map(|(rate, params)| {
+            let mut p = patch(
+                vec![
+                    node("osc", "stock_lfo", &[("rate", 7.0)]),
+                    node("cross", "cross_matter", params),
+                ],
+                vec![
+                    cable("osc", "saw", "cross", "carrier"),
+                    cable("osc", "sine", "cross", "modulator"),
+                    cable("osc", "triangle", "cross", "timbre_cv"),
+                ],
+                "cross",
+            );
+            p.sample_rate = rate;
+            let old = p.compile().unwrap();
+            p.nodes[1].params.insert("timbre".into(), 0.8);
+            let replacement = p.compile().unwrap();
+            p.nodes[1].bypassed = true;
+            let bypass = p.compile().unwrap();
+            let light = replacement.resolve_module_lights("cross").unwrap();
+            (old, replacement, bypass, light)
+        })
+        .collect();
+    let mut frames = [PortFrame::default(); 257];
+    let mut initialized = false;
+    MEMORY_OPERATIONS.with(|c| c.set(0));
+    TRACK_MEMORY.with(|c| c.set(true));
+    for (old, replacement, bypass, light) in &mut engines {
+        for count in [0, 1, 59, 60, 61, 128, 257] {
+            old.process_poly_block(&mut frames[..count]);
+            replacement.adopt_state_from(old);
+            replacement.process_poly_block(&mut frames[..count]);
+            let _ = replacement.module_lights(*light);
+            bypass.adopt_state_from(replacement);
+            bypass.process_poly_block(&mut frames[..count]);
+            initialized |= replacement.initialize_module_state(*light);
+        }
+    }
+    TRACK_MEMORY.with(|c| c.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(initialized);
+    assert!(frames
+        .iter()
+        .all(|p| p.channels == 1 && p.values[0].is_finite()));
+}
+
+#[test]
 fn rhythm_terrain_first_scans_taps_fifo_lights_initialize_and_handoff_use_no_heap() {
     use openpatch_core::ModuleAction;
     let mut engines = [8000, 44100, 48000, 96000, 192000].map(|rate| {

@@ -99,6 +99,9 @@ mod stock_seq3;
 pub use stock_seq3::initial_stock_seq3_state;
 #[doc(hidden)]
 pub use stock_seq3::{StockSeq3Probe, StockSeq3Snapshot};
+mod cross_matter;
+#[doc(hidden)]
+pub use cross_matter::{effective_algorithm as cross_matter_effective_algorithm, CrossMatterProbe};
 mod event_fork;
 mod frame_scene;
 mod recall_random;
@@ -481,6 +484,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(tidal_functions::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(cross_matter::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()
