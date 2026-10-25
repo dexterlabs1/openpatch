@@ -105,6 +105,12 @@ pub use cross_matter::{effective_algorithm as cross_matter_effective_algorithm, 
 mod grain_weather;
 #[doc(hidden)]
 pub use grain_weather::{GrainWeatherProbe, GrainWeatherSnapshot};
+mod stock_unity;
+#[doc(hidden)]
+pub use stock_unity::{StockUnityProbe, UnityInput, UnityKernel};
+mod stock_vca2;
+#[doc(hidden)]
+pub use stock_vca2::{sse_mathfun_exp, StockVca2Probe, Vca2Port, LN_50_BITS};
 mod string_field;
 #[doc(hidden)]
 pub use string_field::{StringFieldProbe, StringFieldSnapshot};
@@ -502,6 +508,14 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(string_field::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(stock_vca2::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(stock_unity::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()

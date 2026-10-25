@@ -17,6 +17,8 @@ mod document_tests;
 #[cfg(test)]
 mod frame_scene_tests;
 #[cfg(test)]
+mod fundamental_legacy_tests;
+#[cfg(test)]
 mod grain_weather_tests;
 #[cfg(test)]
 mod hosted_document_tests;

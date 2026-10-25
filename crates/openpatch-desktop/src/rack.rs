@@ -67,6 +67,8 @@ include!("tidal_functions_panel.rs");
 include!("cross_matter_panel.rs");
 include!("grain_weather_panel.rs");
 include!("string_field_panel.rs");
+include!("stock_vca2_panel.rs");
+include!("stock_unity_panel.rs");
 include!("frame_scene_panel.rs");
 include!("segment_garden_panel.rs");
 include!("event_fork_panel.rs");
@@ -115,9 +117,8 @@ fn port_material_scale(kind: &str) -> f32 {
         "stock_seq3" => 1.07,
         "stock_delay" => 1.20, // y380 sockets must remain inside the 396-point panel.
         "modal_resonator" | "tidal_functions" | "frame_scene" | "segment_garden" | "event_fork"
-        | "rhythm_terrain" | "cross_matter" | "grain_weather" | "string_field" => {
-            REDESIGNED_PORT_SCALE
-        }
+        | "rhythm_terrain" | "cross_matter" | "grain_weather" | "string_field" | "stock_vca2"
+        | "stock_unity" => REDESIGNED_PORT_SCALE,
         "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "rackmcp_sequencer"
         | "rackmcp_listen" | "crossfade" | "quantizer" | "stock_quantizer" | "poly_sum"
         | "mid_side" | "stock_mid_side" | "mix6" | "stock_mix" => REDESIGNED_PORT_SCALE,
@@ -215,6 +216,8 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("grain_weather", _, true) => Above(24.0),
         ("string_field", _, false) => Above(21.0),
         ("string_field", _, true) => Above(24.0),
+        ("stock_vca2" | "stock_unity", _, false) => Above(21.0),
+        ("stock_vca2" | "stock_unity", _, true) => Above(24.0),
         ("macro_voice", _, false) => Above(21.0),
         ("macro_voice", _, true) => Right(32.0),
         ("stock_delay", "signal" | "clock", false) => Right(30.0),
@@ -368,6 +371,7 @@ fn generic_parameter_hardware(
                 | "cross_matter"
                 | "grain_weather"
                 | "string_field"
+                | "stock_vca2"
         )
         || matches!(
             kind,
@@ -3919,6 +3923,19 @@ impl Rack {
                     &self.lighting,
                 );
             }
+            if node.kind == "stock_vca2" {
+                paint_stock_vca2_configuration(ui, rect, node, self.zoom);
+            }
+            if node.kind == "stock_unity" {
+                paint_stock_unity_configuration(
+                    ui,
+                    rect,
+                    node,
+                    self.zoom,
+                    self.module_lights.get(&node.id),
+                    &self.lighting,
+                );
+            }
             if node.kind == "string_field" {
                 paint_string_field_configuration(
                     ui,
@@ -4430,6 +4447,58 @@ impl Rack {
                     });
                     continue;
                 }
+                if node.kind == "stock_unity" {
+                    if let Some((local, label)) = stock_unity_toggle(name) {
+                        let value = node.params.get(*name).copied().unwrap_or(0.0);
+                        let rect = Rect::from_min_size(
+                            point(local.min.x, local.min.y),
+                            local.size() * self.zoom,
+                        );
+                        let button = crate::panel_skin::toggle_button(
+                            ui,
+                            rect,
+                            label,
+                            value >= 0.5,
+                            self.zoom,
+                        );
+                        if button.clicked()
+                            && interactive
+                            && self.shortcuts_enabled
+                            && self.editing.is_none()
+                            && self.annotation_edit.is_none()
+                            && !popup_open_at_frame_start
+                            && !egui::Popup::is_any_open(ui.ctx())
+                        {
+                            self.select_primary(node.id.clone());
+                            action = Some(RackAction::Command(
+                                "set_parameter",
+                                json!({"id":node.id,"parameter":name,"value":if value >= 0.5 { 0.0 } else { 1.0 },"expected_revision":revision}),
+                            ));
+                        }
+                        if interactive {
+                            if let Some(cue) = self
+                                .construction_animation
+                                .parameter(&node.id, &node.kind, name)
+                            {
+                                let label = |v: f32| if v >= 0.5 { "On" } else { "Off" };
+                                self.register_construction_anchor(
+                                    ui,
+                                    node,
+                                    name,
+                                    crate::construction_motion::Anchor {
+                                        rect,
+                                        marker: None,
+                                        old_text: label(cue.old).into(),
+                                        new_text: label(cue.new).into(),
+                                    },
+                                    &[button.id],
+                                );
+                            }
+                        }
+                        button.on_hover_text(stock_unity_toggle_hover(name));
+                        continue;
+                    }
+                }
                 if matches!(
                     node.kind.as_str(),
                     "cross_matter" | "grain_weather" | "string_field"
@@ -4572,6 +4641,8 @@ impl Rack {
                     grain_weather_control(name)
                 } else if node.kind == "string_field" {
                     string_field_control(name)
+                } else if node.kind == "stock_vca2" {
+                    stock_vca2_control(name)
                 } else if node.kind == "audio_stereo" {
                     atlas_audio_control(name)
                 } else if node.kind == "vca_mix" {
@@ -4765,6 +4836,8 @@ impl Rack {
                     grain_weather_value(node, name, value)
                 } else if node.kind == "string_field" {
                     string_field_value(node, name, value)
+                } else if node.kind == "stock_vca2" {
+                    stock_vca2_value(value)
                 } else if node.kind == "svf_filter" {
                     atlas_svf_value(name, value, spec)
                 } else if atlas_voice(&node.kind) {
@@ -4930,6 +5003,9 @@ impl Rack {
                 } else if node.kind == "string_field" {
                     let local = string_field_value_center(name);
                     point(local.x, local.y)
+                } else if node.kind == "stock_vca2" {
+                    let local = stock_vca2_value_center(name);
+                    point(local.x, local.y)
                 } else if node.kind == "audio_stereo" {
                     let local = atlas_audio_value_center(name);
                     point(local.x, local.y)
@@ -5024,6 +5100,8 @@ impl Rack {
                     grain_weather_value_width(name)
                 } else if node.kind == "string_field" {
                     string_field_value_width(name)
+                } else if node.kind == "stock_vca2" {
+                    stock_vca2_value_width(name)
                 } else if node.kind == "audio_stereo" {
                     132.0
                 } else if node.kind == "vca_mix" {
@@ -5396,6 +5474,7 @@ impl Rack {
                                 | "cross_matter"
                                 | "grain_weather"
                                 | "string_field"
+                                | "stock_vca2"
                         )
                         || matches!(
                             node.kind.as_str(),
@@ -5507,6 +5586,8 @@ impl Rack {
                     paint_grain_weather_control_print(&painter, rect, node, name, self.zoom);
                 } else if node.kind == "string_field" {
                     paint_string_field_control_print(&painter, rect, node, name, self.zoom);
+                } else if node.kind == "stock_vca2" {
+                    paint_stock_vca2_control_print(&painter, rect, name, self.zoom);
                 } else if atlas_creative_kind(&node.kind) {
                     paint_atlas_creative_control_print(&painter, rect, &node.kind, name, self.zoom);
                 } else if atlas_studio_effect(&node.kind) {
@@ -5597,6 +5678,7 @@ impl Rack {
                             | "cross_matter"
                             | "grain_weather"
                             | "string_field"
+                            | "stock_vca2"
                     )
                     || matches!(
                         node.kind.as_str(),
@@ -9284,6 +9366,8 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
         "cross_matter" => return cross_matter_port(input, index),
         "grain_weather" => return grain_weather_port(input, index),
         "string_field" => return string_field_port(input, index),
+        "stock_vca2" => return stock_vca2_port(input, index),
+        "stock_unity" => return stock_unity_port(input, index),
         "macro_voice" => {
             return pos2(
                 width * (index + 1) as f32 / (count + 1) as f32,
@@ -10302,6 +10386,8 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "cross_matter" => HP * 24.0,
         "grain_weather" => HP * 26.0,
         "string_field" => HP * 26.0,
+        "stock_vca2" => HP * 10.0,
+        "stock_unity" => HP * 14.0,
         "scope" | "stock_scope" => HP * 42.0,
         "score_sequencer" => HP * 40.0,
         "rackmcp_sequencer" => HP * 48.0,
@@ -10362,6 +10448,8 @@ pub(crate) fn title(kind: &str) -> &str {
         "cross_matter" => "CROSS MATTER",
         "grain_weather" => "GRAIN WEATHER",
         "string_field" => "STRING FIELD",
+        "stock_vca2" => "VCA-2",
+        "stock_unity" => "STOCK UNITY",
         "scope" => "SCOPE",
         "stock_scope" => "STOCK SCOPE",
         "score_sequencer" => "SCORE",
@@ -10600,6 +10688,8 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
             "mode", "quality", "freeze", "position", "size", "pitch", "density", "texture",
             "blend", "spread", "feedback", "reverb",
         ],
+        "stock_vca2" => &["level1", "level2"],
+        "stock_unity" => &["average1", "average2", "merge"],
         "string_field" => &[
             "polyphony",
             "model",
@@ -11252,6 +11342,8 @@ fn paint_panel(
                 | "cross_matter"
                 | "grain_weather"
                 | "string_field"
+                | "stock_vca2"
+                | "stock_unity"
                 | "frame_scene"
                 | "segment_garden"
                 | "event_fork"
@@ -11348,6 +11440,8 @@ fn paint_panel(
                 | "cross_matter"
                 | "grain_weather"
                 | "string_field"
+                | "stock_vca2"
+                | "stock_unity"
                 | "frame_scene"
                 | "segment_garden"
                 | "event_fork"
@@ -11543,6 +11637,10 @@ fn paint_jack(
         } else {
             string_field_port_label(port)
         }
+    } else if kind == "stock_vca2" {
+        stock_vca2_port_label(port)
+    } else if kind == "stock_unity" {
+        stock_unity_port_label(port)
     } else if kind == "svf_filter" && port == "cutoff_cv" && !output {
         "FREQ CV"
     } else {
@@ -11628,6 +11726,8 @@ fn paint_jack(
                 | "cross_matter"
                 | "grain_weather"
                 | "string_field"
+                | "stock_vca2"
+                | "stock_unity"
                 | "frame_scene"
                 | "segment_garden"
                 | "event_fork"
@@ -12691,7 +12791,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            95,
+            97,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -19656,6 +19756,9 @@ mod tests {
     }
     mod string_field_ui_tests {
         include!("string_field_ui_tests.rs");
+    }
+    mod fundamental_legacy_ui_tests {
+        include!("fundamental_legacy_ui_tests.rs");
     }
     mod atlas_rackmcp_ui_tests {
         include!("atlas_rackmcp_ui_tests.rs");

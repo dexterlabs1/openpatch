@@ -22,7 +22,7 @@ corrections.
 
 ## Supported source identities
 
-Mappings are deliberately pinned to **Fundamental 2.6.4**, source tag commit `e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e`. Six mappings share source files with the existing native source-oracle revision `10dd016`. VCO and VCF use separate version-specific processors, qualified against their actual older classes. Original native model identities and patches are unchanged.
+Mappings are deliberately pinned to **Fundamental 2.6.4**, source tag commit `e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e`. Eight mappings share source files with the existing native source-oracle revision `10dd016`, including the hidden legacy VCA (VCA-2) and Unity. VCO and VCF use separate version-specific processors, qualified against their actual older classes. Original native model identities and patches are unchanged.
 
 | Rack model | Native kind |
 | --- | --- |
@@ -31,6 +31,8 @@ Mappings are deliberately pinned to **Fundamental 2.6.4**, source tag commit `e0
 | LFO | `stock_lfo` |
 | Noise | `stock_noise` |
 | VCMixer | `stock_vca_mix` |
+| VCA (hidden VCA-2) | `stock_vca2` |
+| Unity (hidden) | `stock_unity`, with its `merge` data |
 | LFO2 | `wavetable_lfo`, with its embedded wavetable |
 | VCO | `rack264_vco` |
 | VCF | `rack264_vcf` |

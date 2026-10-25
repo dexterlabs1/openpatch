@@ -1,5 +1,15 @@
 # Rust module coverage
 
+Development addition (not installed): [Stock VCA-2](STOCK_VCA2.md) and
+[Stock Unity](STOCK_UNITY.md) are the 96th and 97th catalog kinds. They port the
+two hidden legacy Fundamental models (slugs `VCA` and `Unity`) so existing
+patches import without substitution. The genuine pinned classes, compiled
+against Rack SDK 2.6.6 with the engine's flush-to-zero flags, match the
+production modules token for token: 35 runs, 593,566 frames, 10,743,926
+compared values, 0 mismatches, no exclusions. Engine, no-heap callback, shared
+panel, MCP and VCV import paths have focused Mac checks. No hardware or binary
+compatibility claim.
+
 Development addition (not installed): [String Field](STRING_FIELD.md) is the
 95th catalog kind and the ninth of the twenty creative instruments. Its Rings
 resonator (modal, sympathetic, inharmonic, FM, chord and string-with-reverb
@@ -370,7 +380,7 @@ All names below are from the [official Free manual index](https://vcvrack.com/Fr
 | VCO | Oscillator | Separate `stock_vco` implements the newer pinned processor with step/slope correction, four DC blockers, fractional sync and retained quartets; older `multi_vco` and circuit VCO preserved | All 552,428 actual-class frames and 1,956 safety frames pass under the explicit phase-endpoint erratum; zero measured voltage/filter/tail error. Native-capture/platform gates passed in PR12; native Mac input/device qualification remains open; [Stock contract](STOCK_VCO.md). Older measured differences remain documented in [AUDIO_OSCILLATOR.md](AUDIO_OSCILLATOR.md). |
 | Wavetable VCO | Oscillator | Implemented bounded `wavetable_vco`: prepared custom audio tables, position/CV, pitch/FM, hard/soft sync, immutable publication and local host/heap tests | Checked 153-case family SDK comparison; power-of-two audio lengths >=32 only, source nonpositive-frequency path excluded. Hash proof, local Mac build, three-platform CI and reviewed native captures pass; native input/device qualification remains; [contract](WAVETABLES.md). |
 | VCF | Filter | Separate `stock_vcf` digital model with LP/HP, signed cutoff/resonance/drive CV, source-style oversampling and noise; circuit ladder and legacy one-pole preserved | Pinned digital comparison and host lifecycle/consumer tests; native interaction/device, import and measured hardware qualification remain separate; [contract](STOCK_VCF.md) |
-| VCA | Amplifier | Separate `stock_vca` targets VCA-1 with level, linear/fourth-power CV, mono broadcast and measured per-channel gain telemetry; reference OTA VCA and legacy gain retained | [72-trace actual-class DSP report](benchmarks/stock-vca-reference.json), callback/panel tests, reviewed Linux captures and platform CI have [bounded passes](STOCK_VCA.md#recorded-host-and-platform-validation); native macOS/Windows window input, physical I/O and complete Rack host/import parity remain open. Hidden VCA-2 remains a separate target. |
+| VCA | Amplifier | Separate `stock_vca` targets VCA-1 with level, linear/fourth-power CV, mono broadcast and measured per-channel gain telemetry; reference OTA VCA and legacy gain retained | [72-trace actual-class DSP report](benchmarks/stock-vca-reference.json), callback/panel tests, reviewed Linux captures and platform CI have [bounded passes](STOCK_VCA.md#recorded-host-and-platform-validation); native macOS/Windows window input, physical I/O and complete Rack host/import parity remain open. Hidden VCA-2 is the separate [`stock_vca2`](STOCK_VCA2.md). |
 | LFO | Modulation | Separate `stock_lfo`: unipolar default, four waveforms, shared clock, reset, quartet retention, actual phase/mode lamps and clock observation; existing `multi_lfo` unchanged | 393,046 actual-class frames pass at three rates with exact non-sine/state and sine within 3 µV; all118 native captures validated and three-platform CI passed in [PR11](https://github.com/dexterlabs1/openpatch/pull/11). Rack state/import mapping and native-device qualification remain open. [Contract](STOCK_LFO.md). |
 | Wavetable LFO | Modulation | Implemented bounded `wavetable_lfo`: custom-table interpolation, FM, clock/reset, offset/invert, coherent position and local host/file/preset tests | Exact LFO voltages in the checked family SDK run; integer wave lengths >=2. Hash proof, local Mac build, three-platform CI and reviewed native captures pass; native input/device qualification remains; [contract](WAVETABLES.md). |
 | Delay | Effect | Implemented bounded `stock_delay`: clock-synchronized mono sinc delay, feedback/tone, MIX/WET, four signed depths and shared native panel | Final guarded source-defined DSP matrix, Rust/MCP checks and release build pass; source-undefined analytic SRC case has safety evidence only. Adoption microprofile is separate from callback deadlines. Three-platform CI and native captures passed; native input/device remains open; [contract](STOCK_DELAY.md) |
@@ -416,8 +426,8 @@ when importing an old patch.
 
 | Model slug | Module | Rust status | Acceptance gate |
 |---|---|---|---|
-| `VCA` | VCA-2 | Planned | Both amplifier channels, linear/exponential control inputs, gain law, polyphony and saved parameter mapping |
-| `Unity` | Unity | Planned | Both mixing sections, sum/average behavior, normaling, polarity and saved state |
+| `VCA` | VCA-2 | Implemented `stock_vca2` ([contract](STOCK_VCA2.md)) | Both channels, LIN and EXP inputs with the source's mono `powf` and polyphonic SSE `exp_ps` paths, the (50^x − 1)/49 law, IN-width polyphony with per-voice/mono CV and `level1`/`level2` import of saved parameters 0/1: [11 reference cases](../scripts/fundamental_legacy_reference/README.md), 59,122 frames, 1,123,895 values bit-identical, no exclusions; engine, no-heap, panel, MCP and import tests pass |
+| `Unity` | Unity | Implemented `stock_unity` ([contract](STOCK_UNITY.md)) | Both six-input sections, sum/average switches, no jack normaling (unpatched inputs are 0 V and uncounted; the only cross-section link is merge), exact INV negation, VuMeter2 lights every 256 frames, saved `merge` data and reset: 24 reference runs, 534,444 frames, 9,620,031 values bit-identical, no exclusions; engine, no-heap, panel, MCP and import tests pass |
 
 ## Delivery order and acceptance rules
 

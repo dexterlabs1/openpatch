@@ -22,6 +22,20 @@ integration, bounded runtime storage, input validation and documented
 deterministic startup/safety policies. No Fundamental panel artwork, VCV logo
 or icon is included in these adaptations.
 
+Fundamental VCA-2 and Unity source adaptations
+==============================================
+
+openpatch-core/src/stock_vca2.rs, src/stock_vca2/kernel.rs, src/stock_unity.rs
+and src/stock_unity/kernel.rs are modified Rust adaptations of the hidden legacy
+VCV Fundamental models in src/VCA.cpp (VCA-2) and src/Unity.cpp, with Rack SDK
+VuMeter2 and ClockDivider. Copyright © 2016-2023 VCV. Original source by Andrew
+Belt and contributors. Source revision: 10dd0160c664770910e5584b7b00498cc48d9ddd
+https://github.com/VCVRack/Fundamental/tree/10dd0160c664770910e5584b7b00498cc48d9ddd
+License: GPL-3.0-or-later. No Fundamental panel artwork, VCV logo or icon is
+included. src/stock_vca2/kernel.rs also contains an altered Rust port of exp_ps
+from sse_mathfun.h, Copyright (C) 2007 Julien Pommier, zlib license; the full
+zlib notice is in the core third-party notice.
+
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
 Foundation, either version 3 of the License, or (at your option) any later version.

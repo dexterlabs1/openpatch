@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "guide",
+      "kind": "notes",
+      "content": {
+        "type": "notes",
+        "text": "VCA-2 AND UNITY\nTwo voices share one dual\namplifier. A clocked envelope\nshapes the low saw through the\nexponential CV of channel 1; a\nslow LFO swells the high voice\nthrough the linear CV of\nchannel 2. Unity sums both;\nflip a section to AVG or turn\non MERGE and watch the lights."
+      }
+    },
+    {"id": "low", "kind": "multi_vco", "params": {"frequency": 65.40639}},
+    {"id": "high", "kind": "multi_vco", "params": {"frequency": 196.0}},
+    {"id": "clock", "kind": "gate", "params": {"frequency": 2, "duty": 0.3}},
+    {"id": "envelope", "kind": "adsr_eg", "params": {"attack": 0.1, "decay": 0.42, "sustain": 0.2, "release": 0.45}},
+    {"id": "swell", "kind": "stock_lfo", "params": {"rate": -2.5, "offset": 1}},
+    {"id": "amplifier", "kind": "stock_vca2", "params": {"level1": 0.9, "level2": 0.6}},
+    {"id": "mixer", "kind": "stock_unity", "params": {"average1": 0, "average2": 0, "merge": 0}},
+    {"id": "out", "kind": "audio_stereo", "params": {"gain": 0.12}}
+  ],
+  "cables": [
+    {"from": "low", "output": "saw", "to": "amplifier", "input": "in1"},
+    {"from": "clock", "output": "out", "to": "envelope", "input": "gate"},
+    {"from": "envelope", "output": "out", "to": "amplifier", "input": "exp1"},
+    {"from": "high", "output": "triangle", "to": "amplifier", "input": "in2"},
+    {"from": "swell", "output": "sine", "to": "amplifier", "input": "lin2"},
+    {"from": "amplifier", "output": "out1", "to": "mixer", "input": "ch1_1"},
+    {"from": "amplifier", "output": "out2", "to": "mixer", "input": "ch1_2"},
+    {"from": "mixer", "output": "mix1", "to": "out", "input": "left"},
+    {"from": "mixer", "output": "mix1", "to": "out", "input": "right"}
+  ],
+  "output": "out"
+}

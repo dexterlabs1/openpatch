@@ -99,8 +99,10 @@ impl Category {
             | "mixer"
             | "analog_vca"
             | "stock_vca"
+            | "stock_vca2"
             | "mix6"
             | "stock_mix"
+            | "stock_unity"
             | "cv_mix"
             | "vca_mix"
             | "stock_vca_mix"
@@ -2656,6 +2658,38 @@ mod string_field_category_tests {
         }
         for query in ["string", "rings", "resonator", "modal", "strum", "chord"] {
             assert!(ModuleLibrary::default().matches(module, query), "{query}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod fundamental_legacy_category_tests {
+    use super::*;
+
+    #[test]
+    fn vca2_and_unity_are_reachable_under_mixing() {
+        let catalog = openpatch_core::catalog();
+        for (kind, queries) in [
+            (
+                "stock_vca2",
+                &["vca-2", "amplifier", "exponential", "linear"][..],
+            ),
+            ("stock_unity", &["unity", "mixer", "average", "merge"][..]),
+        ] {
+            let module = catalog["modules"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|module| module["kind"] == kind)
+                .unwrap();
+            assert_eq!(Category::of_kind(kind), Category::Mixing);
+            assert!(Category::Mixing.matches_module(module), "{kind}");
+            for query in queries {
+                assert!(
+                    ModuleLibrary::default().matches(module, query),
+                    "{kind} {query}"
+                );
+            }
         }
     }
 }

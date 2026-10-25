@@ -1,0 +1,7 @@
+# Reference source notices
+
+`src/VCA.cpp` (the hidden legacy VCA-2, model slug `VCA`), `src/Unity.cpp`, `plugin.json` and `LICENSE.md` come from VCV Fundamental, copyright © 2016-2023 VCV, by Andrew Belt and contributors, licensed GPL-3.0-or-later. `source_manifest.json` pins them by SHA-256 at revision `10dd0160c664770910e5584b7b00498cc48d9ddd`; they are byte-identical at 2.6.4 (`e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e`). `run.py` fetches them into the ignored evidence directory with their notices intact and compiles only the module class prefix of each file, with `#include "plugin.hpp"` replaced by the SDK include. No upstream file is stored in this repository, and no panel artwork (CC BY-NC-ND 4.0), VCV logo or icon is used anywhere in OpenPatch.
+
+The probe links the installed Rack SDK 2.6.6 (`libRack.dylib` and headers, GPL-3.0-or-later with the Rack licence exceptions). The header files it relies on are pinned under `sdk` in `source_manifest.json`. Rack's `include/simd/sse_mathfun.h` is Julien Pommier's zlib-licensed SSE math library as modified by VCV; the production Rust port of its `exp_ps` routine is marked as altered and credited in `crates/openpatch-core/LICENSE-THIRD-PARTY`.
+
+`reference_probe.cpp`, `run.py`, `make_cases.py`, `cases.json` and `crates/openpatch-core/examples/fundamental_legacy_reference_probe.rs` are original OpenPatch files under the project's MIT license.

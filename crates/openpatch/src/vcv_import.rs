@@ -2,8 +2,9 @@
 //! identity; original JSON (including its bytes) and archive members stay immutable.
 //!
 //! Fundamental v2.6.4 = e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e.
-//! VCA-1, ADSR, LFO, Noise, VCMixer, WTLFO.cpp and Wavetable.hpp are
-//! byte-identical to the existing native source reference 10dd0160c664770910e5584b7b00498cc48d9ddd.
+//! VCA-1, ADSR, LFO, Noise, VCMixer, WTLFO.cpp, Wavetable.hpp and the hidden
+//! legacy VCA (VCA-2) and Unity are byte-identical to the existing native
+//! source reference 10dd0160c664770910e5584b7b00498cc48d9ddd.
 //! VCO and VCF use separate source-version processors; they do not alias the
 //! newer Stock identities. VCF startup history and RNG ownership are disclosed.
 //! Primary source: https://github.com/VCVRack/Fundamental/tree/e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e/src
@@ -617,6 +618,22 @@ fn manifest(module: &Value) -> Option<Manifest> {
             inputs: &["cv", "signal"],
             outputs: &["out"],
         },
+        // Hidden legacy models, source enum order.
+        "VCA" => Manifest {
+            kind: "stock_vca2",
+            params: &["level1", "level2"],
+            inputs: &["exp1", "lin1", "in1", "exp2", "lin2", "in2"],
+            outputs: &["out1", "out2"],
+        },
+        "Unity" => Manifest {
+            kind: "stock_unity",
+            params: &["average1", "average2"],
+            inputs: &[
+                "ch1_1", "ch1_2", "ch1_3", "ch1_4", "ch1_5", "ch1_6", "ch2_1", "ch2_2", "ch2_3",
+                "ch2_4", "ch2_5", "ch2_6",
+            ],
+            outputs: &["mix1", "inv1", "mix2", "inv2"],
+        },
         "ADSR" => Manifest {
             kind: "adsr_eg",
             params: &[
@@ -870,6 +887,8 @@ fn convert(
                     (min..=max).contains(&value)
                 }
                 ("rack264_vcf", "drive") => (-1.0..=1.0).contains(&value),
+                ("stock_vca2", _) => (0.0..=1.0).contains(&value),
+                ("stock_unity", _) => value == 0.0 || value == 1.0,
                 (_, name) => match name {
                     "mix_level" | "level1" | "level2" | "level3" | "level4" => true, // source saved raw gains
                     "response" | "offset" | "invert" => value == 0.0 || value == 1.0,
@@ -892,6 +911,17 @@ fn convert(
             };
             params.insert(name.into(), value);
         }
+    }
+    if mapping.kind == "stock_unity" {
+        // Fresh Unity::dataFromJson: only a JSON true merges the sections.
+        params.insert(
+            "merge".into(),
+            if module["data"]["merge"] == Value::Bool(true) {
+                1.0
+            } else {
+                0.0
+            },
+        );
     }
     if mapping.kind == "stock_vca_mix" {
         for (key, name) in [("chExp", "channel_exp"), ("mixExp", "mix_exp")] {
