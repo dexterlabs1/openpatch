@@ -4274,6 +4274,77 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("load_patch", {"filename": "string-field.json"})
         self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
 
+    def test_vca2_and_unity_contract_history_saved_reopen_and_vcv_import(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        vca = modules["stock_vca2"]
+        self.assertEqual(vca["inputs"], ["exp1", "lin1", "in1", "exp2", "lin2", "in2"])
+        self.assertEqual(vca["outputs"], ["out1", "out2"])
+        self.assertEqual(vca["bypass"]["routes"], [{"input": "in1", "output": "out1"}, {"input": "in2", "output": "out2"}])
+        self.assertIn("(50^", vca["gain_law"])
+        unity = modules["stock_unity"]
+        self.assertEqual(len(unity["inputs"]), 12)
+        self.assertEqual(unity["outputs"], ["mix1", "inv1", "mix2", "inv2"])
+        self.assertEqual(unity["params"]["merge"]["source"], "module_data")
+        self.assertEqual(len(unity["light_names"]), 10)
+        self.assertIn("no jack normaling", unity["normalization_policy"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "voices", "kind": "poly_constant", "params": {"channels": 2, "v1": 4, "v2": -2}},
+                      {"id": "vca", "kind": "stock_vca2", "params": {"level1": 0.5}},
+                      {"id": "unity", "kind": "stock_unity", "params": {}}],
+            "cables": [{"from": "voices", "output": "out", "to": "vca", "input": "in1"},
+                       {"from": "vca", "output": "out1", "to": "unity", "input": "ch1_1"},
+                       {"from": "voices", "output": "out", "to": "unity", "input": "ch2_1"}],
+            "output": "unity", "output_port": "mix1"}})
+        original = self.patch_snapshot()
+
+        def last(id: str, port: str) -> float:
+            trace = self.payload(self.require_tool_success("capture_signal", {
+                "id": id, "port": port, "seconds": .05, "points": 64}))
+            return trace["bins"][-1]["max"]
+
+        self.assertEqual(last("vca", "out1"), 2.0)
+        self.assertEqual(last("unity", "mix1"), 2.0)
+        self.assertEqual(last("unity", "inv2"), -4.0)
+        self.assertEqual(self.patch_snapshot(), original, "capture must remain observational")
+        for id, name, value in [("vca", "level1", 1), ("unity", "merge", 1), ("unity", "average1", 1)]:
+            self.require_tool_success("set_parameter", {"id": id, "parameter": name, "value": value})
+        self.assertEqual(last("unity", "mix1"), 4.0)
+        self.assertEqual(last("unity", "mix2"), 8.0)
+        changed = self.patch_snapshot()
+        for _ in range(2):
+            self.require_tool_success("undo")
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
+        for _ in range(2):
+            self.require_tool_success("redo")
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], changed["patch"])
+        self.require_tool_success("save_patch", {"filename": "fundamental-legacy.json"})
+        before = self.patch_snapshot()
+        for id, name, value in [("vca", "level2", 1.5), ("unity", "merge", 0.5), ("unity", "average2", 2)]:
+            self.require_tool_error("set_parameter", {"id": id, "parameter": name, "value": value})
+            self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": []}})
+        self.require_tool_success("load_patch", {"filename": "fundamental-legacy.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
+
+        source = {"version": "2.6.6", "modules": [
+            {"id": 1, "plugin": "Fundamental", "model": "VCA", "version": "2.6.4", "pos": [0, 0],
+             "params": [{"id": 0, "value": 0.25}, {"id": 1, "value": 1}]},
+            {"id": 2, "plugin": "Fundamental", "model": "Unity", "version": "2.6.4", "pos": [10, 0],
+             "params": [{"id": 0, "value": 1}, {"id": 1, "value": 0}], "data": {"merge": True}}],
+            "cables": [{"id": 1, "outputModuleId": 1, "outputId": 1, "inputModuleId": 2, "inputId": 6}]}
+        path = self.workspace / "legacy.vcv"
+        original_bytes = (json.dumps(source, indent=2) + "\n").encode()
+        path.write_bytes(original_bytes)
+        result = self.payload(self.require_tool_success("import_vcv", {"filename": path.name}))
+        self.assertEqual((result["report"]["mapped_count"], result["report"]["unresolved_count"]), (2, 0))
+        document = self.payload(self.require_tool_success("inspect_document", {}))["document"]
+        nodes = {item["node"]["id"]: item["node"] for item in document["graph"]["nodes"]}
+        self.assertEqual(nodes["vcv_m_1"]["kind"], "stock_vca2")
+        self.assertEqual(nodes["vcv_m_1"]["params"], {"level1": 0.25, "level2": 1})
+        self.assertEqual(nodes["vcv_m_2"]["kind"], "stock_unity")
+        self.assertEqual(nodes["vcv_m_2"]["params"], {"average1": 1, "average2": 0, "merge": 1})
+        self.assertEqual(path.read_bytes(), original_bytes)
+
     def test_stock_lfo_source_polarity_phase_origins_and_named_outputs_through_mcp(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         descriptor = modules["stock_lfo"]

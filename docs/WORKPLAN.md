@@ -113,6 +113,8 @@ device requirements remain open.
 
 **Physical synthesis family, `work/string-field` (stacked on `work/grain-weather`):** [String Field](STRING_FIELD.md) adapts the pinned Rings resonator: modal, sympathetic-string, inharmonic-string, FM, chord-string and string-with-reverb models, one to four voices with source voice allocation, internal exciters, external/note-change/onset strums and odd/even outputs, at the native 48 kHz behind the shared host-rate resampler. The production Rust kernel matches 7,862,400/7,862,400 int16 samples and every strum flag across 71 C++ reference cases with the source RNG seeded identically and no excluded samples; no pinned-revision source bug required a deviation. Native fixture, lifecycle, five-rate no-heap across model/polyphony changes, shared panel/UI, MCP/history/presets/reopen and an offline example have focused Mac evidence. Not installed; PR and release gate pending.
 
+**Hidden Fundamental legacy models, `work/fundamental-legacy` (stacked on `work/string-field`):** [Stock VCA-2](STOCK_VCA2.md) and [Stock Unity](STOCK_UNITY.md) port the two hidden legacy Fundamental models (slugs `VCA` and `Unity`, pinned `10dd016`, byte-identical in 2.6.4) with VCV patch import. The genuine classes compiled against Rack SDK 2.6.6 with the engine's flush-to-zero flags match the production modules token for token over 35 runs, 593,566 frames and 10,743,926 values with no exclusions. Engine, five-rate no-heap, shared panel/UI, MCP/history/reopen, import and an offline example have focused Mac evidence. Not installed; PR and release gate pending.
+
 ## User-requested rack workflow and creative expansion (2026-10-17)
 
 The first creative family is merged through [PR #34](https://github.com/dexterlabs1/openpatch/pull/34)
