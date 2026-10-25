@@ -17,7 +17,7 @@ impl OpenPatch {
                         self.audio_performance_open = !self.audio_performance_open;
                     }
                     self.footer_room_brightness(ui);
-                    if self.audio.is_none() {
+                    if self.audio.is_none() && !store_capture() {
                         if ui.button("Retry audio").on_hover_text(&self.device).clicked() {
                             self.reopen_audio(self.output_device.clone());
                         }
@@ -89,4 +89,11 @@ impl OpenPatch {
             });
         });
     }
+}
+
+/// `OPENPATCH_STORE_CAPTURE=1`: store screenshots are taken silently with no output device;
+/// leave out the missing-device notice a player with working audio never sees.
+fn store_capture() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("OPENPATCH_STORE_CAPTURE").is_some_and(|v| v == "1"))
 }
