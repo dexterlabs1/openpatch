@@ -66,6 +66,7 @@ include!("atlas_creative_panels.rs");
 include!("tidal_functions_panel.rs");
 include!("cross_matter_panel.rs");
 include!("grain_weather_panel.rs");
+include!("string_field_panel.rs");
 include!("frame_scene_panel.rs");
 include!("segment_garden_panel.rs");
 include!("event_fork_panel.rs");
@@ -114,7 +115,9 @@ fn port_material_scale(kind: &str) -> f32 {
         "stock_seq3" => 1.07,
         "stock_delay" => 1.20, // y380 sockets must remain inside the 396-point panel.
         "modal_resonator" | "tidal_functions" | "frame_scene" | "segment_garden" | "event_fork"
-        | "rhythm_terrain" | "cross_matter" | "grain_weather" => REDESIGNED_PORT_SCALE,
+        | "rhythm_terrain" | "cross_matter" | "grain_weather" | "string_field" => {
+            REDESIGNED_PORT_SCALE
+        }
         "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "rackmcp_sequencer"
         | "rackmcp_listen" | "crossfade" | "quantizer" | "stock_quantizer" | "poly_sum"
         | "mid_side" | "stock_mid_side" | "mix6" | "stock_mix" => REDESIGNED_PORT_SCALE,
@@ -210,6 +213,8 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("cross_matter", _, true) => Left(26.0),
         ("grain_weather", _, false) => Above(21.0),
         ("grain_weather", _, true) => Above(24.0),
+        ("string_field", _, false) => Above(21.0),
+        ("string_field", _, true) => Above(24.0),
         ("macro_voice", _, false) => Above(21.0),
         ("macro_voice", _, true) => Right(32.0),
         ("stock_delay", "signal" | "clock", false) => Right(30.0),
@@ -362,6 +367,7 @@ fn generic_parameter_hardware(
                 | "recall_random"
                 | "cross_matter"
                 | "grain_weather"
+                | "string_field"
         )
         || matches!(
             kind,
@@ -3913,6 +3919,16 @@ impl Rack {
                     &self.lighting,
                 );
             }
+            if node.kind == "string_field" {
+                paint_string_field_configuration(
+                    ui,
+                    rect,
+                    node,
+                    self.zoom,
+                    self.module_lights.get(&node.id),
+                    &self.lighting,
+                );
+            }
             if atlas_creative_kind(&node.kind) {
                 paint_atlas_creative_configuration(ui, rect, node, self.zoom, &self.lighting);
             }
@@ -4414,11 +4430,16 @@ impl Rack {
                     });
                     continue;
                 }
-                if matches!(node.kind.as_str(), "cross_matter" | "grain_weather") {
+                if matches!(
+                    node.kind.as_str(),
+                    "cross_matter" | "grain_weather" | "string_field"
+                ) {
                     let selector = if node.kind == "cross_matter" {
                         cross_matter_selector(name)
-                    } else {
+                    } else if node.kind == "grain_weather" {
                         grain_weather_selector(name)
+                    } else {
+                        string_field_selector(name)
                     };
                     if let Some((local, label, choices)) = selector {
                         let selector = Rect::from_min_size(
@@ -4549,6 +4570,8 @@ impl Rack {
                     cross_matter_control(name)
                 } else if node.kind == "grain_weather" {
                     grain_weather_control(name)
+                } else if node.kind == "string_field" {
+                    string_field_control(name)
                 } else if node.kind == "audio_stereo" {
                     atlas_audio_control(name)
                 } else if node.kind == "vca_mix" {
@@ -4658,6 +4681,7 @@ impl Rack {
                                 | "recall_random"
                                 | "cross_matter"
                                 | "grain_weather"
+                                | "string_field"
                         ))
                         && logarithmic
                         && min > 0.0);
@@ -4686,6 +4710,7 @@ impl Rack {
                     || (node.kind == "tidal_functions" && *name != "frequency")
                     || node.kind == "cross_matter"
                     || (node.kind == "grain_weather" && *name != "pitch")
+                    || (node.kind == "string_field" && *name != "frequency")
                     || (node.kind == "random" && !matches!(*name, "rate" | "unipolar" | "seed"));
                 let vco_percent =
                     (matches!(
@@ -4738,6 +4763,8 @@ impl Rack {
                     cross_matter_value(node, name, value)
                 } else if node.kind == "grain_weather" {
                     grain_weather_value(node, name, value)
+                } else if node.kind == "string_field" {
+                    string_field_value(node, name, value)
                 } else if node.kind == "svf_filter" {
                     atlas_svf_value(name, value, spec)
                 } else if atlas_voice(&node.kind) {
@@ -4900,6 +4927,9 @@ impl Rack {
                 } else if node.kind == "grain_weather" {
                     let local = grain_weather_value_center(name);
                     point(local.x, local.y)
+                } else if node.kind == "string_field" {
+                    let local = string_field_value_center(name);
+                    point(local.x, local.y)
                 } else if node.kind == "audio_stereo" {
                     let local = atlas_audio_value_center(name);
                     point(local.x, local.y)
@@ -4992,6 +5022,8 @@ impl Rack {
                     }
                 } else if node.kind == "grain_weather" {
                     grain_weather_value_width(name)
+                } else if node.kind == "string_field" {
+                    string_field_value_width(name)
                 } else if node.kind == "audio_stereo" {
                     132.0
                 } else if node.kind == "vca_mix" {
@@ -5363,6 +5395,7 @@ impl Rack {
                                 | "recall_random"
                                 | "cross_matter"
                                 | "grain_weather"
+                                | "string_field"
                         )
                         || matches!(
                             node.kind.as_str(),
@@ -5472,6 +5505,8 @@ impl Rack {
                     paint_cross_matter_control_print(&painter, rect, node, name, self.zoom);
                 } else if node.kind == "grain_weather" {
                     paint_grain_weather_control_print(&painter, rect, node, name, self.zoom);
+                } else if node.kind == "string_field" {
+                    paint_string_field_control_print(&painter, rect, node, name, self.zoom);
                 } else if atlas_creative_kind(&node.kind) {
                     paint_atlas_creative_control_print(&painter, rect, &node.kind, name, self.zoom);
                 } else if atlas_studio_effect(&node.kind) {
@@ -5561,6 +5596,7 @@ impl Rack {
                             | "recall_random"
                             | "cross_matter"
                             | "grain_weather"
+                            | "string_field"
                     )
                     || matches!(
                         node.kind.as_str(),
@@ -6250,7 +6286,9 @@ impl Rack {
             return;
         }
         let light_index = match node.kind.as_str() {
-            "logic" | "tidal_functions" | "cross_matter" | "grain_weather" => Some(port_index),
+            "logic" | "tidal_functions" | "cross_matter" | "grain_weather" | "string_field" => {
+                Some(port_index)
+            }
             "segment_garden" if port_index < 6 => Some(port_index),
             "compare" if port_index >= 4 => Some(port_index - 4),
             "gates" => Some(port_index),
@@ -6267,7 +6305,7 @@ impl Rack {
                 output_point
                     + (if matches!(node.kind.as_str(), "tidal_functions" | "cross_matter") {
                         vec2(26.0, 0.0)
-                    } else if node.kind == "grain_weather" {
+                    } else if matches!(node.kind.as_str(), "grain_weather" | "string_field") {
                         // Up and left of the jack, clear of its caption and
                         // the corner screw.
                         vec2(-24.0, -14.0)
@@ -7294,11 +7332,24 @@ impl Rack {
         rect: Rect,
         choices: &[&str],
     ) -> Option<RackAction> {
-        let old = node
+        let stored = node
             .params
             .get(parameter)
             .copied()
-            .unwrap_or(spec["default"].as_f64().unwrap_or(0.0) as f32) as usize;
+            .unwrap_or(spec["default"].as_f64().unwrap_or(0.0) as f32);
+        // Choices index the catalog's value list when it has one per choice
+        // (String Field polyphony stores 1..4); otherwise the value is the
+        // index.
+        let values: Option<Vec<f32>> = spec["values"]
+            .as_array()
+            .filter(|values| values.len() == choices.len())
+            .and_then(|values| {
+                values
+                    .iter()
+                    .map(|v| v.as_f64().map(|v| v as f32))
+                    .collect()
+            });
+        let old = choice_index(values.as_deref(), stored);
         let mut value = old.min(choices.len() - 1);
         ui.scope_builder(
             egui::UiBuilder::new()
@@ -7338,14 +7389,23 @@ impl Rack {
                 parameter,
                 crate::construction_motion::Anchor {
                     rect,
-                    old_text: choices.get(cue.old as usize).unwrap_or(&"?").to_string(),
-                    new_text: choices.get(cue.new as usize).unwrap_or(&"?").to_string(),
+                    old_text: choices
+                        .get(choice_index(values.as_deref(), cue.old))
+                        .unwrap_or(&"?")
+                        .to_string(),
+                    new_text: choices
+                        .get(choice_index(values.as_deref(), cue.new))
+                        .unwrap_or(&"?")
+                        .to_string(),
                     marker: None,
                 },
                 &[],
             );
         }
         (value != old).then(|| {
+            let value = values
+                .as_ref()
+                .map_or(json!(value), |values| json!(values[value]));
             RackAction::Command(
                 "set_parameter",
                 json!({"id":node.id,"parameter":parameter,"value":value}),
@@ -9221,6 +9281,7 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
         "tidal_functions" => return tidal_port(input, index),
         "cross_matter" => return cross_matter_port(input, index),
         "grain_weather" => return grain_weather_port(input, index),
+        "string_field" => return string_field_port(input, index),
         "macro_voice" => {
             return pos2(
                 width * (index + 1) as f32 / (count + 1) as f32,
@@ -10210,6 +10271,14 @@ pub(crate) fn module_width(node: &Node) -> f32 {
         .map_or_else(|| panel_width(&node.kind), |hp| f32::from(hp) * HP)
 }
 
+/// Choice index of a stored value: its position in the catalog value list
+/// when there is one, otherwise the value itself.
+fn choice_index(values: Option<&[f32]>, value: f32) -> usize {
+    values
+        .and_then(|values| values.iter().position(|v| *v == value))
+        .unwrap_or(value as usize)
+}
+
 pub(crate) fn panel_width(kind: &str) -> f32 {
     match kind {
         "notes" => HP * 16.0,
@@ -10230,6 +10299,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "tidal_functions" => HP * 28.0,
         "cross_matter" => HP * 24.0,
         "grain_weather" => HP * 26.0,
+        "string_field" => HP * 26.0,
         "scope" | "stock_scope" => HP * 42.0,
         "score_sequencer" => HP * 40.0,
         "rackmcp_sequencer" => HP * 48.0,
@@ -10289,6 +10359,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "tidal_functions" => "TIDAL FUNCTIONS",
         "cross_matter" => "CROSS MATTER",
         "grain_weather" => "GRAIN WEATHER",
+        "string_field" => "STRING FIELD",
         "scope" => "SCOPE",
         "stock_scope" => "STOCK SCOPE",
         "score_sequencer" => "SCORE",
@@ -10526,6 +10597,20 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
         "grain_weather" => &[
             "mode", "quality", "freeze", "position", "size", "pitch", "density", "texture",
             "blend", "spread", "feedback", "reverb",
+        ],
+        "string_field" => &[
+            "polyphony",
+            "model",
+            "frequency",
+            "structure",
+            "brightness",
+            "damping",
+            "position",
+            "frequency_amount",
+            "structure_amount",
+            "brightness_amount",
+            "damping_amount",
+            "position_amount",
         ],
         "tidal_functions" => &[
             "ramp_mode",
@@ -11164,6 +11249,7 @@ fn paint_panel(
                 | "tidal_functions"
                 | "cross_matter"
                 | "grain_weather"
+                | "string_field"
                 | "frame_scene"
                 | "segment_garden"
                 | "event_fork"
@@ -11259,6 +11345,7 @@ fn paint_panel(
                 | "tidal_functions"
                 | "cross_matter"
                 | "grain_weather"
+                | "string_field"
                 | "frame_scene"
                 | "segment_garden"
                 | "event_fork"
@@ -11448,6 +11535,12 @@ fn paint_jack(
         } else {
             grain_weather_port_label(port)
         }
+    } else if kind == "string_field" {
+        if output {
+            string_field_output_label(port)
+        } else {
+            string_field_port_label(port)
+        }
     } else if kind == "svf_filter" && port == "cutoff_cv" && !output {
         "FREQ CV"
     } else {
@@ -11532,6 +11625,7 @@ fn paint_jack(
                 | "tidal_functions"
                 | "cross_matter"
                 | "grain_weather"
+                | "string_field"
                 | "frame_scene"
                 | "segment_garden"
                 | "event_fork"
@@ -12595,7 +12689,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            94,
+            95,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -19557,6 +19651,9 @@ mod tests {
     }
     mod grain_weather_ui_tests {
         include!("grain_weather_ui_tests.rs");
+    }
+    mod string_field_ui_tests {
+        include!("string_field_ui_tests.rs");
     }
     mod atlas_rackmcp_ui_tests {
         include!("atlas_rackmcp_ui_tests.rs");
