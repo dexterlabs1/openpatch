@@ -1,0 +1,152 @@
+{
+  "compile_sources": [
+    "warps/dsp/modulator.cc",
+    "warps/dsp/oscillator.cc",
+    "warps/dsp/vocoder.cc",
+    "warps/dsp/filter_bank.cc",
+    "warps/resources.cc",
+    "stmlib/dsp/units.cc",
+    "stmlib/utils/random.cc"
+  ],
+  "files": {
+    "stmlib/dsp/cosine_oscillator.h": {
+      "path": "dsp/cosine_oscillator.h",
+      "repository": "stmlib",
+      "sha256": "a7f6429e8bca85aa19ce91e3f1908fd7fb1fdf378a61fe2c87717a94d6f30a97"
+    },
+    "stmlib/dsp/dsp.h": {
+      "path": "dsp/dsp.h",
+      "repository": "stmlib",
+      "sha256": "98b42900c4accbe9fbb2cfe2ec6fada024b57ec9a1becff008b0f35bd4fd8ddb"
+    },
+    "stmlib/dsp/filter.h": {
+      "path": "dsp/filter.h",
+      "repository": "stmlib",
+      "sha256": "f4bbf97ac8dfdea255b8a37e179ba0286978c01a12ad8d3362eaa5862cf7c326"
+    },
+    "stmlib/dsp/parameter_interpolator.h": {
+      "path": "dsp/parameter_interpolator.h",
+      "repository": "stmlib",
+      "sha256": "4b05028c320e6946418a36e9662a4e5a142e5bfab0423835a77d074d9c7fc217"
+    },
+    "stmlib/dsp/units.cc": {
+      "path": "dsp/units.cc",
+      "repository": "stmlib",
+      "sha256": "0acbe230ffaa2d181ba285fce54f2fd0b2339b3ec163a1dd00c946e6bf82ea4a"
+    },
+    "stmlib/dsp/units.h": {
+      "path": "dsp/units.h",
+      "repository": "stmlib",
+      "sha256": "70cf104c06f0e34ada90416f121417a13d17b6736116f0fc07063c1cd2084877"
+    },
+    "stmlib/stmlib.h": {
+      "path": "stmlib.h",
+      "repository": "stmlib",
+      "sha256": "3afc8589a951e882d9eea16b3eda8623dd6fb0079dd11dfbce817e65be6cfba9"
+    },
+    "stmlib/utils/random.cc": {
+      "path": "utils/random.cc",
+      "repository": "stmlib",
+      "sha256": "145c4d7a30e373d001fd664ce6f97a475458f7dc8286252d24ca6f592e0cdb93"
+    },
+    "stmlib/utils/random.h": {
+      "path": "utils/random.h",
+      "repository": "stmlib",
+      "sha256": "423f01e905fa279864878f34e42136ad1eb37a33dad58739affaaab06b793e5d"
+    },
+    "warps/dsp/filter_bank.cc": {
+      "path": "warps/dsp/filter_bank.cc",
+      "repository": "eurorack",
+      "sha256": "5cdd5ea0735179e87d122aabaecaaa0706f7c1dd216932954012a28637f3f9df"
+    },
+    "warps/dsp/filter_bank.h": {
+      "path": "warps/dsp/filter_bank.h",
+      "repository": "eurorack",
+      "sha256": "67ee8725aa70bc4e895dfb86ad5eb844c80b55a58d9ccefb2d00b3397fd9a724"
+    },
+    "warps/dsp/limiter.h": {
+      "path": "warps/dsp/limiter.h",
+      "repository": "eurorack",
+      "sha256": "920aae97153c5a796553c9ff32ca50c141738f4bdea270441a6b646c65d723ab"
+    },
+    "warps/dsp/modulator.cc": {
+      "path": "warps/dsp/modulator.cc",
+      "repository": "eurorack",
+      "sha256": "3eadd0de0fb71c731d96385f08486b859bb3e5bc06e6a989cff6fe29ec71aed6"
+    },
+    "warps/dsp/modulator.h": {
+      "path": "warps/dsp/modulator.h",
+      "repository": "eurorack",
+      "sha256": "a51c83222ace4bebebd5adafdab64efa84b37d83aa4a2b75cd38ce23693e3359"
+    },
+    "warps/dsp/oscillator.cc": {
+      "path": "warps/dsp/oscillator.cc",
+      "repository": "eurorack",
+      "sha256": "e35d0fff0a5beb33bed4a530e92296c1c86e5e4b791e680acb8a6dac7aa00e93"
+    },
+    "warps/dsp/oscillator.h": {
+      "path": "warps/dsp/oscillator.h",
+      "repository": "eurorack",
+      "sha256": "d6f175672bd472432c89c640a8e85a315f8eeee241442805d8230775f1397bc4"
+    },
+    "warps/dsp/parameters.h": {
+      "path": "warps/dsp/parameters.h",
+      "repository": "eurorack",
+      "sha256": "d6a61a0894ee88737a4f26912d0f33797b8697d69189a9a6c27e77965dc18659"
+    },
+    "warps/dsp/quadrature_oscillator.h": {
+      "path": "warps/dsp/quadrature_oscillator.h",
+      "repository": "eurorack",
+      "sha256": "e93d23cf54f19b3880e649c13344f9078c0312e8249b1cd2628bb969df038e87"
+    },
+    "warps/dsp/quadrature_transform.h": {
+      "path": "warps/dsp/quadrature_transform.h",
+      "repository": "eurorack",
+      "sha256": "a4bcce7f12c2418b957640d663214b518f4cd69fe19f585a145e40a73888dbc2"
+    },
+    "warps/dsp/sample_rate_conversion_filters.h": {
+      "path": "warps/dsp/sample_rate_conversion_filters.h",
+      "repository": "eurorack",
+      "sha256": "892a5e7e5679b99b8d3fe1af9e7e23a129715c94db7f9439bbe07b84a7e45060"
+    },
+    "warps/dsp/sample_rate_converter.h": {
+      "path": "warps/dsp/sample_rate_converter.h",
+      "repository": "eurorack",
+      "sha256": "2f6dc9e2519c589321a5a086f9deffae658bb98e0de7377659ece84df8f685c3"
+    },
+    "warps/dsp/vocoder.cc": {
+      "path": "warps/dsp/vocoder.cc",
+      "repository": "eurorack",
+      "sha256": "8cb989ea35f26bcd1975281449b769b04c5df09be9fa66d9fec7ed12ae53ea62"
+    },
+    "warps/dsp/vocoder.h": {
+      "path": "warps/dsp/vocoder.h",
+      "repository": "eurorack",
+      "sha256": "5a8b28be7deb35c185abd4048986a959de4dd7c5fed23f73446e27a2031a7ad2"
+    },
+    "warps/resources.cc": {
+      "path": "warps/resources.cc",
+      "repository": "eurorack",
+      "sha256": "21ff2afc5121061899e5ad895b66130113b0cb289d52f9782b0332523375d18d"
+    },
+    "warps/resources.h": {
+      "path": "warps/resources.h",
+      "repository": "eurorack",
+      "sha256": "03aa073162f185036ae898b778229e48aba15bd17f5930a74026f2ec6abecbb7"
+    }
+  },
+  "repositories": {
+    "eurorack": {
+      "url": "https://github.com/pichenettes/eurorack",
+      "commit": "f4cfa7697095a28d292bff758beb51deb49b5a86"
+    },
+    "stmlib": {
+      "url": "https://github.com/pichenettes/stmlib",
+      "commit": "e3bd7c9cc00e4364166f9905c0509b6ffd0535ec",
+      "gitlink_from": "eurorack f4cfa7697095a28d292bff758beb51deb49b5a86:stmlib"
+    }
+  },
+  "stubs": {
+    "warps/drivers/debug_pin.h": "empty profiling stub; modulator.cc includes it but uses no symbol from it"
+  }
+}
