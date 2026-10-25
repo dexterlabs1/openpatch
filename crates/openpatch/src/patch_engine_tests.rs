@@ -188,12 +188,12 @@ fn sentences_read_naturally() {
 }
 
 #[test]
-fn minecraft_mode_builds_quietly_and_in_key() {
+fn ambient_piano_mode_builds_quietly_and_in_key() {
     for m in MOODS {
         for t in TEXTURES {
-            let r = Recipe::new("Minecraft", m, t, 9).unwrap();
-            assert!(r.sentence.contains("Minecraft-style piece"));
-            apply_all(&r.edits()).unwrap_or_else(|e| panic!("Minecraft|{m}|{t}: {e}"));
+            let r = Recipe::new("Ambient Piano", m, t, 9).unwrap();
+            assert!(r.sentence.contains("Ambient Piano piece"));
+            apply_all(&r.edits()).unwrap_or_else(|e| panic!("Ambient Piano|{m}|{t}: {e}"));
             let p = r.patch();
             let drums = p["nodes"]
                 .as_array()
@@ -450,4 +450,14 @@ fn genomes_round_trip_and_mutations_change_only_their_domain() {
             .mutate("drums", 1)
             .is_err()
     );
+}
+
+#[test]
+fn legacy_minecraft_genomes_rebuild_the_same_ambient_piano_song() {
+    let old = Recipe::new("Minecraft", "Dreamy", "Spacious", 9).unwrap();
+    let new = Recipe::new("Ambient Piano", "Dreamy", "Spacious", 9).unwrap();
+    assert_eq!(old.patch(), new.patch());
+    let genome: Genome = "minecraft|Dreamy|Spacious|9.9.9".parse().unwrap();
+    assert_eq!(genome.genre, "Ambient Piano");
+    assert_eq!(genome.to_string(), "Ambient Piano|Dreamy|Spacious|9.9.9");
 }

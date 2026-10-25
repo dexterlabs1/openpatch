@@ -39,11 +39,11 @@ const TEXTURE_KEYS: [egui::Key; 8] = [
     egui::Key::J,
     egui::Key::K,
 ];
-/// Genre index used for the Minecraft (C418-style) mode, after the genre words.
-const MINECRAFT: usize = GENRES.len();
+/// Genre index used for the Ambient Piano mode, after the genre words.
+const PIANO_MODE: usize = GENRES.len();
 fn genre_name(i: usize) -> &'static str {
-    if i == MINECRAFT {
-        "Minecraft"
+    if i == PIANO_MODE {
+        openpatch::patch_engine::PIANO
     } else {
         GENRES[i]
     }
@@ -393,8 +393,11 @@ impl Demo {
                 let p: Vec<&str> = v.split('|').collect();
                 let find =
                     |list: &[&str], w: &str| list.iter().position(|x| x.eq_ignore_ascii_case(w));
-                let genre = if p.first()?.eq_ignore_ascii_case("minecraft") {
-                    MINECRAFT
+                let genre = if ["minecraft", "ambient piano"]
+                    .iter()
+                    .any(|w| p.first().is_some_and(|f| f.eq_ignore_ascii_case(w)))
+                {
+                    PIANO_MODE
                 } else {
                     find(&GENRES, p.first()?)?
                 };
@@ -897,8 +900,8 @@ impl Panel {
                 1 => &mut self.mood,
                 _ => &mut self.texture,
             };
-            // genres include the C418 mode after the genre words; moods and textures have eight words
-            let n = if self.cursor == 0 { MINECRAFT + 1 } else { 8 };
+            // genres include the Ambient Piano mode after the genre words; moods and textures have eight words
+            let n = if self.cursor == 0 { PIANO_MODE + 1 } else { 8 };
             let step = if step == 7 { n - 1 } else { step };
             *slot = Some(slot.map_or(0, |i| (i + step) % n));
         }
@@ -914,7 +917,7 @@ impl Panel {
     }
 
     fn surprise(&mut self, session: &SharedSession) {
-        self.genre = Some((next_seed(&mut self.rng) % (MINECRAFT as u64 + 1)) as usize);
+        self.genre = Some((next_seed(&mut self.rng) % (PIANO_MODE as u64 + 1)) as usize);
         self.mood = Some((next_seed(&mut self.rng) % 8) as usize);
         self.texture = Some((next_seed(&mut self.rng) % 8) as usize);
         self.keep_seed = false;
@@ -1147,9 +1150,9 @@ impl Panel {
                 let words = egui::ScrollArea::vertical().id_salt("patch-engine-words").auto_shrink([false, true]).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible).max_height(ui.available_height().max(0.0)).min_scrolled_height(0.0).show(ui, |ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
                     let mut genres: Vec<&str> = GENRES.to_vec();
-                    genres.push("C418");
+                    genres.push(openpatch::patch_engine::PIANO);
                     Self::section(ui, "Genre", self.cursor == 0);
-                    if let Some(i) = matrix(ui, &genres, self.genre, 3, Some(|w: &str| if w == "C418" { "Minecraft-style: soft piano, slow drifting harmony, lots of space (original music in the spirit of C418)" } else { "" })) {
+                    if let Some(i) = matrix(ui, &genres, self.genre, 3, Some(|w: &str| if w == openpatch::patch_engine::PIANO { "Soft piano figures, slow drifting harmony and lots of space; no drums" } else { "" })) {
                         self.genre = Some(i);
                     }
                     ui.add_space(4.0);

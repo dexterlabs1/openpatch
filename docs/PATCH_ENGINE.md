@@ -13,8 +13,9 @@ their own tempo, grooves, instruments, melodies and song forms (drum kit, chord 
 parent genre): **Progressive House** (Pryda-style rolling bass, plucks, long filter builds; parent Deep House),
 **Hypnagogic** (Oneohtrix Point Never-style drones, generative arps, collage cuts; Ambient), **Berlin School**
 (sequenced ostinato bass, generative arps, no drums; Synthwave), **IDM** (broken beats, generative and riff leads,
-collage; Downtempo), **Melodic Techno** (rolling bass, big pads, arps, progressive builds; Techno). The C418 mode
-stays after the genre words.
+collage; Downtempo), **Melodic Techno** (rolling bass, big pads, arps, progressive builds; Techno). **Ambient Piano**
+(soft piano figures, slow drifting harmony, no drums) stays after the genre words; genomes saved with its
+earlier name, Minecraft, still load and rebuild the same song.
 
 ## Controls
 

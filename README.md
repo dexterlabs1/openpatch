@@ -44,7 +44,7 @@ The Mac app is not notarized by Apple. The Windows app is unsigned.
 4. Turn knobs, drag cables between ports, and add modules to change the sound.
 5. Save your patch with **Cmd-S** on Mac or **Ctrl-S** on Windows/Linux.
 
-There are 13 genres, from Deep House and Dub Techno to Progressive House, Hypnagogic, Berlin School, IDM and Melodic Techno, plus a C418 mode. Scroll down in the panel for **Controls**: energy, complexity, weirdness, space and song length.
+There are 13 genres, from Deep House and Dub Techno to Progressive House, Hypnagogic, Berlin School, IDM and Melodic Techno, plus Ambient Piano. Scroll down in the panel for **Controls**: energy, complexity, weirdness, space and song length.
 
 Every song has a short **genome** code, shown under **Details** in the panel. The same code always builds the same song. Choose **Reveal**, **Showtime** or **Instant** to change how quickly a song appears in the rack. [Patch Engine guide](docs/PATCH_ENGINE.md)
 
