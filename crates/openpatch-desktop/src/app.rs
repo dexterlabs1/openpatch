@@ -8401,6 +8401,10 @@ impl eframe::App for OpenPatch {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_frame(ctx);
+        // A focused text field publishes an IME request; that is when a Deck player needs a keyboard.
+        if self.handheld && ctx.output(|o| o.ime.is_some()) {
+            keyboard_hint(ctx);
+        }
     }
 
     fn on_exit(&mut self, gl: Option<&glow::Context>) {
@@ -8410,6 +8414,40 @@ impl eframe::App for OpenPatch {
             v.destroy(gl);
         }
     }
+}
+
+/// Steam Deck Game Mode has no physical keyboard; Steam's own keyboard opens with STEAM + X.
+fn keyboard_hint(ctx: &egui::Context) {
+    egui::Area::new(egui::Id::new("handheld-keyboard-hint"))
+        .order(egui::Order::Tooltip)
+        .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -40.0))
+        .interactable(false)
+        .show(ctx, |ui| {
+            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                ui.label("Press STEAM + X for the on-screen keyboard");
+            });
+        });
+}
+
+#[cfg(test)]
+#[test]
+fn focused_text_field_requests_the_handheld_keyboard_hint() {
+    let ctx = egui::Context::default();
+    let mut text = String::new();
+    let mut ime = Vec::new();
+    for _ in 0..2 {
+        let output = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.text_edit_singleline(&mut text).request_focus();
+            });
+        });
+        ime.push(output.platform_output.ime.is_some());
+    }
+    assert_eq!(ime.last(), Some(&true));
+    let idle = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| ui.label("rack"));
+    });
+    assert!(idle.platform_output.ime.is_none());
 }
 
 impl OpenPatch {

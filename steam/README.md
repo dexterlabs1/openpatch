@@ -20,7 +20,7 @@ Nothing here uploads automatically. Builds are never set live by script; promote
 | Linux launch | `openpatch-desktop`, OS Linux, **Steam Linux Runtime 3.0 (sniper)** compatibility tool |
 | Windows launch | `openpatch-desktop.exe`, OS Windows |
 | macOS launch | `OpenPatch.app`, OS macOS, ARM64 |
-| Steam Input | Default *Gamepad* layout; OpenPatch reads controllers natively ([gamepad.rs](../crates/openpatch-desktop/src/gamepad.rs)). Trackpad-as-mouse on the right pad. |
+| Steam Input | Default *Gamepad* layout; OpenPatch reads controllers natively ([gamepad.rs](../crates/openpatch-desktop/src/gamepad.rs)). Trackpad-as-mouse on the right pad. Text fields show a STEAM + X keyboard hint on the Deck (no Steamworks text-input API). |
 | Steam Cloud | Off for the RC; patches live in `~/OpenPatch` |
 | DRM | None (no Steamworks SDK dependency) |
 
@@ -31,7 +31,7 @@ Nothing here uploads automatically. Builds are never set live by script; promote
 | Linux binary needs glibc ≤ 2.31 | CI job `steam-linux` |
 | Linux runtime build launches on a stock desktop distribution | CI job `steam-linux-smoke` |
 | Depot layout from CI archives; mac bundle signature intact after unpack | Checked locally against v0.3.3 |
-| Steam Deck Game Mode: launch, audio, controls, 1280×800 fit, text entry | **Needs the Deck** |
+| Steam Deck Game Mode: launch, audio, controls, 1280×800 fit, STEAM + X text entry | **Needs the Deck** |
 | Windows audio device on real hardware | Open |
 | macOS: Developer ID signing + notarization | Open — current builds are ad-hoc signed; Steam does not quarantine downloads, but notarize before launch |
 

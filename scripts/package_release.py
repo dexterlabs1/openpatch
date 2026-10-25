@@ -108,6 +108,7 @@ Patch Engine is closed). A builds, X picks a surprise (play/stop on the rack),
 B closes, Y opens or closes the Patch Engine. LB/RB move focus across buttons,
 LT/RT zoom, View fits the rack and Menu plays or stops. Controller input is
 read only while OpenPatch has focus; Settings shows the connected controller.
+To type a name in Game Mode, press STEAM + X for Steam's on-screen keyboard.
 
 Keyboard: F1 toggles the Patch Engine; Up/Down chooses the row and Left/Right
 chooses an option; Enter starts; Space or / chooses a surprise; Esc closes it.
