@@ -1,5 +1,17 @@
 # Rust module coverage
 
+Development addition (not installed): [Grain Weather](GRAIN_WEATHER.md) is the
+94th catalog kind and the eighth of the twenty creative instruments. Its Clouds
+granular processor (granular, WSOLA stretch, looping delay and spectral modes,
+four buffer qualities, freeze, feedback, reverb) is a pinned MIT Rust source
+adaptation running at the native 32 kHz behind an explicit host-rate resampler
+over a preallocated image of the firmware memory. The raw kernel matches
+8,122,880 of 8,122,880 int16 samples across 39 source cases; the stretch-mode
+cases are qualified against the pre-2023 `window.h`, because the pinned
+revision silences that mode. Native lifecycle, callback no-heap, shared panel
+and MCP workflows have focused Mac checks. This adds no VCV import mapping,
+binary compatibility or hardware claim.
+
 Development addition (not installed): [Cross Matter](CROSS_MATTER.md) is the 93rd
 catalog kind and the seventh of the twenty creative instruments. Its Warps
 modulator (seven morphing algorithms, built-in carriers, vocoder and frequency
