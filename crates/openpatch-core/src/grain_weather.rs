@@ -476,14 +476,17 @@ mod tests {
                     .map(|n| {
                         let mut inputs = [PortFrame::default(); 10];
                         inputs[0] = PortFrame::mono(
-                            0.5 * (std::f32::consts::TAU * frequency * n as f32 / rate as f32).sin(),
+                            0.5 * (std::f32::consts::TAU * frequency * n as f32 / rate as f32)
+                                .sin(),
                         );
                         let mut outputs = [PortFrame::default(); 2];
                         weather.process(&inputs, 0b11, &mut outputs);
                         outputs[0].channel(0)
                     })
                     .collect();
-                out[rate as usize / 2..].iter().fold(0.0f32, |m, x| m.max(x.abs()))
+                out[rate as usize / 2..]
+                    .iter()
+                    .fold(0.0f32, |m, x| m.max(x.abs()))
             };
             let reference = level(1000.0);
             for frequency in [100.0, 5000.0, 10000.0, 13000.0] {

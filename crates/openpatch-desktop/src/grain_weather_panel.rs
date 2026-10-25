@@ -212,7 +212,7 @@ fn paint_grain_weather_configuration(
         INK,
     );
     ui.interact(guide, ui.id().with(("grain-weather-guide", &node.id)), Sense::hover())
-        .on_hover_text("Configured buffer and playback from the pinned Clouds source. The live input is recorded continuously unless FREEZE is on or the freeze gate is high. GRANULAR plays overlapping grains, STRETCH pitch-shifts and time-stretches with WSOLA, LOOPING DELAY is a delay that loops when frozen, SPECTRAL is a phase vocoder. Captions follow the mode. Position, size, density, texture and blend CV add voltage/5; V/OCT adds 12 semitones per volt. Mode and quality changes clear the buffer, as the source does. The kernel runs at 32 kHz; lamps show actual output volts and the actual freeze state.");
+        .on_hover_text("Configured buffer and playback from the pinned Clouds source. The live input is recorded continuously unless FREEZE is on or the freeze gate is high. GRANULAR plays overlapping grains, STRETCH pitch-shifts and time-stretches with WSOLA, LOOPING DELAY is a delay that loops when frozen, SPECTRAL is a phase vocoder. Captions follow the mode. Position, size, density, texture and blend CV add voltage/5; V/OCT adds 12 semitones per volt. Quality changes, and mode changes to or from SPECTRAL, clear the buffer, as the source does; switching among the other modes keeps it. The kernel runs at 32 kHz; lamps show actual output volts and the actual freeze state.");
     // Measured freeze state beside the FREEZE selector caption.
     let center = rect.min + vec2(366.0, 54.0) * zoom;
     let strength = grain_weather_freeze_lamp(lights);
