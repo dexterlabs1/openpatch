@@ -1719,7 +1719,7 @@ impl Rack {
         self.layout_revision = self.layout_revision.wrapping_add(1);
     }
 
-    /// Zoom out (never in) on the next frame so the whole patch fits the rack viewport.
+    /// Zoom out (never in, never below 50%) on the next frame so the patch fits the rack viewport.
     pub(crate) fn request_fit(&mut self) {
         self.fit_pending = true;
     }
@@ -1737,7 +1737,11 @@ impl Rack {
             return;
         }
         let room = viewport - vec2(48.0, 24.0);
-        let zoom = (room.x / extent.x).min(room.y / extent.y).min(self.zoom);
+        // Readable beats complete: a long single row keeps a usable zoom and scrolls instead.
+        let zoom = (room.x / extent.x)
+            .min(room.y / extent.y)
+            .max(0.5)
+            .min(self.zoom);
         self.show_origin((zoom * 20.0).floor() / 20.0);
     }
 
