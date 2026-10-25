@@ -110,7 +110,8 @@ impl Category {
             | "stereo_delay"
             | "stereo_reverb"
             | "sidechain_compressor"
-            | "cross_matter" => Self::Mixing,
+            | "cross_matter"
+            | "grain_weather" => Self::Mixing,
             "mult" | "mid_side" | "stock_mid_side" | "octave" | "poly_split" | "poly_merge"
             | "poly_sum" | "switch_1to4" | "switch_4to1" => Self::Routing,
             "output" | "audio_out" | "audio_stereo" | "midi_cv" | "midi_cc" | "midi_gate" => {
@@ -2598,6 +2599,35 @@ mod cross_matter_category_tests {
             );
         }
         for query in ["cross", "ring", "vocoder", "fold"] {
+            assert!(ModuleLibrary::default().matches(module, query), "{query}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod grain_weather_category_tests {
+    use super::*;
+
+    #[test]
+    fn grain_weather_is_reachable_as_an_effect_and_custom_instrument() {
+        let catalog = openpatch_core::catalog();
+        let module = catalog["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|module| module["kind"] == "grain_weather")
+            .unwrap();
+        assert_eq!(Category::of_kind("grain_weather"), Category::Mixing);
+        for category in [Category::Mixing, Category::Custom] {
+            assert!(
+                category.matches_module(module),
+                "Grain Weather missing from {}",
+                category.label()
+            );
+        }
+        for query in [
+            "grain", "granular", "clouds", "freeze", "spectral", "looping",
+        ] {
             assert!(ModuleLibrary::default().matches(module, query), "{query}");
         }
     }

@@ -60,6 +60,12 @@ revisions, adaptation scope and full notice are in Warps-algorithms.txt in this
 directory.
 
 
+GRAIN WEATHER adapts the Clouds granular processor, players, phase vocoder,
+effects and tables (original firmware) by Emilie Gillet under the MIT license.
+Exact revisions, adaptation scope and full notice are in Clouds-algorithms.txt
+in this directory.
+
+
 FRAME SCENE adapts the Frames integer keyframer and resources by Emilie Gillet
 under the MIT license. Revisions, native transfer scope and full notice are in
 Frames-algorithms.txt in this directory.
