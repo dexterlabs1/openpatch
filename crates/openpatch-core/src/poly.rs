@@ -48,7 +48,9 @@ use crate::stock_process::{self, StockProcess, StockProcessSnapshot, StockProces
 use crate::stock_quantizer::{self, StockQuantizer};
 use crate::stock_scope::{self, StockScope, StockScopeDiagnosticBits};
 use crate::stock_seq3::{self, StockSeq3};
+use crate::stock_unity::{self, StockUnity};
 use crate::stock_vca::{self, StockVca};
+use crate::stock_vca2::{self, StockVca2};
 use crate::stock_vca_mix::{self, StockVcaMix, StockVcaMixSnapshot};
 use crate::stock_vcf::{self, StockVcf};
 use crate::stock_vco::{self, StockVco};
@@ -158,6 +160,8 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "cross_matter"
                 | "grain_weather"
                 | "string_field"
+                | "stock_vca2"
+                | "stock_unity"
                 | "frame_scene"
                 | "rhythm_terrain"
                 | "recall_random"
@@ -241,6 +245,8 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
         "cross_matter" => cross_matter::INPUTS.iter().position(|port| *port == name),
         "grain_weather" => grain_weather::INPUTS.iter().position(|port| *port == name),
         "string_field" => string_field::INPUTS.iter().position(|port| *port == name),
+        "stock_vca2" => stock_vca2::INPUTS.iter().position(|port| *port == name),
+        "stock_unity" => stock_unity::INPUTS.iter().position(|port| *port == name),
         "multi_lfo" => multi_lfo::INPUTS.iter().position(|port| *port == name),
         "multi_vco" => multi_vco::INPUTS.iter().position(|port| *port == name),
         "stock_seq3" => stock_seq3::INPUTS.iter().position(|port| *port == name),
@@ -390,6 +396,10 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
         grain_weather::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "string_field" {
         string_field::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "stock_vca2" {
+        stock_vca2::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "stock_unity" {
+        stock_unity::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "stock_lfo" {
         stock_lfo::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "multi_lfo" {
@@ -662,6 +672,16 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect()
+    } else if kind == "stock_vca2" {
+        stock_vca2::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
+    } else if kind == "stock_unity" {
+        stock_unity::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
     } else if kind == "stock_lfo" {
         stock_lfo::OUTPUTS
             .iter()
@@ -894,6 +914,12 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "string_field" {
         string_field::annotate(module);
     }
+    if kind == "stock_vca2" {
+        stock_vca2::annotate(module);
+    }
+    if kind == "stock_unity" {
+        stock_unity::annotate(module);
+    }
     if kind == "frame_scene" {
         frame_scene::annotate(module);
     }
@@ -1025,6 +1051,8 @@ enum Model {
     CrossMatter(Box<CrossMatter>),
     GrainWeather(Box<GrainWeather>),
     StringField(Box<StringField>),
+    StockVca2(StockVca2),
+    StockUnity(Box<StockUnity>),
     FrameScene(Box<FrameScene>),
     SegmentGarden(Box<SegmentGarden>),
     EventFork(EventFork),
@@ -1227,6 +1255,12 @@ impl Model {
             return Ok(Self::GrainWeather(Box::new(GrainWeather::build(
                 node, rate,
             )?)));
+        }
+        if node.kind == "stock_vca2" {
+            return Ok(Self::StockVca2(StockVca2::build(node)?));
+        }
+        if node.kind == "stock_unity" {
+            return Ok(Self::StockUnity(Box::new(StockUnity::build(node, rate)?)));
         }
         if node.kind == "string_field" {
             return Ok(Self::StringField(StringField::build_boxed(node, rate)?));
@@ -2191,6 +2225,7 @@ impl PolyEngine {
             Some(Model::CrossMatter(s)) => Some(s.lights()),
             Some(Model::GrainWeather(s)) => Some(s.lights()),
             Some(Model::StringField(s)) => Some(s.lights()),
+            Some(Model::StockUnity(s)) => Some(s.lights()),
             Some(Model::FrameScene(s)) => Some(s.lights()),
             Some(Model::SegmentGarden(s)) => Some(s.lights()),
             Some(Model::EventFork(s)) => Some(s.lights()),
@@ -2755,6 +2790,7 @@ impl PolyEngine {
             Model::CrossMatter(cross) => cross.initialize_state(),
             Model::GrainWeather(weather) => weather.initialize_state(),
             Model::StringField(field) => field.initialize_state(),
+            Model::StockUnity(unity) => unity.initialize_state(),
             Model::FrameScene(scene) => scene.initialize_state(),
             Model::SegmentGarden(garden) => garden.initialize_state(),
             Model::EventFork(fork) => fork.initialize_state(),
@@ -2998,6 +3034,8 @@ impl PolyEngine {
                     "cross_matter" => cross_matter::OUTPUTS.len(),
                     "grain_weather" => grain_weather::OUTPUTS.len(),
                     "string_field" => string_field::OUTPUTS.len(),
+                    "stock_vca2" => stock_vca2::OUTPUTS.len(),
+                    "stock_unity" => stock_unity::OUTPUTS.len(),
                     "frame_scene" => frame_scene::OUTPUTS.len(),
                     "segment_garden" => segment_garden::OUTPUTS.len(),
                     "event_fork" => event_fork::OUTPUTS.len(),
@@ -4083,6 +4121,26 @@ impl PolyEngine {
                             [node.output_start..node.output_start + grain_weather::OUTPUTS.len()],
                     );
                 }
+                Model::StockVca2(vca) => {
+                    let mut inputs = [PortFrame::default(); 6];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    self.outputs[node.output_start..node.output_start + stock_vca2::OUTPUTS.len()]
+                        .copy_from_slice(&vca.process(&inputs));
+                }
+                Model::StockUnity(unity) => {
+                    let mut inputs = [PortFrame::default(); 12];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    self.outputs[node.output_start..node.output_start + stock_unity::OUTPUTS.len()]
+                        .copy_from_slice(&unity.process(&inputs));
+                }
                 Model::StringField(field) => field.process_edges(
                     &self.input_frames,
                     &node.inputs,
@@ -4710,6 +4768,7 @@ impl PolyEngine {
                 (Model::CrossMatter(s), Model::CrossMatter(old)) => s.adopt(old),
                 (Model::GrainWeather(s), Model::GrainWeather(old)) => s.adopt(old),
                 (Model::StringField(s), Model::StringField(old)) => s.adopt(old),
+                (Model::StockUnity(s), Model::StockUnity(old)) => s.adopt(old),
                 (Model::FrameScene(s), Model::FrameScene(old)) => s.adopt(old),
                 (Model::SegmentGarden(s), Model::SegmentGarden(old)) => s.adopt(old),
                 (Model::EventFork(s), Model::EventFork(old)) => s.adopt(old),

@@ -54,6 +54,56 @@ Corresponding OpenPatch source: https://github.com/dexterlabs1/openpatch
 Use the source revision matching the distributed binary.
 
 
+Fundamental VCA-2 and Unity source adaptations
+==============================================
+
+Covered OpenPatch files:
+  src/stock_vca2.rs
+  src/stock_vca2/kernel.rs
+  src/stock_unity.rs
+  src/stock_unity/kernel.rs
+
+Adapted from the hidden legacy VCV Fundamental models in src/VCA.cpp
+(VCA-2, model slug VCA) and src/Unity.cpp, and from Rack SDK 2.6.6
+include/dsp/vumeter.hpp (VuMeter2) and include/dsp/digital.hpp (ClockDivider):
+Copyright © 2016-2023 VCV. Original source by Andrew Belt and contributors.
+Source revision: 10dd0160c664770910e5584b7b00498cc48d9ddd (byte-identical
+in 2.6.4, e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e)
+https://github.com/VCVRack/Fundamental/tree/10dd0160c664770910e5584b7b00498cc48d9ddd
+https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/LICENSE.md
+
+License: GPL-3.0-or-later, under the same terms as the Fundamental 2.6.4
+adaptations above. These are modified Rust adaptations with OpenPatch host
+integration, input sanitization and explicit flush-to-zero arithmetic; they are
+not the original VCV source files. No Fundamental panel artwork, VCV logo or
+icon is included.
+
+src/stock_vca2/kernel.rs also contains `sse_mathfun_exp`, an altered Rust
+port of `exp_ps` from sse_mathfun.h as distributed in Rack SDK 2.6.6
+include/simd/sse_mathfun.h (itself modified by VCV). The port evaluates one
+lane, keeps the original constants and operation order and applies the Rack
+flush-to-zero contract to each operation. Original notice:
+
+  Copyright (C) 2007  Julien Pommier
+
+  This software is provided 'as-is', without any express or implied
+  warranty.  In no event will the authors be held liable for any damages
+  arising from the use of this software.
+
+  Permission is granted to anyone to use this software for any purpose,
+  including commercial applications, and to alter it and redistribute it
+  freely, subject to the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software
+     in a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+  3. This notice may not be removed or altered from any source distribution.
+
+  (this is the zlib license)
+
 OpenPatch MACRO VOICE
 
 The feedback FM and additive spectral-shaping algorithms in

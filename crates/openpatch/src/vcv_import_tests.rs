@@ -652,6 +652,51 @@ fn adsr_lfo_and_mixer_map_source_indices_units_and_durable_flags() {
 }
 
 #[test]
+fn hidden_vca2_and_unity_map_source_indices_ports_and_merge_data() {
+    let mut vca = module(1, "VCA");
+    vca["params"] = json!([{"id":0,"value":0.25},{"id":1,"value":1.0}]);
+    let mut unity = module(2, "Unity");
+    unity["params"] = json!([{"id":0,"value":1},{"id":1,"value":0}]);
+    unity["data"] = json!({"merge":true});
+    let mut plain = module(3, "Unity");
+    plain["data"] = json!({"merge":1});
+    // VCA OUT2 (output 1) into Unity input 7 (section 2, first jack); Unity
+    // INV1 (output 1) into VCA LIN1 (input 1).
+    let result = run(json!({"modules":[vca,unity,plain],
+        "cables":[cable(1,1,1,2,6),cable(2,2,1,1,1)]}))
+    .unwrap();
+    let doc = result.document;
+    assert_eq!(result.report.unresolved_count, 0);
+    assert_eq!(native(&doc, 0).kind, "stock_vca2");
+    assert_eq!(native(&doc, 0).params["level1"], 0.25);
+    assert_eq!(native(&doc, 0).params["level2"], 1.0);
+    assert_eq!(native(&doc, 1).kind, "stock_unity");
+    assert_eq!(native(&doc, 1).params["average1"], 1.0);
+    assert_eq!(native(&doc, 1).params["average2"], 0.0);
+    assert_eq!(native(&doc, 1).params["merge"], 1.0);
+    // Only a JSON true merges, as in a fresh source module.
+    assert_eq!(native(&doc, 2).params["merge"], 0.0);
+    assert_eq!(doc.graph.cables[0].route.output, "out2");
+    assert_eq!(doc.graph.cables[0].route.input, "ch2_1");
+    assert_eq!(doc.graph.cables[1].route.output, "inv1");
+    assert_eq!(doc.graph.cables[1].route.input, "lin1");
+    let provenance = doc.graph.nodes[1].source().unwrap();
+    assert_eq!(
+        provenance.mapping.as_ref().unwrap().id,
+        "vcv/Fundamental/Unity/2.6.4"
+    );
+    assert!(doc.state_carrier().is_ok());
+    // A level outside the knob's range or a switch between positions is not
+    // quietly altered.
+    let mut loud = module(4, "VCA");
+    loud["params"] = json!([{"id":0,"value":1.5}]);
+    let mut between = module(5, "Unity");
+    between["params"] = json!([{"id":1,"value":0.5}]);
+    let result = run(json!({"modules":[loud,between],"cables":[]})).unwrap();
+    assert_eq!(result.report.unresolved_count, 2);
+}
+
+#[test]
 fn wavetable_lfo_uses_embedded_audio_and_preserves_all_original_archive_members() {
     let mut lfo = module(5, "LFO2");
     lfo["data"] = json!({"waveLen":2,"filename":"custom.wav","future":{"opaque":true}});

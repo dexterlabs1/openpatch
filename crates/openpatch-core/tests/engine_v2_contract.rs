@@ -2375,6 +2375,97 @@ fn string_field_models_polyphony_bridge_initialize_bypass_and_adoption_use_no_he
 }
 
 #[test]
+fn stock_vca2_and_unity_polyphony_merge_lights_initialize_bypass_and_adoption_use_no_heap() {
+    // Each pair changes controls (levels, modes, merge), so adoption carries
+    // Unity's meters and light divider across a rebuilt module.
+    type Params = &'static [(&'static str, f32)];
+    let settings: [(Params, Params); 2] = [
+        (
+            &[("level1", 1.0), ("average1", 0.0)],
+            &[("level1", 0.25), ("average1", 1.0), ("merge", 1.0)],
+        ),
+        (
+            &[("level2", 0.5), ("merge", 1.0)],
+            &[("level2", 1.0), ("average2", 1.0)],
+        ),
+    ];
+    let mut engines: Vec<_> = [8000, 44100, 48000, 96000, 192000]
+        .into_iter()
+        .flat_map(|rate| settings.iter().map(move |pair| (rate, *pair)))
+        .map(|(rate, (before, after))| {
+            // Level controls belong to VCA-2, the others to Unity.
+            let of = |params: Params, vca: bool| -> Vec<(&'static str, f32)> {
+                params
+                    .iter()
+                    .filter(|(k, _)| k.starts_with("level") == vca)
+                    .copied()
+                    .collect()
+            };
+            let (vca_before, unity_before) = (of(before, true), of(before, false));
+            let mut p = patch(
+                vec![
+                    node("osc", "stock_lfo", &[("rate", 7.0)]),
+                    node(
+                        "voices",
+                        "poly_constant",
+                        &[("channels", 16.0), ("v1", 3.0)],
+                    ),
+                    node("vca", "stock_vca2", &vca_before),
+                    node("unity", "stock_unity", &unity_before),
+                ],
+                vec![
+                    cable("voices", "out", "vca", "in1"),
+                    cable("osc", "sine", "vca", "exp1"),
+                    cable("voices", "out", "vca", "lin1"),
+                    cable("osc", "saw", "vca", "in2"),
+                    cable("osc", "triangle", "vca", "lin2"),
+                    cable("vca", "out1", "unity", "ch1_1"),
+                    cable("vca", "out2", "unity", "ch1_2"),
+                    cable("osc", "square", "unity", "ch2_3"),
+                ],
+                "unity",
+            );
+            p.output_port = "mix1".into();
+            p.sample_rate = rate;
+            let old = p.compile().unwrap();
+            for (index, vca) in [(2, true), (3, false)] {
+                p.nodes[index].params = of(after, vca)
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v))
+                    .collect();
+            }
+            let replacement = p.compile().unwrap();
+            p.nodes[2].bypassed = true;
+            p.nodes[3].bypassed = true;
+            let bypass = p.compile().unwrap();
+            let light = replacement.resolve_module_lights("unity").unwrap();
+            (old, replacement, bypass, light)
+        })
+        .collect();
+    let mut frames = [PortFrame::default(); 257];
+    let mut initialized = false;
+    MEMORY_OPERATIONS.with(|c| c.set(0));
+    TRACK_MEMORY.with(|c| c.set(true));
+    for (old, replacement, bypass, light) in &mut engines {
+        for count in [0, 1, 23, 255, 256, 257, 257, 257] {
+            old.process_poly_block(&mut frames[..count]);
+            replacement.adopt_state_from(old);
+            replacement.process_poly_block(&mut frames[..count]);
+            let _ = replacement.module_lights(*light);
+            bypass.adopt_state_from(replacement);
+            bypass.process_poly_block(&mut frames[..count]);
+            initialized |= replacement.initialize_module_state(*light);
+        }
+    }
+    TRACK_MEMORY.with(|c| c.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(initialized);
+    assert!(frames
+        .iter()
+        .all(|p| p.channels == 1 && p.values[0].is_finite()));
+}
+
+#[test]
 fn rhythm_terrain_first_scans_taps_fifo_lights_initialize_and_handoff_use_no_heap() {
     use openpatch_core::ModuleAction;
     let mut engines = [8000, 44100, 48000, 96000, 192000].map(|rate| {
