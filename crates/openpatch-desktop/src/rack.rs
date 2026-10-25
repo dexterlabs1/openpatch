@@ -64,6 +64,7 @@ include!("atlas_effect_panels.rs");
 include!("atlas_compressor_guide.rs");
 include!("atlas_creative_panels.rs");
 include!("tidal_functions_panel.rs");
+include!("cross_matter_panel.rs");
 include!("frame_scene_panel.rs");
 include!("segment_garden_panel.rs");
 include!("event_fork_panel.rs");
@@ -112,7 +113,7 @@ fn port_material_scale(kind: &str) -> f32 {
         "stock_seq3" => 1.07,
         "stock_delay" => 1.20, // y380 sockets must remain inside the 396-point panel.
         "modal_resonator" | "tidal_functions" | "frame_scene" | "segment_garden" | "event_fork"
-        | "rhythm_terrain" => REDESIGNED_PORT_SCALE,
+        | "rhythm_terrain" | "cross_matter" => REDESIGNED_PORT_SCALE,
         "poly_split" | "poly_merge" | "poly_constant" | "score_sequencer" | "rackmcp_sequencer"
         | "rackmcp_listen" | "crossfade" | "quantizer" | "stock_quantizer" | "poly_sum"
         | "mid_side" | "stock_mid_side" | "mix6" | "stock_mix" => REDESIGNED_PORT_SCALE,
@@ -204,6 +205,8 @@ fn jack_caption_placement(kind: &str, port: &str, output: bool) -> JackCaptionPl
         ("segment_garden", _, _) => Above(24.0),
         ("tidal_functions", _, false) => Above(21.0),
         ("tidal_functions", _, true) => Left(26.0),
+        ("cross_matter", _, false) => Above(21.0),
+        ("cross_matter", _, true) => Left(26.0),
         ("macro_voice", _, false) => Above(21.0),
         ("macro_voice", _, true) => Right(32.0),
         ("stock_delay", "signal" | "clock", false) => Right(30.0),
@@ -354,6 +357,7 @@ fn generic_parameter_hardware(
                 | "event_fork"
                 | "rhythm_terrain"
                 | "recall_random"
+                | "cross_matter"
         )
         || matches!(
             kind,
@@ -3892,6 +3896,9 @@ impl Rack {
             if node.kind == "tidal_functions" {
                 paint_tidal_configuration(ui, rect, node, self.zoom);
             }
+            if node.kind == "cross_matter" {
+                paint_cross_matter_configuration(ui, rect, node, self.zoom);
+            }
             if atlas_creative_kind(&node.kind) {
                 paint_atlas_creative_configuration(ui, rect, node, self.zoom, &self.lighting);
             }
@@ -4393,6 +4400,27 @@ impl Rack {
                     });
                     continue;
                 }
+                if node.kind == "cross_matter" {
+                    if let Some((local, label, choices)) = cross_matter_selector(name) {
+                        let selector = Rect::from_min_size(
+                            point(local.min.x, local.min.y),
+                            local.size() * self.zoom,
+                        );
+                        painter.text(
+                            point(local.center().x, 54.0),
+                            Align2::CENTER_CENTER,
+                            label,
+                            crate::panel_skin::print_font(painter.ctx(), 10.0 * self.zoom),
+                            INK,
+                        );
+                        if let Some(edit) =
+                            self.choice_parameter(ui, node, name, spec, selector, choices)
+                        {
+                            action = Some(edit);
+                        }
+                        continue;
+                    }
+                }
                 if node.kind == "tidal_functions" {
                     if let Some((local, label, choices)) = tidal_selector(name) {
                         let selector = Rect::from_min_size(
@@ -4498,6 +4526,8 @@ impl Rack {
                     segment_garden_control(name)
                 } else if node.kind == "tidal_functions" {
                     tidal_control(name)
+                } else if node.kind == "cross_matter" {
+                    cross_matter_control(name)
                 } else if node.kind == "audio_stereo" {
                     atlas_audio_control(name)
                 } else if node.kind == "vca_mix" {
@@ -4605,6 +4635,7 @@ impl Rack {
                                 | "event_fork"
                                 | "rhythm_terrain"
                                 | "recall_random"
+                                | "cross_matter"
                         ))
                         && logarithmic
                         && min > 0.0);
@@ -4631,6 +4662,7 @@ impl Rack {
                     || node.kind == "fade"
                     || matches!(node.kind.as_str(), "segment_garden" | "event_fork")
                     || (node.kind == "tidal_functions" && *name != "frequency")
+                    || node.kind == "cross_matter"
                     || (node.kind == "random" && !matches!(*name, "rate" | "unipolar" | "seed"));
                 let vco_percent =
                     (matches!(
@@ -4679,6 +4711,8 @@ impl Rack {
                     format!("{value:.0} steps")
                 } else if node.kind == "seq3" && name.ends_with("_amount") {
                     format!("{value:.2}×")
+                } else if node.kind == "cross_matter" {
+                    cross_matter_value(node, name, value)
                 } else if node.kind == "svf_filter" {
                     atlas_svf_value(name, value, spec)
                 } else if atlas_voice(&node.kind) {
@@ -4835,6 +4869,9 @@ impl Rack {
                 } else if node.kind == "tidal_functions" {
                     let local = tidal_value_center(name);
                     point(local.x, local.y)
+                } else if node.kind == "cross_matter" {
+                    let local = cross_matter_value_center(name);
+                    point(local.x, local.y)
                 } else if node.kind == "audio_stereo" {
                     let local = atlas_audio_value_center(name);
                     point(local.x, local.y)
@@ -4919,6 +4956,12 @@ impl Rack {
                     82.0
                 } else if node.kind == "tidal_functions" {
                     88.0
+                } else if node.kind == "cross_matter" {
+                    if *name == "algorithm" {
+                        150.0
+                    } else {
+                        76.0
+                    }
                 } else if node.kind == "audio_stereo" {
                     132.0
                 } else if node.kind == "vca_mix" {
@@ -5288,6 +5331,7 @@ impl Rack {
                                 | "event_fork"
                                 | "rhythm_terrain"
                                 | "recall_random"
+                                | "cross_matter"
                         )
                         || matches!(
                             node.kind.as_str(),
@@ -5393,6 +5437,8 @@ impl Rack {
                     );
                 } else if node.kind == "tidal_functions" {
                     paint_tidal_control_print(&painter, rect, name, self.zoom);
+                } else if node.kind == "cross_matter" {
+                    paint_cross_matter_control_print(&painter, rect, node, name, self.zoom);
                 } else if atlas_creative_kind(&node.kind) {
                     paint_atlas_creative_control_print(&painter, rect, &node.kind, name, self.zoom);
                 } else if atlas_studio_effect(&node.kind) {
@@ -5480,6 +5526,7 @@ impl Rack {
                             | "event_fork"
                             | "rhythm_terrain"
                             | "recall_random"
+                            | "cross_matter"
                     )
                     || matches!(
                         node.kind.as_str(),
@@ -6169,7 +6216,7 @@ impl Rack {
             return;
         }
         let light_index = match node.kind.as_str() {
-            "logic" | "tidal_functions" => Some(port_index),
+            "logic" | "tidal_functions" | "cross_matter" => Some(port_index),
             "segment_garden" if port_index < 6 => Some(port_index),
             "compare" if port_index >= 4 => Some(port_index - 4),
             "gates" => Some(port_index),
@@ -6184,7 +6231,7 @@ impl Rack {
             paint_signal_light(
                 painter,
                 output_point
-                    + (if node.kind == "tidal_functions" {
+                    + (if matches!(node.kind.as_str(), "tidal_functions" | "cross_matter") {
                         vec2(26.0, 0.0)
                     } else if node.kind == "segment_garden" {
                         vec2(25.0, -2.0)
@@ -9134,6 +9181,7 @@ fn port_position(kind: &str, input: bool, index: usize, count: usize, width: f32
         "frame_scene" => return frame_scene_port(input, index),
         "segment_garden" => return segment_garden_port(input, index),
         "tidal_functions" => return tidal_port(input, index),
+        "cross_matter" => return cross_matter_port(input, index),
         "macro_voice" => {
             return pos2(
                 width * (index + 1) as f32 / (count + 1) as f32,
@@ -10141,6 +10189,7 @@ pub(crate) fn panel_width(kind: &str) -> f32 {
         "frame_scene" => HP * 36.0,
         "segment_garden" => HP * 48.0,
         "tidal_functions" => HP * 28.0,
+        "cross_matter" => HP * 24.0,
         "scope" | "stock_scope" => HP * 42.0,
         "score_sequencer" => HP * 40.0,
         "rackmcp_sequencer" => HP * 48.0,
@@ -10198,6 +10247,7 @@ pub(crate) fn title(kind: &str) -> &str {
         "frame_scene" => "FRAME SCENE",
         "segment_garden" => "SEGMENT GARDEN",
         "tidal_functions" => "TIDAL FUNCTIONS",
+        "cross_matter" => "CROSS MATTER",
         "scope" => "SCOPE",
         "stock_scope" => "STOCK SCOPE",
         "score_sequencer" => "SCORE",
@@ -10431,6 +10481,7 @@ fn ordered_parameters<'a>(node: &Node, module: Option<&'a Value>) -> Vec<(&'a st
             "latch2",
             "seed",
         ],
+        "cross_matter" => &["carrier", "mode", "level1", "algorithm", "level2", "timbre"],
         "tidal_functions" => &[
             "ramp_mode",
             "output_mode",
@@ -11066,6 +11117,7 @@ fn paint_panel(
                 | "svf_filter"
                 | "modal_resonator"
                 | "tidal_functions"
+                | "cross_matter"
                 | "frame_scene"
                 | "segment_garden"
                 | "event_fork"
@@ -11159,6 +11211,7 @@ fn paint_panel(
                 | "svf_filter"
                 | "modal_resonator"
                 | "tidal_functions"
+                | "cross_matter"
                 | "frame_scene"
                 | "segment_garden"
                 | "event_fork"
@@ -11340,6 +11393,8 @@ fn paint_jack(
         frame_scene_port_label(port)
     } else if kind == "tidal_functions" {
         tidal_port_label(port)
+    } else if kind == "cross_matter" {
+        cross_matter_port_label(port)
     } else if kind == "svf_filter" && port == "cutoff_cv" && !output {
         "FREQ CV"
     } else {
@@ -11422,6 +11477,7 @@ fn paint_jack(
                 | "svf_filter"
                 | "modal_resonator"
                 | "tidal_functions"
+                | "cross_matter"
                 | "frame_scene"
                 | "segment_garden"
                 | "event_fork"
@@ -12485,7 +12541,7 @@ mod tests {
         let modules = catalog["modules"].as_array().unwrap();
         assert_eq!(
             modules.len(),
-            92,
+            93,
             "update coverage when adding module kinds"
         );
         for (module, scale) in modules
@@ -19441,6 +19497,9 @@ mod tests {
     #[cfg(test)]
     mod tidal_functions_ui_tests {
         include!("tidal_functions_ui_tests.rs");
+    }
+    mod cross_matter_ui_tests {
+        include!("cross_matter_ui_tests.rs");
     }
     mod atlas_rackmcp_ui_tests {
         include!("atlas_rackmcp_ui_tests.rs");

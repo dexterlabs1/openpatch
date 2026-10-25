@@ -109,7 +109,8 @@ impl Category {
             | "stock_delay"
             | "stereo_delay"
             | "stereo_reverb"
-            | "sidechain_compressor" => Self::Mixing,
+            | "sidechain_compressor"
+            | "cross_matter" => Self::Mixing,
             "mult" | "mid_side" | "stock_mid_side" | "octave" | "poly_split" | "poly_merge"
             | "poly_sum" | "switch_1to4" | "switch_4to1" => Self::Routing,
             "output" | "audio_out" | "audio_stereo" | "midi_cv" | "midi_cc" | "midi_gate" => {
@@ -2566,6 +2567,38 @@ mod tidal_category_tests {
         }
         for query in ["tidal", "clock", "slope", "smoothness"] {
             assert!(ModuleLibrary::default().matches(module, query));
+        }
+    }
+}
+
+#[cfg(test)]
+mod cross_matter_category_tests {
+    use super::*;
+
+    #[test]
+    fn cross_matter_is_reachable_as_an_effect_oscillator_filter_and_custom_instrument() {
+        let catalog = openpatch_core::catalog();
+        let module = catalog["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|module| module["kind"] == "cross_matter")
+            .unwrap();
+        assert_eq!(Category::of_kind("cross_matter"), Category::Mixing);
+        for category in [
+            Category::Mixing,
+            Category::Oscillators,
+            Category::Filters,
+            Category::Custom,
+        ] {
+            assert!(
+                category.matches_module(module),
+                "Cross Matter missing from {}",
+                category.label()
+            );
+        }
+        for query in ["cross", "ring", "vocoder", "fold"] {
+            assert!(ModuleLibrary::default().matches(module, query), "{query}");
         }
     }
 }
