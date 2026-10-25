@@ -1229,7 +1229,7 @@ impl Model {
             )?)));
         }
         if node.kind == "string_field" {
-            return Ok(Self::StringField(Box::new(StringField::build(node, rate)?)));
+            return Ok(Self::StringField(StringField::build_boxed(node, rate)?));
         }
         if node.kind == "stock_lfo" {
             return Ok(Self::StockLfo(Box::new(StockLfo::build(node, rate)?)));
@@ -4083,20 +4083,13 @@ impl PolyEngine {
                             [node.output_start..node.output_start + grain_weather::OUTPUTS.len()],
                     );
                 }
-                Model::StringField(field) => {
-                    let mut inputs = [PortFrame::default(); 8];
-                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
-                        if let Some(edge) = edge {
-                            *input = self.input_frames[*edge];
-                        }
-                    }
-                    field.process(
-                        &inputs,
-                        node.connected_mask as u16,
-                        &mut self.outputs
-                            [node.output_start..node.output_start + string_field::OUTPUTS.len()],
-                    );
-                }
+                Model::StringField(field) => field.process_edges(
+                    &self.input_frames,
+                    &node.inputs,
+                    node.connected_mask as u16,
+                    &mut self.outputs
+                        [node.output_start..node.output_start + string_field::OUTPUTS.len()],
+                ),
                 Model::StockLfo(lfo) => {
                     let mut inputs = [PortFrame::default(); 4];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {

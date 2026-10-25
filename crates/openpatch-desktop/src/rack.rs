@@ -7348,7 +7348,9 @@ impl Rack {
                     .iter()
                     .map(|v| v.as_f64().map(|v| v as f32))
                     .collect()
-            });
+            })
+            // Identity lists keep plain index values.
+            .filter(|values: &Vec<f32>| values.iter().enumerate().any(|(i, v)| *v != i as f32));
         let old = choice_index(values.as_deref(), stored);
         let mut value = old.min(choices.len() - 1);
         ui.scope_builder(

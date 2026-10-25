@@ -284,6 +284,13 @@ impl StringField {
         })
     }
 
+    /// Build straight into a box from a separate frame, so the module value
+    /// does not enlarge the engine's (debug) `Model::build` stack frame.
+    #[inline(never)]
+    pub(crate) fn build_boxed(node: &Node, sample_rate: u32) -> Result<Box<Self>, String> {
+        Self::build(node, sample_rate).map(Box::new)
+    }
+
     pub(crate) fn adopt(&mut self, previous: &Self) {
         if self.sample_rate == previous.sample_rate {
             self.runtime.copy_from(&previous.runtime);
@@ -307,6 +314,26 @@ impl StringField {
         };
         result.brightness[2] = [0.0, strum];
         result
+    }
+
+    /// Gather the patched input frames and process one host frame. Kept out
+    /// of the engine's per-sample dispatch so its port array does not enlarge
+    /// that function's (debug) stack frame.
+    #[inline(never)]
+    pub(crate) fn process_edges(
+        &mut self,
+        frames: &[PortFrame],
+        edges: &[Option<usize>],
+        connected_mask: u16,
+        outputs: &mut [PortFrame],
+    ) {
+        let mut inputs = [PortFrame::default(); 8];
+        for (input, edge) in inputs.iter_mut().zip(edges) {
+            if let Some(edge) = edge {
+                *input = frames[*edge];
+            }
+        }
+        self.process(&inputs, connected_mask, outputs);
     }
 
     pub(crate) fn process(
