@@ -1,0 +1,51 @@
+{
+ "schema": 1,
+ "revision": "VCVRack/Fundamental@10dd0160c664770910e5584b7b00498cc48d9ddd",
+ "note": "VCA.cpp and Unity.cpp are byte-identical at Fundamental 2.6.4 (e0ade9a23a9b41124ea3f4ec9aa2cb0b98c2529e), the version VCV patch import accepts.",
+ "upstream": [
+  {
+   "path": "VCA.cpp",
+   "url": "https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/src/VCA.cpp",
+   "sha256": "4820e535f7a3bee8f9c47c595519c848292f4ab070c7d92922f26cfde919b27f",
+   "role": "compiled: VCA-2 (model slug VCA) module class"
+  },
+  {
+   "path": "Unity.cpp",
+   "url": "https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/src/Unity.cpp",
+   "sha256": "29e3045f9997779f5afea12bb4891e7ae39303d7d1457c6b5c805ba52ceb6ab6",
+   "role": "compiled: Unity module class"
+  },
+  {
+   "path": "plugin.json",
+   "url": "https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/plugin.json",
+   "sha256": "c72d34d042c203bd7dfd614f98d312e304f9a71128e145702237a9f887916f9d",
+   "role": "reference: hidden model manifest entries"
+  },
+  {
+   "path": "LICENSE.md",
+   "url": "https://raw.githubusercontent.com/VCVRack/Fundamental/10dd0160c664770910e5584b7b00498cc48d9ddd/LICENSE.md",
+   "sha256": "cabee107063029e5e64c7c436eee5751ded7d0f47fa7db1685add354b0b42021",
+   "role": "notice: GPL-3.0-or-later source licence"
+  }
+ ],
+ "sdk": {
+  "version": "2.6.6",
+  "platform": "mac-arm64",
+  "files": {
+   "libRack.dylib": "55dd40f7dff09a6ed7b93374b150f33931034d3754c128da7b209ea37b6aaf1c",
+   "include/rack.hpp": "dadeba5143b5adc50665c973e2b04f301faa2e1075b4997287974bc7fa2b2a26",
+   "include/simd/sse_mathfun.h": "9e84be29c3d5738206f6c10c37b7a72920a343e7a9da87deea15ea96a1866fca",
+   "include/simd/functions.hpp": "5f53878b105958127813f0fe1669bbf7ff8242afdbef64c412e618b50186412d",
+   "include/simd/Vector.hpp": "368c5e7a1ab8f550d689d0f11a2a9d85d71d00974bc1977a0ef3ec15c108207f",
+   "include/math.hpp": "154bf143e14071e782b28c54c5c4a0782290d5ef0428e113583cef2ba9f209de",
+   "include/dsp/vumeter.hpp": "58fc6a7fedd9419f152ef9a0c1c2572d3fa68b3bb7e029261593a1947d2dd377",
+   "include/dsp/digital.hpp": "aed0c00a6abb0bd87eb32ede393db8786a0e568df477a648d1f8c451c7848296",
+   "include/dsp/common.hpp": "73cdb6c6689e79f6d3668160e5041b39beeb8e86b55d28a461675c0049e2665e",
+   "include/engine/Port.hpp": "4adb82ddf9168eb92a02a49c0d1b666545647bb37e38c8559bd0b6135a0c89e2",
+   "include/engine/Module.hpp": "a258d8151835ccef0c50cdc76fb3727c63fce7fa39acb0abd6d5493fd595c8df",
+   "include/engine/Light.hpp": "70affe4a5f167d5e018633da41931d7d1666a113ea8358fa8f01a63cae46e4c2",
+   "include/engine/Param.hpp": "7f7a3a0a286cae099ad6b884d4ca1648be1bcf658f398b2a15366c27a6c373aa",
+   "include/engine/ParamQuantity.hpp": "cb37427911a3306354987bef1506e561c5bb33e66b53d04103827bb71c974157"
+  }
+ }
+}
