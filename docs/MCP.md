@@ -822,7 +822,7 @@ actions, coherent saved holds/RNG, presets, duplication and history.
 and `rng_state` per module. Host Randomize is a no-op for this kind;
 [full contract](SHIFT_REGISTER.md).
 
-The native toolbar's **MCP** button starts or reuses the local bridge, shows live
+The native toolbar's **Connect AI** button starts or reuses the local bridge, shows live
 attachment status, and provides copyable Claude/Codex connection details.
 [Session controls](MCP_SESSIONS.md) describes Start/Stop and transport boundaries.
 Progressive plans also publish authoritative `last_commit` receipts for native

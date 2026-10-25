@@ -46,7 +46,7 @@ The Mac app is not notarized by Apple. The Windows app is unsigned.
 
 There are 13 genres, from Deep House and Dub Techno to Progressive House, Hypnagogic, Berlin School, IDM and Melodic Techno, plus a C418 mode. Scroll down in the panel for **Controls**: energy, complexity, weirdness, space and song length.
 
-Every song has a short **genome** code, shown in the panel and saved in the patch notes. The same code always builds the same song. Choose **Reveal**, **Showtime** or **Instant** to change how quickly a song appears in the rack. [Patch Engine guide](docs/PATCH_ENGINE.md)
+Every song has a short **genome** code, shown under **Details** in the panel. The same code always builds the same song. Choose **Reveal**, **Showtime** or **Instant** to change how quickly a song appears in the rack. [Patch Engine guide](docs/PATCH_ENGINE.md)
 
 ![A Hypnagogic song built from the words Mysterious and Echoing](docs/images/patch-engine-hypnagogic.png)
 
@@ -65,7 +65,7 @@ To build from scratch, close the Patch Engine and press **Enter** to open the mo
 
 ## Use Claude or Codex
 
-Open the **MCP** panel in OpenPatch and follow the [setup guide](docs/MCP.md). MCP lets an assistant inspect your patch, add modules, connect cables, change settings, save and render audio.
+Choose **Connect AI** in the toolbar and follow the [setup guide](docs/MCP.md). MCP lets an assistant inspect your patch, add modules, connect cables, change settings, save and render audio.
 
 Connecting to an already open window works on Mac and Linux. On Windows, start a session with `openpatch-desktop.exe --mcp`.
 
