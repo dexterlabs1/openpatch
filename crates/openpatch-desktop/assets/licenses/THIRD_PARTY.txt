@@ -54,6 +54,12 @@ by Emilie Gillet under the MIT license. Exact revisions, adaptation scope and
 full notice are in Tides-algorithms.txt in this directory.
 
 
+CROSS MATTER adapts the Warps modulator, oscillators, vocoder, frequency shifter,
+sample-rate converters and tables by Emilie Gillet under the MIT license. Exact
+revisions, adaptation scope and full notice are in Warps-algorithms.txt in this
+directory.
+
+
 FRAME SCENE adapts the Frames integer keyframer and resources by Emilie Gillet
 under the MIT license. Revisions, native transfer scope and full notice are in
 Frames-algorithms.txt in this directory.

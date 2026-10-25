@@ -4145,6 +4145,43 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("load_patch", {"filename": "tidal-functions.json"})
         self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
 
+    def test_cross_matter_source_outputs_history_presets_and_saved_reopen(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["cross_matter"]
+        self.assertEqual(descriptor["outputs"], ["out", "aux"])
+        self.assertEqual(descriptor["inputs"], ["carrier", "modulator", "level1_cv", "level2_cv", "algorithm_cv", "timbre_cv"])
+        self.assertEqual(descriptor["polyphony"]["maximum_channels"], 1)
+        self.assertEqual(descriptor["bypass"]["routes"], [{"input": "carrier", "output": "out"}, {"input": "modulator", "output": "aux"}])
+        self.assertIn("96 kHz", descriptor["processing_policy"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "mod", "kind": "stock_vco", "params": {"frequency": 7}},
+                      {"id": "cross", "kind": "cross_matter", "params": {"algorithm": 0.3}}],
+            "cables": [{"from": "mod", "output": "saw", "to": "cross", "input": "modulator"}],
+            "output": "cross", "output_port": "out"}})
+        original = self.patch_snapshot()
+        for port in descriptor["outputs"]:
+            trace = self.payload(self.require_tool_success("capture_signal", {
+                "id": "cross", "port": port, "seconds": .05, "points": 64,
+                "expected_revision": original["revision"]}))
+            self.assertEqual(trace["summary"]["active_frames"], 2400)
+            self.assertTrue(all(math.isfinite(point["mean"]) for point in trace["bins"]))
+            self.assertGreater(max(max(abs(point["min"]), abs(point["max"])) for point in trace["bins"]), .1)
+        self.assertEqual(self.patch_snapshot(), original, "capture must remain observational")
+        self.require_tool_success("set_parameter", {"id": "cross", "parameter": "carrier", "value": 3})
+        changed = self.patch_snapshot()
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], changed["patch"])
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "cross"}))["preset"]
+        self.assertEqual(preset["params"]["carrier"], 3)
+        self.require_tool_success("save_patch", {"filename": "cross-matter.json"})
+        before = self.patch_snapshot()
+        for name, value in [("carrier", 1.5), ("mode", 2), ("algorithm", -0.1)]:
+            self.require_tool_error("set_parameter", {"id": "cross", "parameter": name, "value": value})
+            self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": []}})
+        self.require_tool_success("load_patch", {"filename": "cross-matter.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
+
     def test_stock_lfo_source_polarity_phase_origins_and_named_outputs_through_mcp(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         descriptor = modules["stock_lfo"]

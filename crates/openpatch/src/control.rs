@@ -11,6 +11,8 @@ pub use project_saved::{
     SharedProjectSave,
 };
 #[cfg(test)]
+mod cross_matter_tests;
+#[cfg(test)]
 mod document_tests;
 #[cfg(test)]
 mod frame_scene_tests;

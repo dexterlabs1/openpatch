@@ -1,0 +1,91 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "guide",
+      "kind": "notes",
+      "content": {
+        "type": "notes",
+        "text": "CROSS MATTER\nMORPHING DUET\nA slow LFO walks ALGORITHM\nfrom fold through ring, XOR\nand comparator to vocoder.\nA second LFO moves TIMBRE.\nOUT is left, AUX is right.\nTry the built-in carrier."
+      }
+    },
+    {
+      "id": "carrier_vco",
+      "kind": "stock_vco",
+      "params": {
+        "frequency": -24
+      }
+    },
+    {
+      "id": "modulator_vco",
+      "kind": "stock_vco",
+      "params": {
+        "frequency": -5
+      }
+    },
+    {
+      "id": "sweep",
+      "kind": "stock_lfo",
+      "params": {
+        "rate": -4,
+        "offset": 0
+      }
+    },
+    {
+      "id": "sweep_depth",
+      "kind": "attenuverter",
+      "params": {
+        "gain": 0.4,
+        "offset": 0
+      }
+    },
+    {
+      "id": "shimmer",
+      "kind": "stock_lfo",
+      "params": {
+        "rate": -2.5,
+        "offset": 0
+      }
+    },
+    {
+      "id": "shimmer_depth",
+      "kind": "attenuverter",
+      "params": {
+        "gain": 0.06,
+        "offset": 0
+      }
+    },
+    {
+      "id": "cross",
+      "kind": "cross_matter",
+      "params": {
+        "algorithm": 0.5,
+        "timbre": 0.45,
+        "level1": 0.65,
+        "level2": 0.65,
+        "carrier": 0,
+        "mode": 0
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.9,
+        "dc_block": 1
+      }
+    }
+  ],
+  "cables": [
+    {"from": "carrier_vco", "output": "saw", "to": "cross", "input": "carrier"},
+    {"from": "modulator_vco", "output": "square", "to": "cross", "input": "modulator"},
+    {"from": "sweep", "output": "triangle", "to": "sweep_depth", "input": "signal"},
+    {"from": "sweep_depth", "output": "out", "to": "cross", "input": "algorithm_cv"},
+    {"from": "shimmer", "output": "sine", "to": "shimmer_depth", "input": "signal"},
+    {"from": "shimmer_depth", "output": "out", "to": "cross", "input": "timbre_cv"},
+    {"from": "cross", "output": "out", "to": "out", "input": "left"},
+    {"from": "cross", "output": "aux", "to": "out", "input": "right"}
+  ],
+  "output": "out"
+}

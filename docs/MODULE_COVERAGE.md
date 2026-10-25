@@ -1,5 +1,16 @@
 # Rust module coverage
 
+Development addition (not installed): [Cross Matter](CROSS_MATTER.md) is the 93rd
+catalog kind and the seventh of the twenty creative instruments. Its Warps
+modulator (seven morphing algorithms, built-in carriers, vocoder and frequency
+shifter) is a pinned MIT Rust source adaptation running at the native 96 kHz
+behind an explicit host-rate resampler. The raw kernel matches 1,206,840 of
+1,206,840 int16 samples across 30 source cases inside the defined domain; two
+source undefined-behaviour boundaries are reported separately. Native
+lifecycle, callback no-heap, shared panel and MCP workflows have focused Mac
+checks. This adds no VCV import mapping, binary compatibility or hardware claim.
+
+
 Segment Garden is the 89th development catalog kind: six STANDARD3 Stages-derived
 kernels with physical-gate grouping, loops, quantized/unquantized sequencing, source
 slave contours and separate activity outputs. It retains a fixed source clock with
