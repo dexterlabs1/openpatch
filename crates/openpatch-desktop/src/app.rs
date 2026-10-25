@@ -89,10 +89,10 @@ fn timing_status(snapshot: Option<&AudioTimingSnapshot>) -> TimingStatus {
 fn timing_footer(snapshot: Option<&AudioTimingSnapshot>) -> String {
     match timing_status(snapshot) {
         TimingStatus::Ready => {
-            format!("DSP {:.1}%", snapshot.unwrap().utilization.unwrap() * 100.0)
+            format!("CPU {:.0}%", snapshot.unwrap().utilization.unwrap() * 100.0)
         }
-        TimingStatus::ResetPending => "DSP reset…".into(),
-        _ => "DSP —".into(),
+        TimingStatus::ResetPending => "CPU …".into(),
+        _ => "CPU —".into(),
     }
 }
 
@@ -11533,7 +11533,7 @@ mod project_workflow_tests {
     #[test]
     fn audio_timing_presentation_never_turns_missing_or_pending_data_into_zero_load() {
         assert_eq!(timing_status(None), TimingStatus::Unavailable);
-        assert_eq!(timing_footer(None), "DSP —");
+        assert_eq!(timing_footer(None), "CPU —");
         let mut snapshot = AudioTimingSnapshot {
             available: true,
             coherent: true,
@@ -11548,22 +11548,22 @@ mod project_workflow_tests {
             ..AudioTimingSnapshot::default()
         };
         assert_eq!(timing_status(Some(&snapshot)), TimingStatus::Ready);
-        assert_eq!(timing_footer(Some(&snapshot)), "DSP 16.9%");
+        assert_eq!(timing_footer(Some(&snapshot)), "CPU 17%");
         assert_eq!(weighted_mean_utilization(&snapshot), Some(0.5));
         snapshot.reset_pending = true;
         assert_eq!(timing_status(Some(&snapshot)), TimingStatus::ResetPending);
-        assert_eq!(timing_footer(Some(&snapshot)), "DSP reset…");
+        assert_eq!(timing_footer(Some(&snapshot)), "CPU …");
         snapshot.reset_pending = false;
         snapshot.coherent = false;
         assert_eq!(timing_status(Some(&snapshot)), TimingStatus::Contended);
-        assert_eq!(timing_footer(Some(&snapshot)), "DSP —");
+        assert_eq!(timing_footer(Some(&snapshot)), "CPU —");
         snapshot.coherent = true;
         snapshot.available = false;
         assert_eq!(timing_status(Some(&snapshot)), TimingStatus::Waiting);
         snapshot.available = true;
         snapshot.closed = true;
         assert_eq!(timing_status(Some(&snapshot)), TimingStatus::Stopped);
-        assert_eq!(timing_footer(Some(&snapshot)), "DSP —");
+        assert_eq!(timing_footer(Some(&snapshot)), "CPU —");
     }
 
     #[test]

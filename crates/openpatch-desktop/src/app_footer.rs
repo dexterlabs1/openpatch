@@ -21,6 +21,7 @@ impl OpenPatch {
                         if ui.button("Retry audio").on_hover_text(&self.device).clicked() {
                             self.reopen_audio(self.output_device.clone());
                         }
+                        ui.label(RichText::new("No audio output").size(10.0).color(MUTED)).on_hover_text(&self.device);
                     } else if let Some(audio)=&self.audio {
                         if ctx.content_rect().width() >= 1050.0 {
                         ui.label(RichText::new(format!("{} Hz",audio.sample_rate)).size(10.0).color(MUTED)).on_hover_text(&self.device);
@@ -32,7 +33,9 @@ impl OpenPatch {
                         }
                     }
                         }
-                    self.mcp_status(ui);
+                    if !self.mcp_session.is_idle() {
+                        self.mcp_status(ui);
+                    }
                     ui.separator();
                     ui.allocate_ui_with_layout(ui.available_size(),egui::Layout::left_to_right(egui::Align::Center),|ui| {
                         if let Some(action) = self.construction.footer(ui) {

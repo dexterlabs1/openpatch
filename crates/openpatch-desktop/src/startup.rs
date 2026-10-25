@@ -53,7 +53,7 @@ pub fn prepare(
     let mut document = factory_document();
     let mut active_file = None;
     let mut active_token = None;
-    let mut title = "Reference analog voice".to_owned();
+    let mut title = "Analog voice".to_owned();
     let mut imported = false;
     if let Some(name) = explicit {
         let loaded = store

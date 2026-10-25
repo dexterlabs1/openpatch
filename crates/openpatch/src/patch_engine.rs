@@ -3400,14 +3400,14 @@ impl Recipe {
         self.label(
             0,
             format!(
-                "ROW 0 · MIX\n\n{} · seed {}\nStudio mixer · A → echo · B → reverb",
+                "MIX\n\n{} · seed {}\nSend A goes to the echo, send B to the reverb.",
                 self.title, self.seed
             ),
         );
         self.module("mixer", "studio_mixer", 0, json!({}), "Studio mixer");
         self.label(
             7,
-            "ROW 7 · MASTER\n\nGlue 2:1 → limiter → stereo out".into(),
+            "MASTER\n\nGentle 2:1 glue compression, then a limiter, then stereo out.".into(),
         );
         let bus = if c.glue { "glue" } else { "limit" };
         if c.glue {
@@ -3503,7 +3503,7 @@ impl Recipe {
 
         // row 1 · sequencing
         let div = c.g.div;
-        self.label(1, format!("ROW 1 · SEQUENCING\n\nseq_drums = master clock ({} BPM, swing {}%) + song-form lanes ({}) → seq_music ({names}{}) · seq_perc",
+        self.label(1, format!("SEQUENCING\n\nThe drum sequencer is the master clock ({} BPM, {}% swing) and drives the song form ({}). The music sequencer plays {names}{}; a third adds percussion.",
                               self.bpm, self.swing, c.form, if div == 2 { ", 2 bars each" } else { "" }));
         self.module(
             "seq_drums",
@@ -3566,7 +3566,7 @@ impl Recipe {
             .collect();
         self.label(
             2,
-            format!("ROW 2 · DRUMS\n\n{genre} kit · {}", drum_notes.join(" · ")),
+            format!("DRUMS\n\n{genre} kit · {}", drum_notes.join(" · ")),
         );
         let (kp, kd, kdr, kt) = c.g.kick;
         let crisp = tex == "Crisp";
@@ -3764,7 +3764,7 @@ impl Recipe {
         self.label(
             3,
             format!(
-                "ROW 3 · BASS\n\n{} · {}{}",
+                "BASS\n\n{} · {}{}",
                 instruments::design(bass_kind).map_or("sine drone on the roots", |x| x.words),
                 self.notes
                     .iter()
@@ -3896,7 +3896,7 @@ impl Recipe {
         self.label(
             4,
             format!(
-                "ROW 4 · CHORDS\n\n{}{} · 4 voices · low-pass on the sweep lane{}{}",
+                "CHORDS\n\n{}{} · 4 voices · a low-pass filter follows the sweep{}{}",
                 voice_word[..1].to_uppercase(),
                 &voice_word[1..],
                 if c.pad {
@@ -4065,7 +4065,7 @@ impl Recipe {
             self.label(
                 5,
                 format!(
-                    "ROW 5 · MELODY\n\n{} built from the chord tones (always in key) · {}",
+                    "MELODY\n\n{} built from the chord tones (always in key) · {}",
                     if has_lead {
                         lead_word
                     } else {
@@ -4189,7 +4189,7 @@ impl Recipe {
         self.label(
             6,
             format!(
-                "ROW 6 · TEXTURE · {}\n\n{}{}",
+                "TEXTURE · {}\n\n{}{}",
                 tex.to_uppercase(),
                 texture_text(tex)[..1].to_uppercase(),
                 &texture_text(tex)[1..]

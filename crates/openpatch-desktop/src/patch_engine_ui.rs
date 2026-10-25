@@ -805,6 +805,10 @@ impl Panel {
             color: Color32::from_rgb(92, 95, 91),
             ..Default::default()
         };
+        if self.mood.is_none() && self.genre.is_none() && self.texture.is_none() {
+            job.append("What should it sound like?", 0.0, plain);
+            return job;
+        }
         job.append("A ", 0.0, plain.clone());
         match self.mood {
             Some(m) => job.append(&MOODS[m].to_lowercase(), 0.0, chosen.clone()),
@@ -934,7 +938,7 @@ impl Panel {
             demo.start = Instant::now();
         }
         let t = demo.start.elapsed().as_secs_f32();
-        if demo.waiting.is_none() && !self.history.is_empty() {
+        if demo.waiting.is_none() && (demo.words.is_none() || !self.history.is_empty()) {
             if let Some(i) = demo.captures.iter().position(|c| t >= c.1) {
                 let (path, _) = demo.captures.remove(i);
                 ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
@@ -1046,7 +1050,8 @@ impl Panel {
                 };
                 let details = self.info.as_ref().filter(|_| self.details && !busy).map(|info| {
                     let notes: Vec<&str> = info["notes"].as_array().into_iter().flatten().filter_map(|n| n.as_str()).collect();
-                    let text = format!("{}\n\n{} · {} modules · {} cables · seed {}", info["description"].as_str().unwrap_or(""), notes.join(" · "),
+                    let built = secs.map_or(String::new(), |d| format!(" · built in {:.1} s", d.as_secs_f32()));
+                    let text = format!("{}\n\n{} · {} modules · {} cables · seed {}{built}", info["description"].as_str().unwrap_or(""), notes.join(" · "),
                                        info["modules"], info["cables"], info["seed"]);
                     ui.painter().layout(text, face(ui, 13.0), Color32::from_rgb(160, 162, 156), width - 24.0)
                 });
@@ -1067,7 +1072,7 @@ impl Panel {
                     let ch = cap.size().y;
                     p.galley(egui::pos2(screen.left() + 12.0, y), cap, DIM);
                     if self.info.is_some() && !busy {
-                        let more = format!("{}{}", secs.map_or(String::new(), |d| format!("{:.2} s   ", d.as_secs_f32())), if self.details { "less" } else { "more" });
+                        let more = if self.details { "Hide details" } else { "Details" };
                         p.text(egui::pos2(screen.right() - 12.0, y), egui::Align2::RIGHT_TOP, more, face(ui, 13.0),
                                if screen_resp.hovered() { AMBER } else { Color32::from_rgb(120, 112, 92) });
                     }
@@ -1118,9 +1123,11 @@ impl Panel {
                             }
                         }
                     });
-                    let text = format!("genome {current}");
+                    if self.details {
+                    let text = format!("Genome {current}");
                     ui.add(egui::Label::new(RichText::new(text).font(face(ui, 11.5)).color(DIM)).selectable(true))
                         .on_hover_text("Everything that defines this piece: words, song.sound.detail seeds and controls");
+                    }
                 }
                 if let Some(e) = &self.error { ui.label(RichText::new(e).font(face(ui, 13.0)).color(Color32::from_rgb(222, 140, 100))); }
                 if self.remaining.is_some() && ui.button("Resume build").clicked() { self.resume(session); }

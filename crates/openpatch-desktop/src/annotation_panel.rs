@@ -139,7 +139,6 @@ impl Rack {
             } else { (text, Color32::from_rgb(175, 214, 202)) };
             let clipped = painter.with_clip_rect(area.shrink(10.0*z));
             let mut job = egui::text::LayoutJob::simple(text.to_owned(), crate::panel_skin::print_font(painter.ctx(),14.0*z), color, area.width()-20.0*z);
-            job.wrap.break_anywhere = true;
             let galley = painter.layout_job(job);
             clipped.galley(area.min+vec2(10.0, 10.0)*z, galley, color);
             self.lighting.preserve(&painter, emission);
