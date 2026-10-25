@@ -7,6 +7,7 @@ use crate::cross_matter::{self, CrossMatter};
 use crate::event_fork::{self, EventFork};
 use crate::frame_scene::{self, FrameScene};
 use crate::gates::{self, Gates};
+use crate::grain_weather::{self, GrainWeather};
 use crate::host_ports::{
     self, HostCableSnapshot, HostContext, HostModuleSnapshot, HostPortLifecycle, HostPortSnapshot,
     HostPorts,
@@ -154,6 +155,7 @@ pub(crate) fn is_poly_kind(kind: &str) -> bool {
                 | "stock_lfo"
                 | "tidal_functions"
                 | "cross_matter"
+                | "grain_weather"
                 | "frame_scene"
                 | "rhythm_terrain"
                 | "recall_random"
@@ -235,6 +237,7 @@ fn input_port(kind: &str, template: Option<&Dsp>, name: &str) -> Option<usize> {
             .iter()
             .position(|port| *port == name),
         "cross_matter" => cross_matter::INPUTS.iter().position(|port| *port == name),
+        "grain_weather" => grain_weather::INPUTS.iter().position(|port| *port == name),
         "multi_lfo" => multi_lfo::INPUTS.iter().position(|port| *port == name),
         "multi_vco" => multi_vco::INPUTS.iter().position(|port| *port == name),
         "stock_seq3" => stock_seq3::INPUTS.iter().position(|port| *port == name),
@@ -380,6 +383,8 @@ fn output_port(kind: &str, name: &str) -> Option<usize> {
             .position(|port| *port == name)
     } else if kind == "cross_matter" {
         cross_matter::OUTPUTS.iter().position(|port| *port == name)
+    } else if kind == "grain_weather" {
+        grain_weather::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "stock_lfo" {
         stock_lfo::OUTPUTS.iter().position(|port| *port == name)
     } else if kind == "multi_lfo" {
@@ -642,6 +647,11 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
             .iter()
             .map(|s| (*s).to_owned())
             .collect()
+    } else if kind == "grain_weather" {
+        grain_weather::OUTPUTS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
     } else if kind == "stock_lfo" {
         stock_lfo::OUTPUTS
             .iter()
@@ -868,6 +878,9 @@ pub(crate) fn annotate_catalog(module: &mut Value) {
     if kind == "cross_matter" {
         cross_matter::annotate(module);
     }
+    if kind == "grain_weather" {
+        grain_weather::annotate(module);
+    }
     if kind == "frame_scene" {
         frame_scene::annotate(module);
     }
@@ -997,6 +1010,7 @@ enum Model {
     StockLfo(Box<StockLfo>),
     TidalFunctions(Box<TidalFunctions>),
     CrossMatter(Box<CrossMatter>),
+    GrainWeather(Box<GrainWeather>),
     FrameScene(Box<FrameScene>),
     SegmentGarden(Box<SegmentGarden>),
     EventFork(EventFork),
@@ -1194,6 +1208,11 @@ impl Model {
         }
         if node.kind == "cross_matter" {
             return Ok(Self::CrossMatter(Box::new(CrossMatter::build(node, rate)?)));
+        }
+        if node.kind == "grain_weather" {
+            return Ok(Self::GrainWeather(Box::new(GrainWeather::build(
+                node, rate,
+            )?)));
         }
         if node.kind == "stock_lfo" {
             return Ok(Self::StockLfo(Box::new(StockLfo::build(node, rate)?)));
@@ -2153,6 +2172,7 @@ impl PolyEngine {
             Some(Model::StockLfo(s)) => Some(s.lights()),
             Some(Model::TidalFunctions(s)) => Some(s.lights()),
             Some(Model::CrossMatter(s)) => Some(s.lights()),
+            Some(Model::GrainWeather(s)) => Some(s.lights()),
             Some(Model::FrameScene(s)) => Some(s.lights()),
             Some(Model::SegmentGarden(s)) => Some(s.lights()),
             Some(Model::EventFork(s)) => Some(s.lights()),
@@ -2715,6 +2735,7 @@ impl PolyEngine {
             Model::StockLfo(lfo) => lfo.initialize_state(),
             Model::TidalFunctions(tidal) => tidal.initialize_state(),
             Model::CrossMatter(cross) => cross.initialize_state(),
+            Model::GrainWeather(weather) => weather.initialize_state(),
             Model::FrameScene(scene) => scene.initialize_state(),
             Model::SegmentGarden(garden) => garden.initialize_state(),
             Model::EventFork(fork) => fork.initialize_state(),
@@ -2956,6 +2977,7 @@ impl PolyEngine {
                     "stock_lfo" => stock_lfo::OUTPUTS.len(),
                     "tidal_functions" => tidal_functions::OUTPUTS.len(),
                     "cross_matter" => cross_matter::OUTPUTS.len(),
+                    "grain_weather" => grain_weather::OUTPUTS.len(),
                     "frame_scene" => frame_scene::OUTPUTS.len(),
                     "segment_garden" => segment_garden::OUTPUTS.len(),
                     "event_fork" => event_fork::OUTPUTS.len(),
@@ -4027,6 +4049,20 @@ impl PolyEngine {
                             [node.output_start..node.output_start + cross_matter::OUTPUTS.len()],
                     );
                 }
+                Model::GrainWeather(weather) => {
+                    let mut inputs = [PortFrame::default(); 10];
+                    for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
+                        if let Some(edge) = edge {
+                            *input = self.input_frames[*edge];
+                        }
+                    }
+                    weather.process(
+                        &inputs,
+                        node.connected_mask as u16,
+                        &mut self.outputs
+                            [node.output_start..node.output_start + grain_weather::OUTPUTS.len()],
+                    );
+                }
                 Model::StockLfo(lfo) => {
                     let mut inputs = [PortFrame::default(); 4];
                     for (input, edge) in inputs.iter_mut().zip(&node.inputs) {
@@ -4645,6 +4681,7 @@ impl PolyEngine {
                 (Model::StockLfo(s), Model::StockLfo(old)) => s.adopt(old),
                 (Model::TidalFunctions(s), Model::TidalFunctions(old)) => s.adopt(old),
                 (Model::CrossMatter(s), Model::CrossMatter(old)) => s.adopt(old),
+                (Model::GrainWeather(s), Model::GrainWeather(old)) => s.adopt(old),
                 (Model::FrameScene(s), Model::FrameScene(old)) => s.adopt(old),
                 (Model::SegmentGarden(s), Model::SegmentGarden(old)) => s.adopt(old),
                 (Model::EventFork(s), Model::EventFork(old)) => s.adopt(old),
