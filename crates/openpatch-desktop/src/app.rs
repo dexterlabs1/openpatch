@@ -89,10 +89,10 @@ fn timing_status(snapshot: Option<&AudioTimingSnapshot>) -> TimingStatus {
 fn timing_footer(snapshot: Option<&AudioTimingSnapshot>) -> String {
     match timing_status(snapshot) {
         TimingStatus::Ready => {
-            format!("DSP {:.1}%", snapshot.unwrap().utilization.unwrap() * 100.0)
+            format!("CPU {:.0}%", snapshot.unwrap().utilization.unwrap() * 100.0)
         }
-        TimingStatus::ResetPending => "DSP reset…".into(),
-        _ => "DSP —".into(),
+        TimingStatus::ResetPending => "CPU …".into(),
+        _ => "CPU —".into(),
     }
 }
 
@@ -410,6 +410,8 @@ pub struct OpenPatch {
     patch_engine_wait: Option<Option<crate::patch_engine_ui::DocumentFence>>,
     /// Rack zoom to keep across a Patch Engine build (a fresh document would otherwise reset it).
     patch_engine_zoom: f32,
+    /// Rebaseline once the first-launch fit lands, if the document was clean before it.
+    fit_keeps_saved: bool,
     /// Verified generated authored content; any edit, save or replacement revokes scratch status.
     patch_engine_last: Option<crate::patch_engine_ui::GeneratedDocument>,
     construction: crate::construction_ui::Panel,
@@ -619,6 +621,7 @@ impl OpenPatch {
             patch_engine: Default::default(),
             patch_engine_wait: None,
             patch_engine_zoom: 1.0,
+            fit_keeps_saved: false,
             patch_engine_last: None,
             construction: crate::construction_ui::Panel::default(),
             construction_footer_action: None,
@@ -1062,6 +1065,7 @@ impl OpenPatch {
                     .max_height(max_height)
                     .show(ui, |ui| {
                         ui.heading("Display");
+                        ui.add_space(2.0);
                         let mut scale = self.ui_scale;
                         ui.horizontal(|ui| {
                             ui.label("Interface size");
@@ -1093,9 +1097,8 @@ impl OpenPatch {
                             });
                         }
                         ui.separator();
-                        ui.heading("Audio & MIDI");
-                        ui.add_space(4.0);
-                        ui.heading("Audio output");
+                        ui.heading("Audio");
+                        ui.label(RichText::new("Output device").strong());
                         let mut selected = self.output_device.clone();
                         let audio_device = egui::ComboBox::from_id_salt("audio-device")
                             .width(ui.available_width())
@@ -1135,7 +1138,8 @@ impl OpenPatch {
                             "Changing the output pauses playback. Sample rate follows the device.",
                         );
                         ui.separator();
-                        ui.heading("Global MIDI input");
+                        ui.heading("MIDI");
+                        ui.label(RichText::new("Input device").strong());
                         let mut midi = self.midi_device.clone();
                         let midi_label = midi
                             .as_ref()
@@ -8397,6 +8401,10 @@ impl eframe::App for OpenPatch {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update_frame(ctx);
+        // A focused text field publishes an IME request; that is when a Deck player needs a keyboard.
+        if self.handheld && ctx.output(|o| o.ime.is_some()) {
+            keyboard_hint(ctx);
+        }
     }
 
     fn on_exit(&mut self, gl: Option<&glow::Context>) {
@@ -8406,6 +8414,40 @@ impl eframe::App for OpenPatch {
             v.destroy(gl);
         }
     }
+}
+
+/// Steam Deck Game Mode has no physical keyboard; Steam's own keyboard opens with STEAM + X.
+fn keyboard_hint(ctx: &egui::Context) {
+    egui::Area::new(egui::Id::new("handheld-keyboard-hint"))
+        .order(egui::Order::Tooltip)
+        .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -40.0))
+        .interactable(false)
+        .show(ctx, |ui| {
+            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                ui.label("Press STEAM + X for the on-screen keyboard");
+            });
+        });
+}
+
+#[cfg(test)]
+#[test]
+fn focused_text_field_requests_the_handheld_keyboard_hint() {
+    let ctx = egui::Context::default();
+    let mut text = String::new();
+    let mut ime = Vec::new();
+    for _ in 0..2 {
+        let output = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.text_edit_singleline(&mut text).request_focus();
+            });
+        });
+        ime.push(output.platform_output.ime.is_some());
+    }
+    assert_eq!(ime.last(), Some(&true));
+    let idle = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| ui.label("rack"));
+    });
+    assert!(idle.platform_output.ime.is_none());
 }
 
 impl OpenPatch {
@@ -8519,6 +8561,7 @@ impl OpenPatch {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
             }
         }
+        let engine_was_open = self.patch_engine.is_open();
         for request in self.patch_engine.show(ctx, &self.shared) {
             match request {
                 crate::patch_engine_ui::Request::StartPlayback => {
@@ -8538,6 +8581,16 @@ impl OpenPatch {
                     }
                 }
             }
+        }
+        // Small screens open the Patch Engine on launch; keep the starter patch visible beside it.
+        if !engine_was_open && self.patch_engine.is_open() {
+            self.rack.request_fit();
+            self.fit_keeps_saved = !self.dirty();
+        } else if self.fit_keeps_saved && !self.rack.fit_pending() {
+            // A view fit is not an edit: an untouched starter patch stays unmodified.
+            self.fit_keeps_saved = false;
+            let document = self.capture_document();
+            self.documents.mark_saved(&document);
         }
         // The existing smoke scenes own their layout. Panel::show may open the
         // Patch Engine automatically on a small viewport's first frame; close
@@ -8894,6 +8947,7 @@ mod project_workflow_tests {
             patch_engine: Default::default(),
             patch_engine_wait: None,
             patch_engine_zoom: 1.0,
+            fit_keeps_saved: false,
             patch_engine_last: None,
             construction: crate::construction_ui::Panel::default(),
             construction_footer_action: None,
@@ -11533,7 +11587,7 @@ mod project_workflow_tests {
     #[test]
     fn audio_timing_presentation_never_turns_missing_or_pending_data_into_zero_load() {
         assert_eq!(timing_status(None), TimingStatus::Unavailable);
-        assert_eq!(timing_footer(None), "DSP —");
+        assert_eq!(timing_footer(None), "CPU —");
         let mut snapshot = AudioTimingSnapshot {
             available: true,
             coherent: true,
@@ -11548,22 +11602,22 @@ mod project_workflow_tests {
             ..AudioTimingSnapshot::default()
         };
         assert_eq!(timing_status(Some(&snapshot)), TimingStatus::Ready);
-        assert_eq!(timing_footer(Some(&snapshot)), "DSP 16.9%");
+        assert_eq!(timing_footer(Some(&snapshot)), "CPU 17%");
         assert_eq!(weighted_mean_utilization(&snapshot), Some(0.5));
         snapshot.reset_pending = true;
         assert_eq!(timing_status(Some(&snapshot)), TimingStatus::ResetPending);
-        assert_eq!(timing_footer(Some(&snapshot)), "DSP reset…");
+        assert_eq!(timing_footer(Some(&snapshot)), "CPU …");
         snapshot.reset_pending = false;
         snapshot.coherent = false;
         assert_eq!(timing_status(Some(&snapshot)), TimingStatus::Contended);
-        assert_eq!(timing_footer(Some(&snapshot)), "DSP —");
+        assert_eq!(timing_footer(Some(&snapshot)), "CPU —");
         snapshot.coherent = true;
         snapshot.available = false;
         assert_eq!(timing_status(Some(&snapshot)), TimingStatus::Waiting);
         snapshot.available = true;
         snapshot.closed = true;
         assert_eq!(timing_status(Some(&snapshot)), TimingStatus::Stopped);
-        assert_eq!(timing_footer(Some(&snapshot)), "DSP —");
+        assert_eq!(timing_footer(Some(&snapshot)), "CPU —");
     }
 
     #[test]

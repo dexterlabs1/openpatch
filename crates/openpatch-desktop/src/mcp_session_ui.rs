@@ -226,21 +226,14 @@ impl Panel {
     pub(crate) fn toolbar(&mut self, ui: &mut egui::Ui, session: &SharedSession, workspace: &Path) {
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         let _ = (session, workspace);
-        let label = if self.session_id().is_some() {
-            "MCP"
+        let label = if self.session_id().is_some() && self.clients() > 0 {
+            "AI connected"
         } else {
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
-            {
-                "Start MCP bridge"
-            }
-            #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-            {
-                "MCP"
-            }
+            "Connect AI"
         };
         let response = ui
             .button(label)
-            .on_hover_text("Connect Claude or Codex to this live rack");
+            .on_hover_text("Let Claude or Codex edit this live rack over MCP");
         if self.open && self.anchor.is_some_and(|(_, _, above)| !above) {
             self.anchor = Some((response.rect, response.layer_id, false));
         }
@@ -252,6 +245,13 @@ impl Panel {
             self.anchor = Some((response.rect, response.layer_id, false));
             self.open = !self.open;
         }
+    }
+
+    /// Nothing to report: no connected client and no error.
+    pub(crate) fn is_idle(&self) -> bool {
+        !self.open
+            && self.error_message().is_none()
+            && (self.session_id().is_none() || self.clients() == 0)
     }
 
     pub(crate) fn status(&mut self, ui: &mut egui::Ui) {

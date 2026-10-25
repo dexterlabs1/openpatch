@@ -181,6 +181,6 @@ fn midi_gate_app_settings_label_the_endpoint_as_global() {
             |ctx| app.audio_settings(ctx),
         ));
     }
-    assert!(rendered.iter().any(|s| s == "Global MIDI input"));
+    assert!(rendered.iter().any(|s| s == "MIDI"));
     assert!(rendered.iter().any(|s| s.contains("on-screen keyboard")));
 }

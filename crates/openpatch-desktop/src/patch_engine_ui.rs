@@ -39,11 +39,11 @@ const TEXTURE_KEYS: [egui::Key; 8] = [
     egui::Key::J,
     egui::Key::K,
 ];
-/// Genre index used for the Minecraft (C418-style) mode, after the genre words.
-const MINECRAFT: usize = GENRES.len();
+/// Genre index used for the Ambient Piano mode, after the genre words.
+const PIANO_MODE: usize = GENRES.len();
 fn genre_name(i: usize) -> &'static str {
-    if i == MINECRAFT {
-        "Minecraft"
+    if i == PIANO_MODE {
+        openpatch::patch_engine::PIANO
     } else {
         GENRES[i]
     }
@@ -106,11 +106,22 @@ fn cell(
             AMBER,
         );
     }
+    // Long names (Progressive House on a Deck-width sheet) shrink to fit instead of running past the cell.
+    let room = rect.width() - 18.0;
+    let natural = p
+        .layout_no_wrap(text.to_owned(), face(ui, 14.5), INK)
+        .size()
+        .x;
+    let size = if natural > room {
+        (14.5 * room / natural).max(11.0)
+    } else {
+        14.5
+    };
     p.text(
         rect.left_center() + egui::vec2(10.0, 0.0),
         egui::Align2::LEFT_CENTER,
         text,
-        face(ui, 14.5),
+        face(ui, size),
         if selected { AMBER } else { INK },
     );
     if let Some(tip) = tip.filter(|t| !t.is_empty()) {
@@ -382,8 +393,11 @@ impl Demo {
                 let p: Vec<&str> = v.split('|').collect();
                 let find =
                     |list: &[&str], w: &str| list.iter().position(|x| x.eq_ignore_ascii_case(w));
-                let genre = if p.first()?.eq_ignore_ascii_case("minecraft") {
-                    MINECRAFT
+                let genre = if ["minecraft", "ambient piano"]
+                    .iter()
+                    .any(|w| p.first().is_some_and(|f| f.eq_ignore_ascii_case(w)))
+                {
+                    PIANO_MODE
                 } else {
                     find(&GENRES, p.first()?)?
                 };
@@ -805,6 +819,10 @@ impl Panel {
             color: Color32::from_rgb(92, 95, 91),
             ..Default::default()
         };
+        if self.mood.is_none() && self.genre.is_none() && self.texture.is_none() {
+            job.append("What should it sound like?", 0.0, plain);
+            return job;
+        }
         job.append("A ", 0.0, plain.clone());
         match self.mood {
             Some(m) => job.append(&MOODS[m].to_lowercase(), 0.0, chosen.clone()),
@@ -882,8 +900,8 @@ impl Panel {
                 1 => &mut self.mood,
                 _ => &mut self.texture,
             };
-            // genres include the C418 mode after the genre words; moods and textures have eight words
-            let n = if self.cursor == 0 { MINECRAFT + 1 } else { 8 };
+            // genres include the Ambient Piano mode after the genre words; moods and textures have eight words
+            let n = if self.cursor == 0 { PIANO_MODE + 1 } else { 8 };
             let step = if step == 7 { n - 1 } else { step };
             *slot = Some(slot.map_or(0, |i| (i + step) % n));
         }
@@ -899,7 +917,7 @@ impl Panel {
     }
 
     fn surprise(&mut self, session: &SharedSession) {
-        self.genre = Some((next_seed(&mut self.rng) % (MINECRAFT as u64 + 1)) as usize);
+        self.genre = Some((next_seed(&mut self.rng) % (PIANO_MODE as u64 + 1)) as usize);
         self.mood = Some((next_seed(&mut self.rng) % 8) as usize);
         self.texture = Some((next_seed(&mut self.rng) % 8) as usize);
         self.keep_seed = false;
@@ -934,7 +952,7 @@ impl Panel {
             demo.start = Instant::now();
         }
         let t = demo.start.elapsed().as_secs_f32();
-        if demo.waiting.is_none() && !self.history.is_empty() {
+        if demo.waiting.is_none() && (demo.words.is_none() || !self.history.is_empty()) {
             if let Some(i) = demo.captures.iter().position(|c| t >= c.1) {
                 let (path, _) = demo.captures.remove(i);
                 ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
@@ -1046,7 +1064,8 @@ impl Panel {
                 };
                 let details = self.info.as_ref().filter(|_| self.details && !busy).map(|info| {
                     let notes: Vec<&str> = info["notes"].as_array().into_iter().flatten().filter_map(|n| n.as_str()).collect();
-                    let text = format!("{}\n\n{} · {} modules · {} cables · seed {}", info["description"].as_str().unwrap_or(""), notes.join(" · "),
+                    let built = secs.map_or(String::new(), |d| format!(" · built in {:.1} s", d.as_secs_f32()));
+                    let text = format!("{}\n\n{} · {} modules · {} cables · seed {}{built}", info["description"].as_str().unwrap_or(""), notes.join(" · "),
                                        info["modules"], info["cables"], info["seed"]);
                     ui.painter().layout(text, face(ui, 13.0), Color32::from_rgb(160, 162, 156), width - 24.0)
                 });
@@ -1067,7 +1086,7 @@ impl Panel {
                     let ch = cap.size().y;
                     p.galley(egui::pos2(screen.left() + 12.0, y), cap, DIM);
                     if self.info.is_some() && !busy {
-                        let more = format!("{}{}", secs.map_or(String::new(), |d| format!("{:.2} s   ", d.as_secs_f32())), if self.details { "less" } else { "more" });
+                        let more = if self.details { "Hide details" } else { "Details" };
                         p.text(egui::pos2(screen.right() - 12.0, y), egui::Align2::RIGHT_TOP, more, face(ui, 13.0),
                                if screen_resp.hovered() { AMBER } else { Color32::from_rgb(120, 112, 92) });
                     }
@@ -1118,9 +1137,11 @@ impl Panel {
                             }
                         }
                     });
-                    let text = format!("genome {current}");
+                    if self.details {
+                    let text = format!("Genome {current}");
                     ui.add(egui::Label::new(RichText::new(text).font(face(ui, 11.5)).color(DIM)).selectable(true))
                         .on_hover_text("Everything that defines this piece: words, song.sound.detail seeds and controls");
+                    }
                 }
                 if let Some(e) = &self.error { ui.label(RichText::new(e).font(face(ui, 13.0)).color(Color32::from_rgb(222, 140, 100))); }
                 if self.remaining.is_some() && ui.button("Resume build").clicked() { self.resume(session); }
@@ -1129,9 +1150,9 @@ impl Panel {
                 let words = egui::ScrollArea::vertical().id_salt("patch-engine-words").auto_shrink([false, true]).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible).max_height(ui.available_height().max(0.0)).min_scrolled_height(0.0).show(ui, |ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
                     let mut genres: Vec<&str> = GENRES.to_vec();
-                    genres.push("C418");
+                    genres.push(openpatch::patch_engine::PIANO);
                     Self::section(ui, "Genre", self.cursor == 0);
-                    if let Some(i) = matrix(ui, &genres, self.genre, 3, Some(|w: &str| if w == "C418" { "Minecraft-style: soft piano, slow drifting harmony, lots of space (original music in the spirit of C418)" } else { "" })) {
+                    if let Some(i) = matrix(ui, &genres, self.genre, 3, Some(|w: &str| if w == openpatch::patch_engine::PIANO { "Soft piano figures, slow drifting harmony and lots of space; no drums" } else { "" })) {
                         self.genre = Some(i);
                     }
                     ui.add_space(4.0);
