@@ -1062,6 +1062,7 @@ impl OpenPatch {
                     .max_height(max_height)
                     .show(ui, |ui| {
                         ui.heading("Display");
+                        ui.add_space(2.0);
                         let mut scale = self.ui_scale;
                         ui.horizontal(|ui| {
                             ui.label("Interface size");
@@ -1093,9 +1094,8 @@ impl OpenPatch {
                             });
                         }
                         ui.separator();
-                        ui.heading("Audio & MIDI");
-                        ui.add_space(4.0);
-                        ui.heading("Audio output");
+                        ui.heading("Audio");
+                        ui.label(RichText::new("Output device").strong());
                         let mut selected = self.output_device.clone();
                         let audio_device = egui::ComboBox::from_id_salt("audio-device")
                             .width(ui.available_width())
@@ -1135,7 +1135,8 @@ impl OpenPatch {
                             "Changing the output pauses playback. Sample rate follows the device.",
                         );
                         ui.separator();
-                        ui.heading("Global MIDI input");
+                        ui.heading("MIDI");
+                        ui.label(RichText::new("Input device").strong());
                         let mut midi = self.midi_device.clone();
                         let midi_label = midi
                             .as_ref()
