@@ -410,6 +410,8 @@ pub struct OpenPatch {
     patch_engine_wait: Option<Option<crate::patch_engine_ui::DocumentFence>>,
     /// Rack zoom to keep across a Patch Engine build (a fresh document would otherwise reset it).
     patch_engine_zoom: f32,
+    /// Rebaseline once the first-launch fit lands, if the document was clean before it.
+    fit_keeps_saved: bool,
     /// Verified generated authored content; any edit, save or replacement revokes scratch status.
     patch_engine_last: Option<crate::patch_engine_ui::GeneratedDocument>,
     construction: crate::construction_ui::Panel,
@@ -619,6 +621,7 @@ impl OpenPatch {
             patch_engine: Default::default(),
             patch_engine_wait: None,
             patch_engine_zoom: 1.0,
+            fit_keeps_saved: false,
             patch_engine_last: None,
             construction: crate::construction_ui::Panel::default(),
             construction_footer_action: None,
@@ -8520,6 +8523,7 @@ impl OpenPatch {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
             }
         }
+        let engine_was_open = self.patch_engine.is_open();
         for request in self.patch_engine.show(ctx, &self.shared) {
             match request {
                 crate::patch_engine_ui::Request::StartPlayback => {
@@ -8539,6 +8543,16 @@ impl OpenPatch {
                     }
                 }
             }
+        }
+        // Small screens open the Patch Engine on launch; keep the starter patch visible beside it.
+        if !engine_was_open && self.patch_engine.is_open() {
+            self.rack.request_fit();
+            self.fit_keeps_saved = !self.dirty();
+        } else if self.fit_keeps_saved && !self.rack.fit_pending() {
+            // A view fit is not an edit: an untouched starter patch stays unmodified.
+            self.fit_keeps_saved = false;
+            let document = self.capture_document();
+            self.documents.mark_saved(&document);
         }
         // The existing smoke scenes own their layout. Panel::show may open the
         // Patch Engine automatically on a small viewport's first frame; close
@@ -8895,6 +8909,7 @@ mod project_workflow_tests {
             patch_engine: Default::default(),
             patch_engine_wait: None,
             patch_engine_zoom: 1.0,
+            fit_keeps_saved: false,
             patch_engine_last: None,
             construction: crate::construction_ui::Panel::default(),
             construction_footer_action: None,

@@ -787,6 +787,8 @@ pub struct Rack {
     // Center zoom may arrive from the toolbar before this frame measures the
     // resized rack. Correct that pivot once the new canvas is available.
     pending_center_zoom_ratio: f32,
+    // Zoom out once, on the next measured frame, so the whole patch is visible (first launch).
+    fit_pending: bool,
     positions_locked: bool,
     lighting: crate::lighting::RoomLighting,
     new_cable_selection: Option<crate::cable_palette::Selection>,
@@ -868,6 +870,7 @@ impl Default for Rack {
             zoom: 1.0,
             viewport: None,
             pending_center_zoom_ratio: 1.0,
+            fit_pending: false,
             positions_locked: false,
             lighting: crate::lighting::RoomLighting::default(),
             new_cable_selection: None,
@@ -1716,6 +1719,28 @@ impl Rack {
         self.layout_revision = self.layout_revision.wrapping_add(1);
     }
 
+    /// Zoom out (never in) on the next frame so the whole patch fits the rack viewport.
+    pub(crate) fn request_fit(&mut self) {
+        self.fit_pending = true;
+    }
+    pub(crate) fn fit_pending(&self) -> bool {
+        self.fit_pending
+    }
+
+    fn fit_patch(&mut self, patch: &Patch, viewport: Vec2) {
+        let extent = patch.nodes.iter().filter_map(|n| {
+            let at = self.positions.get(&n.id)?;
+            Some(vec2(at.x + module_width(n), at.y + PANEL_HEIGHT))
+        });
+        let extent = extent.fold(Vec2::ZERO, Vec2::max);
+        if extent.x <= 0.0 {
+            return;
+        }
+        let room = viewport - vec2(48.0, 24.0);
+        let zoom = (room.x / extent.x).min(room.y / extent.y).min(self.zoom);
+        self.show_origin((zoom * 20.0).floor() / 20.0);
+    }
+
     /// Mac-like scroll smoothing: ease toward the scrolled distance, then glide with decaying momentum.
     fn ease_camera(&mut self, ui: &egui::Ui) {
         if ui.input(|i| i.pointer.any_down()) {
@@ -2050,6 +2075,9 @@ impl Rack {
         }
         self.pending_center_zoom_ratio = 1.0;
         self.viewport = Some(canvas);
+        if std::mem::take(&mut self.fit_pending) {
+            self.fit_patch(patch, canvas.size());
+        }
         let blocked = !interactive
             || !self.shortcuts_enabled
             || !ui.input(|i| i.focused)
