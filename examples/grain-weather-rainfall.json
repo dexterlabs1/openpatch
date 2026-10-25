@@ -1,0 +1,88 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "guide",
+      "kind": "notes",
+      "content": {
+        "type": "notes",
+        "text": "GRAIN WEATHER\nRAINFALL\nTwo detuned voices feed the\nlive buffer. Random grains\nscatter across the stereo\nfield; a slow LFO drifts\nPOSITION back in time and a\nclock adds grains on TRIGGER.\nTry FREEZE, then MODE."
+      }
+    },
+    {
+      "id": "low_vco",
+      "kind": "stock_vco",
+      "params": {
+        "frequency": -17
+      }
+    },
+    {
+      "id": "high_vco",
+      "kind": "stock_vco",
+      "params": {
+        "frequency": -10
+      }
+    },
+    {
+      "id": "drift",
+      "kind": "stock_lfo",
+      "params": {
+        "rate": -4,
+        "offset": 0
+      }
+    },
+    {
+      "id": "drift_depth",
+      "kind": "attenuverter",
+      "params": {
+        "gain": 0.25,
+        "offset": 0
+      }
+    },
+    {
+      "id": "clock",
+      "kind": "stock_lfo",
+      "params": {
+        "rate": 2.3,
+        "offset": 0
+      }
+    },
+    {
+      "id": "grain",
+      "kind": "grain_weather",
+      "params": {
+        "position": 0.25,
+        "size": 0.45,
+        "pitch": 0,
+        "density": 0.78,
+        "texture": 0.62,
+        "blend": 0.7,
+        "spread": 0.85,
+        "feedback": 0.2,
+        "reverb": 0.45,
+        "freeze": 0,
+        "mode": 0,
+        "quality": 0
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.8,
+        "dc_block": 1
+      }
+    }
+  ],
+  "cables": [
+    {"from": "low_vco", "output": "triangle", "to": "grain", "input": "left"},
+    {"from": "high_vco", "output": "saw", "to": "grain", "input": "right"},
+    {"from": "drift", "output": "triangle", "to": "drift_depth", "input": "signal"},
+    {"from": "drift_depth", "output": "out", "to": "grain", "input": "position_cv"},
+    {"from": "clock", "output": "square", "to": "grain", "input": "trigger"},
+    {"from": "grain", "output": "left", "to": "out", "input": "left"},
+    {"from": "grain", "output": "right", "to": "out", "input": "right"}
+  ],
+  "output": "out"
+}

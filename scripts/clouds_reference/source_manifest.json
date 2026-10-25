@@ -1,0 +1,257 @@
+{
+  "compile_sources": [
+    "clouds/dsp/granular_processor.cc",
+    "clouds/dsp/correlator.cc",
+    "clouds/dsp/mu_law.cc",
+    "clouds/dsp/pvoc/frame_transformation.cc",
+    "clouds/dsp/pvoc/phase_vocoder.cc",
+    "clouds/dsp/pvoc/stft.cc",
+    "clouds/resources.cc",
+    "stmlib/dsp/units.cc",
+    "stmlib/dsp/atan.cc",
+    "stmlib/utils/random.cc"
+  ],
+  "repositories": {
+    "eurorack": {
+      "url": "https://github.com/pichenettes/eurorack",
+      "commit": "f4cfa7697095a28d292bff758beb51deb49b5a86"
+    },
+    "stmlib": {
+      "url": "https://github.com/pichenettes/stmlib",
+      "commit": "e3bd7c9cc00e4364166f9905c0509b6ffd0535ec",
+      "gitlink_from": "eurorack f4cfa7697095a28d292bff758beb51deb49b5a86:stmlib"
+    },
+    "eurorack_2019": {
+      "url": "https://github.com/pichenettes/eurorack",
+      "commit": "2a468734bdd53bea0f25165bf34d92a4c571db13",
+      "note": "last revision of clouds/dsp/window.h before the 2023 static-analysis edits (0e3756f, fbb53ba) that together removed both done_ = false assignments from Window::Start"
+    }
+  },
+  "stubs": {
+    "clouds/drivers/debug_pin.h": "empty profiling stub; granular_processor.cc includes it but uses no symbol from it"
+  },
+  "files": {
+    "clouds/dsp/audio_buffer.h": {
+      "path": "clouds/dsp/audio_buffer.h",
+      "repository": "eurorack",
+      "sha256": "110c63276ec84cbb211f98a5897d075307471da25ae1845da82dac504d052657"
+    },
+    "clouds/dsp/correlator.cc": {
+      "path": "clouds/dsp/correlator.cc",
+      "repository": "eurorack",
+      "sha256": "f2b929b8cbd92031f207c377aa862a46ec910ce2520549eb5fa1be8c5dc134fb"
+    },
+    "clouds/dsp/correlator.h": {
+      "path": "clouds/dsp/correlator.h",
+      "repository": "eurorack",
+      "sha256": "b0f5ed2d1c3816d961e8a5af13feb5cef2e5d38ee1eee4d6a75fb3ae1f219bae"
+    },
+    "clouds/dsp/frame.h": {
+      "path": "clouds/dsp/frame.h",
+      "repository": "eurorack",
+      "sha256": "203a758cd626f7d5ca0d3bd70457ba15b36d2ddc9fea5a2c56eab3cdd15ec3b4"
+    },
+    "clouds/dsp/fx/diffuser.h": {
+      "path": "clouds/dsp/fx/diffuser.h",
+      "repository": "eurorack",
+      "sha256": "e411e3fd0df62d556942286b3c957ab594c5d45e1b16ec416cd6b21e09d650c9"
+    },
+    "clouds/dsp/fx/fx_engine.h": {
+      "path": "clouds/dsp/fx/fx_engine.h",
+      "repository": "eurorack",
+      "sha256": "8bd367622b97247a371f70871446971b63191df51b7d2a4e06163c86f3408641"
+    },
+    "clouds/dsp/fx/pitch_shifter.h": {
+      "path": "clouds/dsp/fx/pitch_shifter.h",
+      "repository": "eurorack",
+      "sha256": "ef2e082d95105946941b56905a4c62966374f9b5dc1f99610fd2cb9ce3d10a9b"
+    },
+    "clouds/dsp/fx/reverb.h": {
+      "path": "clouds/dsp/fx/reverb.h",
+      "repository": "eurorack",
+      "sha256": "0073b0535623a008d0619f508e4e813ac6087ebd9a02f22d856f49ac2ce458be"
+    },
+    "clouds/dsp/grain.h": {
+      "path": "clouds/dsp/grain.h",
+      "repository": "eurorack",
+      "sha256": "08feb5ac5408e2cb30eb037a844f6ee187d8dedd53fee913d1b5ab2c74ebfac3"
+    },
+    "clouds/dsp/granular_processor.cc": {
+      "path": "clouds/dsp/granular_processor.cc",
+      "repository": "eurorack",
+      "sha256": "b269442f850c344b4598424c7ccc3750f1ca090979d975af3af6e2e96ecd8d88"
+    },
+    "clouds/dsp/granular_processor.h": {
+      "path": "clouds/dsp/granular_processor.h",
+      "repository": "eurorack",
+      "sha256": "193ec74cf3d3eef3f072f181ddcf1688c8b9de0ea8fdbfce3cdab395ffd9e568"
+    },
+    "clouds/dsp/granular_sample_player.h": {
+      "path": "clouds/dsp/granular_sample_player.h",
+      "repository": "eurorack",
+      "sha256": "1cabcbe9d39b5d9eeeaf31d9c71783d9349bf63f0ec9e92167ee181ccd22a406"
+    },
+    "clouds/dsp/looping_sample_player.h": {
+      "path": "clouds/dsp/looping_sample_player.h",
+      "repository": "eurorack",
+      "sha256": "09e9fc5a9697edb0d4bd354a037d593c232c54282896ca4005b55476bb32de65"
+    },
+    "clouds/dsp/mu_law.cc": {
+      "path": "clouds/dsp/mu_law.cc",
+      "repository": "eurorack",
+      "sha256": "8bc0c3ff12760bd1bc839c5f862f4190ecf1bf54fe219081aaba9549573d2b20"
+    },
+    "clouds/dsp/mu_law.h": {
+      "path": "clouds/dsp/mu_law.h",
+      "repository": "eurorack",
+      "sha256": "9c79d3ad8680cef63db102f70f54c00fb2a94077c880dc8b6250de058a138666"
+    },
+    "clouds/dsp/parameters.h": {
+      "path": "clouds/dsp/parameters.h",
+      "repository": "eurorack",
+      "sha256": "1d41ec7d86063204ef8f2301ee62170df0cf5933a955545be37e9ab400c46e64"
+    },
+    "clouds/dsp/pvoc/frame_transformation.cc": {
+      "path": "clouds/dsp/pvoc/frame_transformation.cc",
+      "repository": "eurorack",
+      "sha256": "fb8b7d9fcd83be693de27055e26a99cc3cc2034bf4719e618086ea6e25044b92"
+    },
+    "clouds/dsp/pvoc/frame_transformation.h": {
+      "path": "clouds/dsp/pvoc/frame_transformation.h",
+      "repository": "eurorack",
+      "sha256": "ecdf17d9f0d585d165ec578f33f0318c13def2465789fafea49fabc9bb618e8a"
+    },
+    "clouds/dsp/pvoc/phase_vocoder.cc": {
+      "path": "clouds/dsp/pvoc/phase_vocoder.cc",
+      "repository": "eurorack",
+      "sha256": "131998e77aa157a6364fb5bd300b7200e305a0abb58be1f217b04bb8d43d1047"
+    },
+    "clouds/dsp/pvoc/phase_vocoder.h": {
+      "path": "clouds/dsp/pvoc/phase_vocoder.h",
+      "repository": "eurorack",
+      "sha256": "1b88908fc19f037db4db51015a461ec8616b7c2d97e4225eee070d271f925982"
+    },
+    "clouds/dsp/pvoc/stft.cc": {
+      "path": "clouds/dsp/pvoc/stft.cc",
+      "repository": "eurorack",
+      "sha256": "ba437b924c33eee0933670fadeb1cf21830cf5056614bef75b94ee7c3f215961"
+    },
+    "clouds/dsp/pvoc/stft.h": {
+      "path": "clouds/dsp/pvoc/stft.h",
+      "repository": "eurorack",
+      "sha256": "919fc70c6aea1276f867785e915de54e9074ebb2d7cfb39bc1cd99a482a41fa3"
+    },
+    "clouds/dsp/sample_rate_converter.h": {
+      "path": "clouds/dsp/sample_rate_converter.h",
+      "repository": "eurorack",
+      "sha256": "e5da3a3133556709cc6263b75a4e9797d9fc8546d24e0847a752f7931f0793c3"
+    },
+    "clouds/dsp/window.h": {
+      "path": "clouds/dsp/window.h",
+      "repository": "eurorack",
+      "sha256": "d74c831fac9db4454e5fce32c6e80df2afd6e8742a44f0171c89086337422644"
+    },
+    "clouds/dsp/wsola_sample_player.h": {
+      "path": "clouds/dsp/wsola_sample_player.h",
+      "repository": "eurorack",
+      "sha256": "17599b3c7c4632ca7d92c6ef7b88f582a71127734674412002ad822f76e0eff6"
+    },
+    "clouds/resources.cc": {
+      "path": "clouds/resources.cc",
+      "repository": "eurorack",
+      "sha256": "167b5371080dfd1c8c493cdbb9ea8170cada7153fafea333e6d5657dd70f3568"
+    },
+    "clouds/resources.h": {
+      "path": "clouds/resources.h",
+      "repository": "eurorack",
+      "sha256": "5935cca20a9e4df6cfd73b93fd40477154e761e724901fc42d4853eb0945b634"
+    },
+    "stmlib/dsp/atan.cc": {
+      "path": "dsp/atan.cc",
+      "repository": "stmlib",
+      "sha256": "2bca8c181f004136a30ff24bcdc8f9b8a0765d513e9f0fd77e1dbbac8da718d1"
+    },
+    "stmlib/dsp/atan.h": {
+      "path": "dsp/atan.h",
+      "repository": "stmlib",
+      "sha256": "e386018f41ddb81acda4c56503dd38eee45a5e7d54c7328dbe07ebf362f2b333"
+    },
+    "stmlib/dsp/cosine_oscillator.h": {
+      "path": "dsp/cosine_oscillator.h",
+      "repository": "stmlib",
+      "sha256": "a7f6429e8bca85aa19ce91e3f1908fd7fb1fdf378a61fe2c87717a94d6f30a97"
+    },
+    "stmlib/dsp/dsp.h": {
+      "path": "dsp/dsp.h",
+      "repository": "stmlib",
+      "sha256": "98b42900c4accbe9fbb2cfe2ec6fada024b57ec9a1becff008b0f35bd4fd8ddb"
+    },
+    "stmlib/dsp/filter.h": {
+      "path": "dsp/filter.h",
+      "repository": "stmlib",
+      "sha256": "f4bbf97ac8dfdea255b8a37e179ba0286978c01a12ad8d3362eaa5862cf7c326"
+    },
+    "stmlib/dsp/parameter_interpolator.h": {
+      "path": "dsp/parameter_interpolator.h",
+      "repository": "stmlib",
+      "sha256": "4b05028c320e6946418a36e9662a4e5a142e5bfab0423835a77d074d9c7fc217"
+    },
+    "stmlib/dsp/rsqrt.h": {
+      "path": "dsp/rsqrt.h",
+      "repository": "stmlib",
+      "sha256": "da1483cd97e0bcfcb3734ff3bfea1c46fdcbd5a282abab7a3a4be9d5adbdeabb"
+    },
+    "stmlib/dsp/units.cc": {
+      "path": "dsp/units.cc",
+      "repository": "stmlib",
+      "sha256": "0acbe230ffaa2d181ba285fce54f2fd0b2339b3ec163a1dd00c946e6bf82ea4a"
+    },
+    "stmlib/dsp/units.h": {
+      "path": "dsp/units.h",
+      "repository": "stmlib",
+      "sha256": "70cf104c06f0e34ada90416f121417a13d17b6736116f0fc07063c1cd2084877"
+    },
+    "stmlib/fft/shy_fft.h": {
+      "path": "fft/shy_fft.h",
+      "repository": "stmlib",
+      "sha256": "2f94838eb928ec6f042c816e5976b9635b142465d9100e45992f66a8d7bdff6c"
+    },
+    "stmlib/stmlib.h": {
+      "path": "stmlib.h",
+      "repository": "stmlib",
+      "sha256": "3afc8589a951e882d9eea16b3eda8623dd6fb0079dd11dfbce817e65be6cfba9"
+    },
+    "stmlib/utils/buffer_allocator.h": {
+      "path": "utils/buffer_allocator.h",
+      "repository": "stmlib",
+      "sha256": "5f29d58fa9fd5cb0872326cf42b17345a059940c485c6b64a44353d38e7bc2e0"
+    },
+    "stmlib/utils/dsp.h": {
+      "path": "utils/dsp.h",
+      "repository": "stmlib",
+      "sha256": "c0fad7f6b5b20f053d184614a35baf595e41f1394db53f80ac742d7467dbbe1b"
+    },
+    "stmlib/utils/random.cc": {
+      "path": "utils/random.cc",
+      "repository": "stmlib",
+      "sha256": "145c4d7a30e373d001fd664ce6f97a475458f7dc8286252d24ca6f592e0cdb93"
+    },
+    "stmlib/utils/random.h": {
+      "path": "utils/random.h",
+      "repository": "stmlib",
+      "sha256": "423f01e905fa279864878f34e42136ad1eb37a33dad58739affaaab06b793e5d"
+    }
+  },
+  "variants": {
+    "window_2019": {
+      "description": "Pinned source with clouds/dsp/window.h taken unmodified from eurorack 2a46873 (behaviour of the shipped 2015 firmware); used to qualify the stretch mode, which is silent at f4cfa76",
+      "files": {
+        "window_2019/clouds/dsp/window.h": {
+          "path": "clouds/dsp/window.h",
+          "repository": "eurorack_2019",
+          "sha256": "d2d20dace4686c108e4c1c3c8216364f7e51125505e86dd49ed2e3d2169c2dbf"
+        }
+      }
+    }
+  }
+}

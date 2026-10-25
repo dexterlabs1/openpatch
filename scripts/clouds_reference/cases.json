@@ -1,0 +1,1455 @@
+{
+ "schema": 1,
+ "sample_rate": 32000,
+ "block_size": 32,
+ "cases": [
+  {
+   "id": "silence_startup",
+   "blocks": 200,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.75,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "zero"
+   },
+   "right": {
+    "type": "zero"
+   },
+   "purpose": "zero inputs from construction; first block silent while buffers are laid out"
+  },
+  {
+   "id": "granular_probabilistic",
+   "blocks": 3000,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.8,
+    "texture": 0.4,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.7,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "decay",
+    "frequency": 220,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "right": {
+    "type": "saw",
+    "frequency": 330,
+    "amplitude": 0.4
+   },
+   "purpose": "random grain seeding (density above 0.53) with the source RNG, stereo panning, slope envelope"
+  },
+  {
+   "id": "granular_deterministic",
+   "blocks": 3000,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.3,
+    "size": 0.35,
+    "pitch": 0.0,
+    "density": 0.15,
+    "texture": 0.6,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "sine",
+    "frequency": 440,
+    "amplitude": 0.5
+   },
+   "right": {
+    "type": "pulse_train",
+    "frequency": 110,
+    "amplitude": 0.5,
+    "seed": 3
+   },
+   "purpose": "periodic seeding (density below 0.47), smoothed window from the window LUT"
+  },
+  {
+   "id": "granular_density_texture_sweep",
+   "blocks": 4000,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.1,
+    "pitch": 0.0,
+    "density": 0.0,
+    "texture": 0.0,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "chirp",
+    "frequency": 100,
+    "ratio": 20,
+    "amplitude": 0.5
+   },
+   "right": {
+    "type": "noise",
+    "amplitude": 0.3,
+    "seed": 7
+   },
+   "purpose": "density 0..1 through the dead band, texture 0..1 into the diffuser",
+   "end": {
+    "density": 1.0,
+    "texture": 1.0,
+    "size": 0.9
+   }
+  },
+  {
+   "id": "granular_pitch_up",
+   "blocks": 3000,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.0,
+    "size": 1.0,
+    "pitch": 24.0,
+    "density": 0.9,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "saw",
+    "frequency": 200,
+    "amplitude": 0.4
+   },
+   "right": {
+    "type": "saw",
+    "frequency": 301,
+    "amplitude": 0.4
+   },
+   "purpose": "pitch +24: grain size limited by the play head; position 0"
+  },
+  {
+   "id": "granular_pitch_down_position_sweep",
+   "blocks": 3000,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.0,
+    "size": 0.5,
+    "pitch": -24.0,
+    "density": 0.7,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "decay",
+    "frequency": 330,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "right": {
+    "type": "decay",
+    "frequency": 495,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "purpose": "pitch -24 with position swept to 1",
+   "end": {
+    "position": 1.0
+   }
+  },
+  {
+   "id": "granular_triggers",
+   "blocks": 2500,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.6,
+    "pitch": 0.0,
+    "density": 0.5,
+    "texture": 0.2,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "decay",
+    "frequency": 262,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "right": {
+    "type": "noise",
+    "amplitude": 0.3,
+    "seed": 11
+   },
+   "purpose": "no free-running grains (density 0.5); grains only from triggers",
+   "trigger_period": 37
+  },
+  {
+   "id": "granular_freeze",
+   "blocks": 3000,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.85,
+    "texture": 0.55,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "saw",
+    "frequency": 147,
+    "amplitude": 0.4
+   },
+   "right": {
+    "type": "sine",
+    "frequency": 660,
+    "amplitude": 0.5
+   },
+   "purpose": "freeze on/off: recording stops, tail capture and the 256-sample crossfade on resume",
+   "events": [
+    {
+     "block": 900,
+     "freeze": 1
+    },
+    {
+     "block": 1900,
+     "freeze": 0
+    },
+    {
+     "block": 1950,
+     "freeze": 1
+    },
+    {
+     "block": 1960,
+     "freeze": 0
+    }
+   ]
+  },
+  {
+   "id": "granular_feedback_reverb",
+   "blocks": 3000,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.75,
+    "texture": 0.9,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.8,
+    "reverb": 0.9
+   },
+   "left": {
+    "type": "decay",
+    "frequency": 196,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "right": {
+    "type": "decay",
+    "frequency": 294,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "purpose": "diffuser (texture above 0.75), feedback high-pass and soft limiter, reverb"
+  },
+  {
+   "id": "granular_mono",
+   "blocks": 3000,
+   "start": {
+    "mode": 0,
+    "quality": 1,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.8,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 1.0,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "saw",
+    "frequency": 220,
+    "amplitude": 0.4
+   },
+   "right": {
+    "type": "sine",
+    "frequency": 550,
+    "amplitude": 0.5
+   },
+   "purpose": "16-bit mono: 40 grains, sine-law panning, mixdown"
+  },
+  {
+   "id": "granular_lofi_stereo",
+   "blocks": 3000,
+   "start": {
+    "mode": 0,
+    "quality": 2,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.05,
+    "size": 0.7,
+    "pitch": 0.0,
+    "density": 0.85,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "chirp",
+    "frequency": 80,
+    "ratio": 40,
+    "amplitude": 0.5
+   },
+   "right": {
+    "type": "noise",
+    "amplitude": 0.3,
+    "seed": 5
+   },
+   "purpose": "8-bit mu-law at 16 kHz: down/up sample-rate converters, 46 grains"
+  },
+  {
+   "id": "granular_lofi_mono",
+   "blocks": 3000,
+   "start": {
+    "mode": 0,
+    "quality": 3,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.05,
+    "size": 0.5,
+    "pitch": 7.0,
+    "density": 0.2,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "pulse_train",
+    "frequency": 147,
+    "amplitude": 0.5,
+    "seed": 3
+   },
+   "right": {
+    "type": "pulse_train",
+    "frequency": 220,
+    "amplitude": 0.5,
+    "seed": 9
+   },
+   "purpose": "8-bit mu-law mono at 16 kHz: 57 grains, deterministic seeding"
+  },
+  {
+   "id": "granular_seed_variant",
+   "blocks": 2000,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.9,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 1.0,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "noise",
+    "amplitude": 0.3,
+    "seed": 21
+   },
+   "right": {
+    "type": "noise",
+    "amplitude": 0.3,
+    "seed": 22
+   },
+   "purpose": "same controls, different source RNG seed",
+   "seed": 123456789
+  },
+  {
+   "id": "granular_dense_full",
+   "blocks": 2000,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 1.0,
+    "pitch": 0.0,
+    "density": 1.0,
+    "texture": 0.74,
+    "dry_wet": 1.0,
+    "stereo_spread": 1.0,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "saw",
+    "frequency": 98,
+    "amplitude": 0.4
+   },
+   "right": {
+    "type": "saw",
+    "frequency": 99,
+    "amplitude": 0.4
+   },
+   "purpose": "maximum overlap: all grains busy, medium/high quality split, normalization"
+  },
+  {
+   "id": "granular_tiny_grains",
+   "blocks": 2000,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.0,
+    "pitch": 12.0,
+    "density": 0.0,
+    "texture": 0.0,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "sine",
+    "frequency": 1000,
+    "amplitude": 0.5
+   },
+   "right": {
+    "type": "sine",
+    "frequency": 1500,
+    "amplitude": 0.5
+   },
+   "purpose": "shortest grains, rectangular-ish window, deterministic seeding at maximum overlap"
+  },
+  {
+   "id": "stretch_default",
+   "blocks": 4000,
+   "start": {
+    "mode": 1,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.2,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.3,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "decay",
+    "frequency": 220,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "right": {
+    "type": "decay",
+    "frequency": 330,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "purpose": "WSOLA with correlation search, diffuser by density, filters by texture"
+  },
+  {
+   "id": "stretch_size_pitch_sweep",
+   "blocks": 4000,
+   "start": {
+    "mode": 1,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.0,
+    "pitch": -12.0,
+    "density": 0.1,
+    "texture": 0.3,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "saw",
+    "frequency": 110,
+    "amplitude": 0.4
+   },
+   "right": {
+    "type": "chirp",
+    "frequency": 200,
+    "ratio": 4,
+    "amplitude": 0.5
+   },
+   "purpose": "window size 128..4096 and pitch -12..+12",
+   "end": {
+    "size": 1.0,
+    "pitch": 12.0
+   }
+  },
+  {
+   "id": "stretch_triggers_position",
+   "blocks": 3000,
+   "start": {
+    "mode": 1,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.8,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.75,
+    "texture": 0.7,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.4,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "pulse_train",
+    "frequency": 130,
+    "amplitude": 0.5,
+    "seed": 3
+   },
+   "right": {
+    "type": "pulse_train",
+    "frequency": 195,
+    "amplitude": 0.5,
+    "seed": 4
+   },
+   "purpose": "trigger restarts the position envelope; high-pass texture",
+   "trigger_period": 211
+  },
+  {
+   "id": "stretch_mono_lofi",
+   "blocks": 3000,
+   "start": {
+    "mode": 1,
+    "quality": 3,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.05,
+    "size": 0.6,
+    "pitch": 5.0,
+    "density": 0.75,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "decay",
+    "frequency": 175,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "right": {
+    "type": "noise",
+    "amplitude": 0.3,
+    "seed": 9
+   },
+   "purpose": "WSOLA on the mono mu-law buffer at 16 kHz"
+  },
+  {
+   "id": "stretch_freeze",
+   "blocks": 3000,
+   "start": {
+    "mode": 1,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.8,
+    "pitch": 0.0,
+    "density": 0.75,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "saw",
+    "frequency": 165,
+    "amplitude": 0.4
+   },
+   "right": {
+    "type": "sine",
+    "frequency": 247,
+    "amplitude": 0.5
+   },
+   "purpose": "stretch over a frozen buffer",
+   "events": [
+    {
+     "block": 1200,
+     "freeze": 1
+    },
+    {
+     "block": 2400,
+     "freeze": 0
+    }
+   ]
+  },
+  {
+   "id": "stretch_prepare_once",
+   "blocks": 2500,
+   "start": {
+    "mode": 1,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.3,
+    "pitch": 3.0,
+    "density": 0.75,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "decay",
+    "frequency": 311,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "right": {
+    "type": "decay",
+    "frequency": 415,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "purpose": "one Prepare call per block: partial correlation searches",
+   "prepare_calls": 1
+  },
+  {
+   "id": "looping_position_sweep",
+   "blocks": 4000,
+   "start": {
+    "mode": 2,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.0,
+    "size": 0.5,
+    "pitch": 7.0,
+    "density": 0.4,
+    "texture": 0.6,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "decay",
+    "frequency": 262,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "right": {
+    "type": "sine",
+    "frequency": 392,
+    "amplitude": 0.5
+   },
+   "purpose": "looping delay time sweep with the pitch shifter and filters",
+   "end": {
+    "position": 1.0
+   }
+  },
+  {
+   "id": "looping_freeze_loop",
+   "blocks": 4000,
+   "start": {
+    "mode": 2,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.3,
+    "size": 0.2,
+    "pitch": 0.0,
+    "density": 0.75,
+    "texture": 0.4,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "saw",
+    "frequency": 220,
+    "amplitude": 0.4
+   },
+   "right": {
+    "type": "decay",
+    "frequency": 330,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "purpose": "frozen loop: loop point/duration, pitch-rate playback and the tail crossfade",
+   "events": [
+    {
+     "block": 1000,
+     "freeze": 1
+    },
+    {
+     "block": 2000,
+     "pitch": -5.0
+    },
+    {
+     "block": 2500,
+     "size": 0.9
+    },
+    {
+     "block": 3000,
+     "pitch": 12.0
+    }
+   ]
+  },
+  {
+   "id": "looping_tap_tempo",
+   "blocks": 4000,
+   "start": {
+    "mode": 2,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.75,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.3
+   },
+   "left": {
+    "type": "pulse_train",
+    "frequency": 147,
+    "amplitude": 0.5,
+    "seed": 3
+   },
+   "right": {
+    "type": "pulse_train",
+    "frequency": 196,
+    "amplitude": 0.5,
+    "seed": 5
+   },
+   "purpose": "trigger tap tempo synchronizes the delay; frozen synchronized loop keeps the pitch shifter",
+   "trigger_period": 250,
+   "events": [
+    {
+     "block": 2600,
+     "freeze": 1
+    }
+   ]
+  },
+  {
+   "id": "looping_lofi_mono",
+   "blocks": 3000,
+   "start": {
+    "mode": 2,
+    "quality": 3,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.02,
+    "size": 0.5,
+    "pitch": -12.0,
+    "density": 0.75,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.6,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "chirp",
+    "frequency": 120,
+    "ratio": 10,
+    "amplitude": 0.5
+   },
+   "right": {
+    "type": "noise",
+    "amplitude": 0.3,
+    "seed": 13
+   },
+   "purpose": "looping delay on the mono mu-law buffer with feedback"
+  },
+  {
+   "id": "spectral_default",
+   "blocks": 4000,
+   "start": {
+    "mode": 3,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.3,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.5,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "saw",
+    "frequency": 220,
+    "amplitude": 0.4
+   },
+   "right": {
+    "type": "pulse_train",
+    "frequency": 165,
+    "amplitude": 0.5,
+    "seed": 3
+   },
+   "purpose": "phase vocoder: analysis, texture storage, warp identity, no quantization"
+  },
+  {
+   "id": "spectral_freeze_pitch",
+   "blocks": 5000,
+   "start": {
+    "mode": 3,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.7,
+    "pitch": 7.0,
+    "density": 0.9,
+    "texture": 0.3,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "decay",
+    "frequency": 196,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "right": {
+    "type": "saw",
+    "frequency": 147,
+    "amplitude": 0.4
+   },
+   "purpose": "frozen spectrum with phase advance by the pitch ratio and quantization",
+   "events": [
+    {
+     "block": 1500,
+     "freeze": 1
+    },
+    {
+     "block": 3000,
+     "pitch": -12.0
+    },
+    {
+     "block": 4000,
+     "pitch": 19.0
+    }
+   ]
+  },
+  {
+   "id": "spectral_glitch",
+   "blocks": 5000,
+   "start": {
+    "mode": 3,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.2,
+    "pitch": 0.0,
+    "density": 0.3,
+    "texture": 0.6,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "noise",
+    "amplitude": 0.4,
+    "seed": 17
+   },
+   "right": {
+    "type": "decay",
+    "frequency": 262,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "purpose": "gate-driven glitch algorithms chosen by the source RNG; refresh below 0.5 uses random bins",
+   "events": [
+    {
+     "block": 300,
+     "gate": 1
+    },
+    {
+     "block": 900,
+     "gate": 0
+    },
+    {
+     "block": 1200,
+     "gate": 1
+    },
+    {
+     "block": 2000,
+     "gate": 0
+    },
+    {
+     "block": 2600,
+     "gate": 1
+    },
+    {
+     "block": 3300,
+     "gate": 0
+    },
+    {
+     "block": 3700,
+     "gate": 1
+    }
+   ]
+  },
+  {
+   "id": "spectral_sweeps",
+   "blocks": 5000,
+   "start": {
+    "mode": 3,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.0,
+    "size": 0.0,
+    "pitch": -24.0,
+    "density": 0.0,
+    "texture": 0.0,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "chirp",
+    "frequency": 110,
+    "ratio": 16,
+    "amplitude": 0.5
+   },
+   "right": {
+    "type": "saw",
+    "frequency": 220,
+    "amplitude": 0.4
+   },
+   "purpose": "density, texture, size (warp), position and pitch swept end to end",
+   "end": {
+    "density": 1.0,
+    "texture": 1.0,
+    "size": 1.0,
+    "position": 1.0,
+    "pitch": 24.0
+   }
+  },
+  {
+   "id": "spectral_mono_lofi",
+   "blocks": 4000,
+   "start": {
+    "mode": 3,
+    "quality": 3,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.6,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.7,
+    "texture": 0.8,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "decay",
+    "frequency": 330,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "right": {
+    "type": "noise",
+    "amplitude": 0.3,
+    "seed": 19
+   },
+   "purpose": "phase vocoder on mono at 16 kHz: seven textures",
+   "events": [
+    {
+     "block": 2500,
+     "freeze": 1
+    }
+   ]
+  },
+  {
+   "id": "spectral_mono_hifi",
+   "blocks": 3000,
+   "start": {
+    "mode": 3,
+    "quality": 1,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.8,
+    "pitch": -5.0,
+    "density": 0.6,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "saw",
+    "frequency": 130,
+    "amplitude": 0.4
+   },
+   "right": {
+    "type": "saw",
+    "frequency": 196,
+    "amplitude": 0.4
+   },
+   "purpose": "phase vocoder mono at 32 kHz"
+  },
+  {
+   "id": "mode_cycle",
+   "blocks": 6000,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.8,
+    "texture": 0.5,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "decay",
+    "frequency": 220,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "right": {
+    "type": "saw",
+    "frequency": 330,
+    "amplitude": 0.4
+   },
+   "purpose": "every mode in turn, including into and out of spectral; the vocoder inherits memory earlier modes wrote",
+   "events": [
+    {
+     "block": 800,
+     "mode": 1
+    },
+    {
+     "block": 1600,
+     "mode": 2
+    },
+    {
+     "block": 2400,
+     "mode": 3
+    },
+    {
+     "block": 3000,
+     "freeze": 1
+    },
+    {
+     "block": 3600,
+     "mode": 0,
+     "freeze": 0
+    },
+    {
+     "block": 4200,
+     "mode": 3
+    },
+    {
+     "block": 4500,
+     "freeze": 1
+    },
+    {
+     "block": 5000,
+     "mode": 2
+    }
+   ]
+  },
+  {
+   "id": "quality_cycle",
+   "blocks": 6000,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.8,
+    "texture": 0.6,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.3,
+    "reverb": 0.4
+   },
+   "left": {
+    "type": "decay",
+    "frequency": 262,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "right": {
+    "type": "noise",
+    "amplitude": 0.3,
+    "seed": 23
+   },
+   "purpose": "quality changes reset the buffers and move the effect workspace between blocks",
+   "events": [
+    {
+     "block": 1000,
+     "quality": 1
+    },
+    {
+     "block": 2000,
+     "quality": 2
+    },
+    {
+     "block": 3000,
+     "quality": 3
+    },
+    {
+     "block": 3500,
+     "mode": 3
+    },
+    {
+     "block": 4000,
+     "quality": 0
+    },
+    {
+     "block": 4800,
+     "quality": 1
+    },
+    {
+     "block": 5400,
+     "mode": 1
+    }
+   ]
+  },
+  {
+   "id": "benign_switches",
+   "blocks": 5000,
+   "start": {
+    "mode": 2,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.4,
+    "size": 0.5,
+    "pitch": 5.0,
+    "density": 0.75,
+    "texture": 0.4,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "saw",
+    "frequency": 196,
+    "amplitude": 0.4
+   },
+   "right": {
+    "type": "decay",
+    "frequency": 294,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "purpose": "looping<->stretch switches clear the pitch shifter, which shares the correlator words",
+   "events": [
+    {
+     "block": 700,
+     "mode": 1
+    },
+    {
+     "block": 1100,
+     "mode": 2
+    },
+    {
+     "block": 1500,
+     "mode": 1
+    },
+    {
+     "block": 1520,
+     "mode": 2
+    },
+    {
+     "block": 2000,
+     "mode": 0
+    },
+    {
+     "block": 2600,
+     "mode": 1
+    },
+    {
+     "block": 3200,
+     "freeze": 1
+    },
+    {
+     "block": 3300,
+     "mode": 2
+    },
+    {
+     "block": 4200,
+     "freeze": 0
+    }
+   ]
+  },
+  {
+   "id": "freeze_feedback_reverb",
+   "blocks": 3000,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.9,
+    "texture": 0.8,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 1.0,
+    "reverb": 1.0
+   },
+   "left": {
+    "type": "decay",
+    "frequency": 110,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "right": {
+    "type": "decay",
+    "frequency": 165,
+    "amplitude": 0.7,
+    "decay_blocks": 40
+   },
+   "purpose": "freeze ramps the reverb boost by feedback while feedback is gated off",
+   "events": [
+    {
+     "block": 1000,
+     "freeze": 1
+    },
+    {
+     "block": 2200,
+     "freeze": 0
+    }
+   ]
+  },
+  {
+   "id": "dry_wet_clipping",
+   "blocks": 3000,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.8,
+    "texture": 0.5,
+    "dry_wet": 0.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "square",
+    "frequency": 110,
+    "amplitude": 1.5
+   },
+   "right": {
+    "type": "saw",
+    "frequency": 55,
+    "amplitude": 1.2
+   },
+   "purpose": "dry/wet crossfade with interpolation; clipped inputs and the soft converter",
+   "end": {
+    "dry_wet": 1.0
+   }
+  },
+  {
+   "id": "spectral_prepare_once",
+   "blocks": 3000,
+   "start": {
+    "mode": 3,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.5,
+    "size": 0.5,
+    "pitch": 0.0,
+    "density": 0.4,
+    "texture": 0.45,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.5,
+    "feedback": 0.0,
+    "reverb": 0.0
+   },
+   "left": {
+    "type": "saw",
+    "frequency": 247,
+    "amplitude": 0.4
+   },
+   "right": {
+    "type": "pulse_train",
+    "frequency": 185,
+    "amplitude": 0.5,
+    "seed": 3
+   },
+   "purpose": "phase vocoder with one Prepare per block",
+   "prepare_calls": 1
+  },
+  {
+   "id": "host_golden_granular",
+   "blocks": 360,
+   "start": {
+    "mode": 0,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.4,
+    "size": 0.55,
+    "pitch": 0.0,
+    "density": 0.7,
+    "texture": 0.6,
+    "dry_wet": 0.8,
+    "stereo_spread": 0.6,
+    "feedback": 0.2,
+    "reverb": 0.3
+   },
+   "left": {
+    "type": "decay",
+    "frequency": 220,
+    "amplitude": 0.6,
+    "decay_blocks": 30
+   },
+   "right": {
+    "type": "saw",
+    "frequency": 330,
+    "amplitude": 0.3
+   },
+   "purpose": "controls exactly as the native host produces them for fixed knobs and unpatched CV (frozen into the native fixture)"
+  },
+  {
+   "id": "host_golden_spectral",
+   "blocks": 360,
+   "start": {
+    "mode": 3,
+    "quality": 0,
+    "freeze": 0,
+    "gate": 0,
+    "position": 0.25,
+    "size": 0.6,
+    "pitch": 0.0,
+    "density": 0.6,
+    "texture": 0.4,
+    "dry_wet": 1.0,
+    "stereo_spread": 0.0,
+    "feedback": 0.0,
+    "reverb": 0.2
+   },
+   "left": {
+    "type": "saw",
+    "frequency": 196,
+    "amplitude": 0.4
+   },
+   "right": {
+    "type": "sine",
+    "frequency": 294,
+    "amplitude": 0.5
+   },
+   "purpose": "spectral mode with host-produced controls (frozen into the native fixture)"
+  }
+ ]
+}

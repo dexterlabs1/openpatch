@@ -4182,6 +4182,50 @@ class OpenPatchMCPTests(unittest.TestCase):
         self.require_tool_success("load_patch", {"filename": "cross-matter.json"})
         self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
 
+    def test_grain_weather_source_outputs_history_presets_and_saved_reopen(self) -> None:
+        modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
+        descriptor = modules["grain_weather"]
+        self.assertEqual(descriptor["outputs"], ["left", "right"])
+        self.assertEqual(descriptor["inputs"], ["left", "right", "trigger", "freeze", "position_cv", "size_cv",
+                                                "pitch_cv", "density_cv", "texture_cv", "blend_cv"])
+        self.assertEqual(descriptor["polyphony"]["maximum_channels"], 1)
+        self.assertEqual(descriptor["bypass"]["routes"], [{"input": "left", "output": "left"}, {"input": "right", "output": "right"}])
+        self.assertIn("32 kHz", descriptor["processing_policy"])
+        self.assertIn("never buffer audio", descriptor["state_policy"])
+        self.assertEqual(descriptor["params"]["mode"]["labels"], ["Granular", "Stretch", "Looping delay", "Spectral"])
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "sample_rate": 48000,
+            "nodes": [{"id": "voice", "kind": "stock_vco", "params": {"frequency": -5}},
+                      {"id": "grain", "kind": "grain_weather", "params": {"density": 0.8, "blend": 1, "position": 0.05}}],
+            "cables": [{"from": "voice", "output": "saw", "to": "grain", "input": "left"}],
+            "output": "grain", "output_port": "left"}})
+        original = self.patch_snapshot()
+        for port in descriptor["outputs"]:
+            trace = self.payload(self.require_tool_success("capture_signal", {
+                "id": "grain", "port": port, "seconds": .5, "points": 64,
+                "expected_revision": original["revision"]}))
+            self.assertEqual(trace["summary"]["active_frames"], 24000)
+            self.assertTrue(all(math.isfinite(point["mean"]) for point in trace["bins"]))
+            self.assertGreater(max(max(abs(point["min"]), abs(point["max"])) for point in trace["bins"]), .1)
+        self.assertEqual(self.patch_snapshot(), original, "capture must remain observational")
+        self.require_tool_success("set_parameter", {"id": "grain", "parameter": "mode", "value": 3})
+        self.require_tool_success("set_parameter", {"id": "grain", "parameter": "quality", "value": 2})
+        changed = self.patch_snapshot()
+        self.require_tool_success("undo")
+        self.assertEqual(self.payload(self.require_tool_success("undo"))["patch"], original["patch"])
+        self.require_tool_success("redo")
+        self.assertEqual(self.payload(self.require_tool_success("redo"))["patch"], changed["patch"])
+        preset = self.payload(self.require_tool_success("capture_module_preset", {"id": "grain"}))["preset"]
+        self.assertEqual(preset["params"]["mode"], 3)
+        self.assertLess(len(json.dumps(preset)), 2048, "presets store controls, not buffer audio")
+        self.require_tool_success("save_patch", {"filename": "grain-weather.json"})
+        before = self.patch_snapshot()
+        for name, value in [("mode", 1.5), ("quality", 4), ("pitch", 30), ("freeze", 0.5)]:
+            self.require_tool_error("set_parameter", {"id": "grain", "parameter": name, "value": value})
+            self.assertEqual(self.patch_snapshot(), before)
+        self.require_tool_success("replace_patch", {"patch": {"version": 2, "nodes": []}})
+        self.require_tool_success("load_patch", {"filename": "grain-weather.json"})
+        self.assertEqual(self.patch_snapshot()["patch"], changed["patch"])
+
     def test_stock_lfo_source_polarity_phase_origins_and_named_outputs_through_mcp(self) -> None:
         modules = {m["kind"]: m for m in self.payload(self.require_tool_success("catalog"))["modules"]}
         descriptor = modules["stock_lfo"]

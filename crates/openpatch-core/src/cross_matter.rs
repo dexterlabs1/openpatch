@@ -3,7 +3,7 @@
 //! frequency shifter) is an MIT source adaptation in `kernel/`. Voltage
 //! scaling, CV mapping, the 96 kHz rate bridge and block timing below are
 //! explicit OpenPatch policies.
-mod bridge;
+pub(crate) mod bridge;
 mod kernel;
 
 use crate::{parameter, ModuleLightState, Node, PortFrame};

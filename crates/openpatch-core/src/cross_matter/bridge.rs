@@ -1,4 +1,6 @@
-//! Original OpenPatch host-rate bridge for the fixed 96 kHz Warps kernel. MIT.
+//! Original OpenPatch host-rate bridge for fixed-rate source kernels (the
+//! 96 kHz Warps kernel of Cross Matter, the 32 kHz Clouds kernel of Grain
+//! Weather). MIT.
 //!
 //! The Warps oscillator pitch tables, filter-bank coefficients and converter
 //! FIRs are all designed for 96 kHz, so the kernel always runs there. At other
@@ -137,7 +139,7 @@ impl Resampler {
 
 /// Host-rate <-> 96 kHz bridge around a block kernel.
 #[derive(Debug)]
-pub(super) struct Bridge {
+pub(crate) struct Bridge {
     up: Option<Resampler>,
     down: Option<Resampler>,
     /// Host output FIFO with a fixed pre-roll so bursty block output never
@@ -149,7 +151,7 @@ pub(super) struct Bridge {
 }
 
 impl Bridge {
-    pub(super) fn new(host_rate: u32, kernel_rate: u32, block: usize) -> Self {
+    pub(crate) fn new(host_rate: u32, kernel_rate: u32, block: usize) -> Self {
         let direct = host_rate == kernel_rate;
         let host_per_block = (block as f64 * host_rate as f64 / kernel_rate as f64).ceil() as usize;
         let preroll = host_per_block + 3;
@@ -167,7 +169,7 @@ impl Bridge {
 
     /// Total host-sample latency from input to output.
     #[cfg(test)]
-    pub(super) fn latency(&self) -> f64 {
+    pub(crate) fn latency(&self) -> f64 {
         let resampling = match (&self.up, &self.down) {
             (Some(up), Some(down)) => {
                 up.delay as f64
@@ -178,7 +180,7 @@ impl Bridge {
         self.preroll as f64 + resampling
     }
 
-    pub(super) fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         if let Some(up) = &mut self.up {
             up.reset();
         }
@@ -190,7 +192,7 @@ impl Bridge {
         self.count = self.preroll;
     }
 
-    pub(super) fn copy_state_from(&mut self, other: &Self) {
+    pub(crate) fn copy_state_from(&mut self, other: &Self) {
         if let (Some(a), Some(b)) = (&mut self.up, &other.up) {
             a.copy_state_from(b);
         }
@@ -204,7 +206,7 @@ impl Bridge {
 
     /// Accept one host input frame; `kernel_input` receives every resulting
     /// kernel-rate frame (zero, one or several).
-    pub(super) fn push_input(&mut self, frame: [f32; 2], mut kernel_input: impl FnMut([f32; 2])) {
+    pub(crate) fn push_input(&mut self, frame: [f32; 2], mut kernel_input: impl FnMut([f32; 2])) {
         match &mut self.up {
             None => kernel_input(frame),
             Some(up) => {
@@ -217,7 +219,7 @@ impl Bridge {
     }
 
     /// Accept one kernel-rate output frame.
-    pub(super) fn push_output(&mut self, frame: [f32; 2]) {
+    pub(crate) fn push_output(&mut self, frame: [f32; 2]) {
         let Some(down) = self.down.as_mut() else {
             self.enqueue(frame);
             return;
@@ -240,7 +242,7 @@ impl Bridge {
     }
 
     /// One host output frame (zero only if the pipeline ever ran dry).
-    pub(super) fn pop(&mut self) -> [f32; 2] {
+    pub(crate) fn pop(&mut self) -> [f32; 2] {
         if self.count == 0 {
             return [0.0; 2];
         }

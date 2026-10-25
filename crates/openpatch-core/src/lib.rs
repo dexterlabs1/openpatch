@@ -102,6 +102,9 @@ pub use stock_seq3::{StockSeq3Probe, StockSeq3Snapshot};
 mod cross_matter;
 #[doc(hidden)]
 pub use cross_matter::{effective_algorithm as cross_matter_effective_algorithm, CrossMatterProbe};
+mod grain_weather;
+#[doc(hidden)]
+pub use grain_weather::{GrainWeatherProbe, GrainWeatherSnapshot};
 mod event_fork;
 mod frame_scene;
 mod recall_random;
@@ -488,6 +491,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(cross_matter::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(grain_weather::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()

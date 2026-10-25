@@ -2233,6 +2233,77 @@ fn cross_matter_every_path_rate_bridge_initialize_bypass_and_adoption_use_no_hea
 }
 
 #[test]
+fn grain_weather_modes_quality_changes_bridge_initialize_bypass_and_adoption_use_no_heap() {
+    // Each pair adopts state across a playback-mode and buffer-quality
+    // change, so the kernel re-lays out its preallocated memory in place.
+    type Params = &'static [(&'static str, f32)];
+    let settings: [(Params, Params); 4] = [
+        (&[("mode", 0.0)], &[("mode", 3.0), ("quality", 1.0)]),
+        (
+            &[("mode", 1.0), ("quality", 2.0)],
+            &[("mode", 2.0), ("quality", 2.0)],
+        ),
+        (
+            &[("mode", 2.0), ("freeze", 1.0)],
+            &[("mode", 1.0), ("quality", 3.0)],
+        ),
+        (
+            &[("mode", 3.0), ("quality", 3.0)],
+            &[("mode", 0.0), ("quality", 0.0)],
+        ),
+    ];
+    let mut engines: Vec<_> = [8000, 32000, 44100, 48000, 96000, 192000]
+        .into_iter()
+        .flat_map(|rate| settings.iter().map(move |pair| (rate, *pair)))
+        .map(|(rate, (before, after))| {
+            let mut p = patch(
+                vec![
+                    node("osc", "stock_lfo", &[("rate", 7.0)]),
+                    node("grain", "grain_weather", before),
+                ],
+                vec![
+                    cable("osc", "saw", "grain", "left"),
+                    cable("osc", "sine", "grain", "right"),
+                    cable("osc", "square", "grain", "trigger"),
+                    cable("osc", "triangle", "grain", "position_cv"),
+                ],
+                "grain",
+            );
+            p.output_port = "left".into();
+            p.sample_rate = rate;
+            let old = p.compile().unwrap();
+            p.nodes[1].params = after.iter().map(|(k, v)| (k.to_string(), *v)).collect();
+            let replacement = p.compile().unwrap();
+            p.nodes[1].bypassed = true;
+            let bypass = p.compile().unwrap();
+            let light = replacement.resolve_module_lights("grain").unwrap();
+            (old, replacement, bypass, light)
+        })
+        .collect();
+    let mut frames = [PortFrame::default(); 257];
+    let mut initialized = false;
+    MEMORY_OPERATIONS.with(|c| c.set(0));
+    TRACK_MEMORY.with(|c| c.set(true));
+    for (old, replacement, bypass, light) in &mut engines {
+        for count in [0, 1, 31, 32, 33, 128, 257, 257, 257, 257] {
+            old.process_poly_block(&mut frames[..count]);
+            replacement.adopt_state_from(old);
+            replacement.process_poly_block(&mut frames[..count]);
+            let _ = replacement.module_lights(*light);
+            bypass.adopt_state_from(replacement);
+            bypass.process_poly_block(&mut frames[..count]);
+            initialized |= replacement.initialize_module_state(*light);
+        }
+    }
+    TRACK_MEMORY.with(|c| c.set(false));
+    assert_eq!(MEMORY_OPERATIONS.with(Cell::get), 0);
+    assert!(initialized);
+    assert!(frames
+        .iter()
+        .all(|p| p.channels == 1 && p.values[0].is_finite()));
+}
+
+#[test]
 fn rhythm_terrain_first_scans_taps_fifo_lights_initialize_and_handoff_use_no_heap() {
     use openpatch_core::ModuleAction;
     let mut engines = [8000, 44100, 48000, 96000, 192000].map(|rate| {
