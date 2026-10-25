@@ -106,11 +106,22 @@ fn cell(
             AMBER,
         );
     }
+    // Long names (Progressive House on a Deck-width sheet) shrink to fit instead of running past the cell.
+    let room = rect.width() - 18.0;
+    let natural = p
+        .layout_no_wrap(text.to_owned(), face(ui, 14.5), INK)
+        .size()
+        .x;
+    let size = if natural > room {
+        (14.5 * room / natural).max(11.0)
+    } else {
+        14.5
+    };
     p.text(
         rect.left_center() + egui::vec2(10.0, 0.0),
         egui::Align2::LEFT_CENTER,
         text,
-        face(ui, 14.5),
+        face(ui, size),
         if selected { AMBER } else { INK },
     );
     if let Some(tip) = tip.filter(|t| !t.is_empty()) {
