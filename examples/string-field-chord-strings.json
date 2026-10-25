@@ -1,0 +1,63 @@
+{
+  "version": 2,
+  "sample_rate": 48000,
+  "nodes": [
+    {
+      "id": "guide",
+      "kind": "notes",
+      "content": {
+        "type": "notes",
+        "text": "STRING FIELD\nCHORD STRINGS\nA clock strums two voices of\nquantized sympathetic strings\nwith the internal exciter. A\nslow LFO on STRUCTURE walks\nthrough the chords; odd and\neven voices split left and\nright. Try MODEL and DAMPING."
+      }
+    },
+    {
+      "id": "clock",
+      "kind": "stock_lfo",
+      "params": {
+        "rate": 1.6,
+        "offset": 0
+      }
+    },
+    {
+      "id": "drift",
+      "kind": "stock_lfo",
+      "params": {
+        "rate": -3.5,
+        "offset": 0
+      }
+    },
+    {
+      "id": "strings",
+      "kind": "string_field",
+      "params": {
+        "frequency": 31,
+        "structure": 0.45,
+        "brightness": 0.62,
+        "damping": 0.72,
+        "position": 0.3,
+        "frequency_amount": 0,
+        "structure_amount": 0.7,
+        "brightness_amount": 0,
+        "damping_amount": 0,
+        "position_amount": 0,
+        "polyphony": 2,
+        "model": 4
+      }
+    },
+    {
+      "id": "out",
+      "kind": "audio_stereo",
+      "params": {
+        "gain": 0.8,
+        "dc_block": 1
+      }
+    }
+  ],
+  "cables": [
+    {"from": "clock", "output": "square", "to": "strings", "input": "strum"},
+    {"from": "drift", "output": "triangle", "to": "strings", "input": "structure_cv"},
+    {"from": "strings", "output": "odd", "to": "out", "input": "left"},
+    {"from": "strings", "output": "even", "to": "out", "input": "right"}
+  ],
+  "output": "out"
+}

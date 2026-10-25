@@ -86,7 +86,7 @@ impl Category {
             "studio_mixer" => Self::Mixing,
             "oscillator" | "analog_vco" | "multi_vco" | "stock_vco" | "rack264_vco"
             | "white_noise" | "drum_voice" | "modal_resonator" | "colored_noise"
-            | "stock_noise" | "macro_voice" | "wavetable_vco" => Self::Oscillators,
+            | "stock_noise" | "macro_voice" | "wavetable_vco" | "string_field" => Self::Oscillators,
             "lowpass" | "ladder_vcf" | "svf_filter" | "stock_vcf" | "rack264_vcf" => Self::Filters,
             "adsr" | "adsr_eg" => Self::Envelopes,
             "seq3" | "stock_seq3" | "score_sequencer" | "rackmcp_sequencer" | "rhythm_terrain" => {
@@ -2628,6 +2628,33 @@ mod grain_weather_category_tests {
         for query in [
             "grain", "granular", "clouds", "freeze", "spectral", "looping",
         ] {
+            assert!(ModuleLibrary::default().matches(module, query), "{query}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod string_field_category_tests {
+    use super::*;
+
+    #[test]
+    fn string_field_is_reachable_as_a_voice_and_custom_instrument() {
+        let catalog = openpatch_core::catalog();
+        let module = catalog["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|module| module["kind"] == "string_field")
+            .unwrap();
+        assert_eq!(Category::of_kind("string_field"), Category::Oscillators);
+        for category in [Category::Oscillators, Category::Custom] {
+            assert!(
+                category.matches_module(module),
+                "String Field missing from {}",
+                category.label()
+            );
+        }
+        for query in ["string", "rings", "resonator", "modal", "strum", "chord"] {
             assert!(ModuleLibrary::default().matches(module, query), "{query}");
         }
     }

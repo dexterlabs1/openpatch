@@ -23,6 +23,8 @@ mod hosted_document_tests;
 #[cfg(test)]
 mod rack264_import_tests;
 mod rack_import;
+#[cfg(test)]
+mod string_field_tests;
 use crate::project_document::{
     DocumentNode, ExecutionDisposition, PlaybackMode, ProjectDocument, ProjectLayout,
 };

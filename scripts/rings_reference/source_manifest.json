@@ -1,0 +1,205 @@
+{
+  "compile_sources": [
+    "rings/dsp/part.cc",
+    "rings/dsp/resonator.cc",
+    "rings/dsp/string.cc",
+    "rings/dsp/fm_voice.cc",
+    "rings/resources.cc",
+    "stmlib/dsp/units.cc",
+    "stmlib/utils/random.cc"
+  ],
+  "repositories": {
+    "eurorack": {
+      "url": "https://github.com/pichenettes/eurorack",
+      "commit": "f4cfa7697095a28d292bff758beb51deb49b5a86"
+    },
+    "stmlib": {
+      "url": "https://github.com/pichenettes/stmlib",
+      "commit": "e3bd7c9cc00e4364166f9905c0509b6ffd0535ec",
+      "gitlink_from": "eurorack f4cfa7697095a28d292bff758beb51deb49b5a86:stmlib"
+    }
+  },
+  "files": {
+    "rings/dsp/dsp.h": {
+      "path": "rings/dsp/dsp.h",
+      "repository": "eurorack",
+      "sha256": "b17faa270b6563c92eeb98bc248c8bbcf7257b65f65b0e411a260015a4634904"
+    },
+    "rings/dsp/part.h": {
+      "path": "rings/dsp/part.h",
+      "repository": "eurorack",
+      "sha256": "7af88b40551bf08b5a78e63dd99394c81957cfc57817929888ae08ce30d2efef"
+    },
+    "rings/dsp/part.cc": {
+      "path": "rings/dsp/part.cc",
+      "repository": "eurorack",
+      "sha256": "d638bd8cbe79c4d63cf26c270b5cc57db7d7f59957e72b99499149e2c6b7d767"
+    },
+    "rings/dsp/patch.h": {
+      "path": "rings/dsp/patch.h",
+      "repository": "eurorack",
+      "sha256": "de2c1c1c7e7e780ce82da8139e8557a1c940fbcaf3fbc84dd9196987c3e535d3"
+    },
+    "rings/dsp/performance_state.h": {
+      "path": "rings/dsp/performance_state.h",
+      "repository": "eurorack",
+      "sha256": "b6686019c1056b67eecbe62641d7ac989882aad4e2d1239d1fa01602b3b69d54"
+    },
+    "rings/dsp/resonator.h": {
+      "path": "rings/dsp/resonator.h",
+      "repository": "eurorack",
+      "sha256": "6b869b4a1a3fde13893b684729a645b433f5226af9408e3549c7cc24db092776"
+    },
+    "rings/dsp/resonator.cc": {
+      "path": "rings/dsp/resonator.cc",
+      "repository": "eurorack",
+      "sha256": "f75160f7c96e90dcb45c522b3ad0658f7ede32a32a283b62fead958ee1309074"
+    },
+    "rings/dsp/string.h": {
+      "path": "rings/dsp/string.h",
+      "repository": "eurorack",
+      "sha256": "0a04f9a55311173d81f757fd634522ccf0dfeeac362f24ed52cee772eb641728"
+    },
+    "rings/dsp/string.cc": {
+      "path": "rings/dsp/string.cc",
+      "repository": "eurorack",
+      "sha256": "a61f0d77ccdb584b065a4354382f3d9d021f67218fbaac85a85de87780a162d5"
+    },
+    "rings/dsp/fm_voice.h": {
+      "path": "rings/dsp/fm_voice.h",
+      "repository": "eurorack",
+      "sha256": "3812d00a0b5d0fdccc75f3f6f3d472104d3caa0cc8256cd2ea4782b133face85"
+    },
+    "rings/dsp/fm_voice.cc": {
+      "path": "rings/dsp/fm_voice.cc",
+      "repository": "eurorack",
+      "sha256": "8e8cb5c8f27d6888e118a449758a8cfc801638b7b4654246ef6397a4989c2ff3"
+    },
+    "rings/dsp/follower.h": {
+      "path": "rings/dsp/follower.h",
+      "repository": "eurorack",
+      "sha256": "e315d3ca529bc929220b82263b611ef568ea689113ff9b748903433246be37ab"
+    },
+    "rings/dsp/limiter.h": {
+      "path": "rings/dsp/limiter.h",
+      "repository": "eurorack",
+      "sha256": "8a7eb07849a324bf938f8c0e135e560f7e322df8f8073bc3ffbfeada2eb40b1a"
+    },
+    "rings/dsp/note_filter.h": {
+      "path": "rings/dsp/note_filter.h",
+      "repository": "eurorack",
+      "sha256": "21e777fe3cc0748efc4222f1379c41f0da283de23df3324339351c825e44d16b"
+    },
+    "rings/dsp/onset_detector.h": {
+      "path": "rings/dsp/onset_detector.h",
+      "repository": "eurorack",
+      "sha256": "ef29c9547554e6b53010c0d9c6bae0322ad5dd9e499f5ac8843042898585fa9a"
+    },
+    "rings/dsp/plucker.h": {
+      "path": "rings/dsp/plucker.h",
+      "repository": "eurorack",
+      "sha256": "2be02c0860d5de5f3b808de7c706457a9d86db9539c20ec8de6d0de20924b211"
+    },
+    "rings/dsp/strummer.h": {
+      "path": "rings/dsp/strummer.h",
+      "repository": "eurorack",
+      "sha256": "6df64a70072caf44881ac73fdb8dcb71f162c1055e6896f875cb53a047f3ee5b"
+    },
+    "rings/dsp/fx/fx_engine.h": {
+      "path": "rings/dsp/fx/fx_engine.h",
+      "repository": "eurorack",
+      "sha256": "0844eaea623dd258765f5ffe4c001516273a6ac4b9be43bf07a524db8ba3f343"
+    },
+    "rings/dsp/fx/reverb.h": {
+      "path": "rings/dsp/fx/reverb.h",
+      "repository": "eurorack",
+      "sha256": "3dd15106eb2c89396dc6fef67bc938eca01f198f751eab6ad45ea4f94a42f627"
+    },
+    "rings/resources.h": {
+      "path": "rings/resources.h",
+      "repository": "eurorack",
+      "sha256": "0bd2344f4acc9aa3e8f82ab6d20c1d54a1030d673c8ef04f5b1fa6884a249a7e"
+    },
+    "rings/resources.cc": {
+      "path": "rings/resources.cc",
+      "repository": "eurorack",
+      "sha256": "e9fd699ee57a596c7ee28db6207d76ec1389030e956b5ec0b214068e4820eb2d"
+    },
+    "stmlib/stmlib.h": {
+      "path": "stmlib.h",
+      "repository": "stmlib",
+      "sha256": "3afc8589a951e882d9eea16b3eda8623dd6fb0079dd11dfbce817e65be6cfba9"
+    },
+    "stmlib/dsp/dsp.h": {
+      "path": "dsp/dsp.h",
+      "repository": "stmlib",
+      "sha256": "98b42900c4accbe9fbb2cfe2ec6fada024b57ec9a1becff008b0f35bd4fd8ddb"
+    },
+    "stmlib/dsp/filter.h": {
+      "path": "dsp/filter.h",
+      "repository": "stmlib",
+      "sha256": "f4bbf97ac8dfdea255b8a37e179ba0286978c01a12ad8d3362eaa5862cf7c326"
+    },
+    "stmlib/dsp/delay_line.h": {
+      "path": "dsp/delay_line.h",
+      "repository": "stmlib",
+      "sha256": "d6d1bb8e33dedf80bfca976ca1d544fc6ef01bcb1d71a45f3946a0682fd68dcb"
+    },
+    "stmlib/dsp/cosine_oscillator.h": {
+      "path": "dsp/cosine_oscillator.h",
+      "repository": "stmlib",
+      "sha256": "a7f6429e8bca85aa19ce91e3f1908fd7fb1fdf378a61fe2c87717a94d6f30a97"
+    },
+    "stmlib/dsp/parameter_interpolator.h": {
+      "path": "dsp/parameter_interpolator.h",
+      "repository": "stmlib",
+      "sha256": "4b05028c320e6946418a36e9662a4e5a142e5bfab0423835a77d074d9c7fc217"
+    },
+    "stmlib/dsp/units.h": {
+      "path": "dsp/units.h",
+      "repository": "stmlib",
+      "sha256": "70cf104c06f0e34ada90416f121417a13d17b6736116f0fc07063c1cd2084877"
+    },
+    "stmlib/dsp/units.cc": {
+      "path": "dsp/units.cc",
+      "repository": "stmlib",
+      "sha256": "0acbe230ffaa2d181ba285fce54f2fd0b2339b3ec163a1dd00c946e6bf82ea4a"
+    },
+    "stmlib/utils/random.h": {
+      "path": "utils/random.h",
+      "repository": "stmlib",
+      "sha256": "423f01e905fa279864878f34e42136ad1eb37a33dad58739affaaab06b793e5d"
+    },
+    "stmlib/utils/random.cc": {
+      "path": "utils/random.cc",
+      "repository": "stmlib",
+      "sha256": "145c4d7a30e373d001fd664ce6f97a475458f7dc8286252d24ca6f592e0cdb93"
+    }
+  },
+  "reference_only": {
+    "rings/rings.cc": {
+      "path": "rings/rings.cc",
+      "repository": "eurorack",
+      "sha256": "feb5e0b01249ddfdb4643c1426b69eb1b9843f98a085da2686a6b6a84ed9b3f8",
+      "note": "FillBuffer: the noise gate, Strummer/Part call order and Clip16 output conversion are reproduced by reference_probe.cpp; not compiled (STM32 drivers)"
+    },
+    "rings/cv_scaler.cc": {
+      "path": "rings/cv_scaler.cc",
+      "repository": "eurorack",
+      "sha256": "623b663e0ee2206b36dda8a354a75299c06410798f18abea6231ce8cc78186a3",
+      "note": "CV/pot scaling, transpose and chord hysteresis, normalization detection; informs the OpenPatch host mapping only; not compiled"
+    },
+    "rings/cv_scaler.h": {
+      "path": "rings/cv_scaler.h",
+      "repository": "eurorack",
+      "sha256": "7ddaa025bc7c54e9d53e047c35db096635eb5d4ff31f7c2919dd954b7b40fce8",
+      "note": "declarations for cv_scaler.cc; not compiled"
+    },
+    "rings/ui.cc": {
+      "path": "rings/ui.cc",
+      "repository": "eurorack",
+      "sha256": "16d0a567a37c72c787369ca8b54e4abb9bed567fe60ef5fdfbf613c214a4fcf6",
+      "note": "Ui::Init applies set_polyphony then set_model after Part::Init; the polyphony button cycles 1/2/4 and a long press selects 3; the model button cycles three models and a long press toggles the other three; not compiled"
+    }
+  }
+}

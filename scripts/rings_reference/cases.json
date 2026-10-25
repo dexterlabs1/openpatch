@@ -1,0 +1,3720 @@
+{
+ "schema": 1,
+ "sample_rate": 48000,
+ "block_size": 24,
+ "cases": [
+  {
+   "id": "modal_poly1",
+   "purpose": "modal model, polyphony 1, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 1,
+    "model": 0,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "modal_poly2",
+   "purpose": "modal model, polyphony 2, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 2,
+    "model": 0,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "modal_poly3",
+   "purpose": "modal model, polyphony 3, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 3,
+    "model": 0,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "modal_poly4",
+   "purpose": "modal model, polyphony 4, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 4,
+    "model": 0,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "sympathetic_poly1",
+   "purpose": "sympathetic model, polyphony 1, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 1,
+    "model": 1,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "sympathetic_poly2",
+   "purpose": "sympathetic model, polyphony 2, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 2,
+    "model": 1,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "sympathetic_poly3",
+   "purpose": "sympathetic model, polyphony 3, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 3,
+    "model": 1,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "sympathetic_poly4",
+   "purpose": "sympathetic model, polyphony 4, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 4,
+    "model": 1,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "string_poly1",
+   "purpose": "string model, polyphony 1, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 1,
+    "model": 2,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "string_poly2",
+   "purpose": "string model, polyphony 2, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 2,
+    "model": 2,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "string_poly3",
+   "purpose": "string model, polyphony 3, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 3,
+    "model": 2,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "string_poly4",
+   "purpose": "string model, polyphony 4, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 4,
+    "model": 2,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "fm_poly1",
+   "purpose": "fm model, polyphony 1, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 1,
+    "model": 3,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "fm_poly2",
+   "purpose": "fm model, polyphony 2, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 2,
+    "model": 3,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "fm_poly3",
+   "purpose": "fm model, polyphony 3, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 3,
+    "model": 3,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "fm_poly4",
+   "purpose": "fm model, polyphony 4, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 4,
+    "model": 3,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "quantized_poly1",
+   "purpose": "quantized model, polyphony 1, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 1,
+    "model": 4,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0,
+     "chord": 0
+    },
+    {
+     "block": 499,
+     "note": 7.0,
+     "chord": 3
+    },
+    {
+     "block": 749,
+     "note": -5.0,
+     "chord": 6
+    },
+    {
+     "block": 999,
+     "note": 12.0,
+     "chord": 9
+    },
+    {
+     "block": 1249,
+     "note": 3.0,
+     "chord": 1
+    },
+    {
+     "block": 1499,
+     "note": -12.0,
+     "chord": 4
+    },
+    {
+     "block": 1749,
+     "note": 5.0,
+     "chord": 7
+    },
+    {
+     "block": 1999,
+     "note": 10.0,
+     "chord": 10
+    },
+    {
+     "block": 2249,
+     "note": 2.0,
+     "chord": 2
+    },
+    {
+     "block": 2499,
+     "note": 0.0,
+     "chord": 5
+    },
+    {
+     "block": 2749,
+     "note": 9.0,
+     "chord": 8
+    },
+    {
+     "block": 2999,
+     "note": -7.0,
+     "chord": 0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "quantized_poly2",
+   "purpose": "quantized model, polyphony 2, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 2,
+    "model": 4,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0,
+     "chord": 0
+    },
+    {
+     "block": 499,
+     "note": 7.0,
+     "chord": 3
+    },
+    {
+     "block": 749,
+     "note": -5.0,
+     "chord": 6
+    },
+    {
+     "block": 999,
+     "note": 12.0,
+     "chord": 9
+    },
+    {
+     "block": 1249,
+     "note": 3.0,
+     "chord": 1
+    },
+    {
+     "block": 1499,
+     "note": -12.0,
+     "chord": 4
+    },
+    {
+     "block": 1749,
+     "note": 5.0,
+     "chord": 7
+    },
+    {
+     "block": 1999,
+     "note": 10.0,
+     "chord": 10
+    },
+    {
+     "block": 2249,
+     "note": 2.0,
+     "chord": 2
+    },
+    {
+     "block": 2499,
+     "note": 0.0,
+     "chord": 5
+    },
+    {
+     "block": 2749,
+     "note": 9.0,
+     "chord": 8
+    },
+    {
+     "block": 2999,
+     "note": -7.0,
+     "chord": 0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "quantized_poly3",
+   "purpose": "quantized model, polyphony 3, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 3,
+    "model": 4,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0,
+     "chord": 0
+    },
+    {
+     "block": 499,
+     "note": 7.0,
+     "chord": 3
+    },
+    {
+     "block": 749,
+     "note": -5.0,
+     "chord": 6
+    },
+    {
+     "block": 999,
+     "note": 12.0,
+     "chord": 9
+    },
+    {
+     "block": 1249,
+     "note": 3.0,
+     "chord": 1
+    },
+    {
+     "block": 1499,
+     "note": -12.0,
+     "chord": 4
+    },
+    {
+     "block": 1749,
+     "note": 5.0,
+     "chord": 7
+    },
+    {
+     "block": 1999,
+     "note": 10.0,
+     "chord": 10
+    },
+    {
+     "block": 2249,
+     "note": 2.0,
+     "chord": 2
+    },
+    {
+     "block": 2499,
+     "note": 0.0,
+     "chord": 5
+    },
+    {
+     "block": 2749,
+     "note": 9.0,
+     "chord": 8
+    },
+    {
+     "block": 2999,
+     "note": -7.0,
+     "chord": 0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "quantized_poly4",
+   "purpose": "quantized model, polyphony 4, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 4,
+    "model": 4,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0,
+     "chord": 0
+    },
+    {
+     "block": 499,
+     "note": 7.0,
+     "chord": 3
+    },
+    {
+     "block": 749,
+     "note": -5.0,
+     "chord": 6
+    },
+    {
+     "block": 999,
+     "note": 12.0,
+     "chord": 9
+    },
+    {
+     "block": 1249,
+     "note": 3.0,
+     "chord": 1
+    },
+    {
+     "block": 1499,
+     "note": -12.0,
+     "chord": 4
+    },
+    {
+     "block": 1749,
+     "note": 5.0,
+     "chord": 7
+    },
+    {
+     "block": 1999,
+     "note": 10.0,
+     "chord": 10
+    },
+    {
+     "block": 2249,
+     "note": 2.0,
+     "chord": 2
+    },
+    {
+     "block": 2499,
+     "note": 0.0,
+     "chord": 5
+    },
+    {
+     "block": 2749,
+     "note": 9.0,
+     "chord": 8
+    },
+    {
+     "block": 2999,
+     "note": -7.0,
+     "chord": 0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "reverb_poly1",
+   "purpose": "reverb model, polyphony 1, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 1,
+    "model": 5,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "reverb_poly2",
+   "purpose": "reverb model, polyphony 2, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 2,
+    "model": 5,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "reverb_poly3",
+   "purpose": "reverb model, polyphony 3, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 3,
+    "model": 5,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "reverb_poly4",
+   "purpose": "reverb model, polyphony 4, internal exciter, external strum every 250 blocks with a V/oct step before each strum; structure, brightness, damping and position sweep",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 4,
+    "model": 5,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.15,
+    "brightness": 0.35,
+    "damping": 0.45,
+    "position": 0.15
+   },
+   "end": {
+    "structure": 0.85,
+    "brightness": 0.9,
+    "damping": 0.8,
+    "position": 0.85
+   },
+   "events": [
+    {
+     "block": 249,
+     "note": 0.0
+    },
+    {
+     "block": 499,
+     "note": 7.0
+    },
+    {
+     "block": 749,
+     "note": -5.0
+    },
+    {
+     "block": 999,
+     "note": 12.0
+    },
+    {
+     "block": 1249,
+     "note": 3.0
+    },
+    {
+     "block": 1499,
+     "note": -12.0
+    },
+    {
+     "block": 1749,
+     "note": 5.0
+    },
+    {
+     "block": 1999,
+     "note": 10.0
+    },
+    {
+     "block": 2249,
+     "note": 2.0
+    },
+    {
+     "block": 2499,
+     "note": 0.0
+    },
+    {
+     "block": 2749,
+     "note": 9.0
+    },
+    {
+     "block": 2999,
+     "note": -7.0
+    }
+   ],
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "modal_external_exciter_poly1",
+   "purpose": "modal model, polyphony 1, external noisy plucks into the exciter input with external strums every 300 blocks",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 1,
+    "model": 0,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.3,
+    "brightness": 0.7,
+    "damping": 0.7,
+    "position": 0.4
+   },
+   "end": {
+    "tonic": 49.0
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.6,
+    "frequency": 330.0,
+    "period_blocks": 300,
+    "seed": 7
+   }
+  },
+  {
+   "id": "modal_external_exciter_poly2",
+   "purpose": "modal model, polyphony 2, external noisy plucks into the exciter input with external strums every 300 blocks",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 2,
+    "model": 0,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.3,
+    "brightness": 0.7,
+    "damping": 0.7,
+    "position": 0.4
+   },
+   "end": {
+    "tonic": 49.0
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.6,
+    "frequency": 330.0,
+    "period_blocks": 300,
+    "seed": 7
+   }
+  },
+  {
+   "id": "sympathetic_external_exciter_poly1",
+   "purpose": "sympathetic model, polyphony 1, external noisy plucks into the exciter input with external strums every 300 blocks",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 1,
+    "model": 1,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.3,
+    "brightness": 0.7,
+    "damping": 0.7,
+    "position": 0.4
+   },
+   "end": {
+    "tonic": 49.0
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.6,
+    "frequency": 330.0,
+    "period_blocks": 300,
+    "seed": 8
+   }
+  },
+  {
+   "id": "sympathetic_external_exciter_poly2",
+   "purpose": "sympathetic model, polyphony 2, external noisy plucks into the exciter input with external strums every 300 blocks",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 2,
+    "model": 1,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.3,
+    "brightness": 0.7,
+    "damping": 0.7,
+    "position": 0.4
+   },
+   "end": {
+    "tonic": 49.0
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.6,
+    "frequency": 330.0,
+    "period_blocks": 300,
+    "seed": 8
+   }
+  },
+  {
+   "id": "string_external_exciter_poly1",
+   "purpose": "string model, polyphony 1, external noisy plucks into the exciter input with external strums every 300 blocks",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 1,
+    "model": 2,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.3,
+    "brightness": 0.7,
+    "damping": 0.7,
+    "position": 0.4
+   },
+   "end": {
+    "tonic": 49.0
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.6,
+    "frequency": 330.0,
+    "period_blocks": 300,
+    "seed": 9
+   }
+  },
+  {
+   "id": "string_external_exciter_poly2",
+   "purpose": "string model, polyphony 2, external noisy plucks into the exciter input with external strums every 300 blocks",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 2,
+    "model": 2,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.3,
+    "brightness": 0.7,
+    "damping": 0.7,
+    "position": 0.4
+   },
+   "end": {
+    "tonic": 49.0
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.6,
+    "frequency": 330.0,
+    "period_blocks": 300,
+    "seed": 9
+   }
+  },
+  {
+   "id": "fm_external_exciter_poly1",
+   "purpose": "fm model, polyphony 1, external noisy plucks into the exciter input with external strums every 300 blocks",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 1,
+    "model": 3,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.3,
+    "brightness": 0.7,
+    "damping": 0.7,
+    "position": 0.4
+   },
+   "end": {
+    "tonic": 49.0
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.6,
+    "frequency": 330.0,
+    "period_blocks": 300,
+    "seed": 10
+   }
+  },
+  {
+   "id": "fm_external_exciter_poly2",
+   "purpose": "fm model, polyphony 2, external noisy plucks into the exciter input with external strums every 300 blocks",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 2,
+    "model": 3,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.3,
+    "brightness": 0.7,
+    "damping": 0.7,
+    "position": 0.4
+   },
+   "end": {
+    "tonic": 49.0
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.6,
+    "frequency": 330.0,
+    "period_blocks": 300,
+    "seed": 10
+   }
+  },
+  {
+   "id": "quantized_external_exciter_poly1",
+   "purpose": "quantized model, polyphony 1, external noisy plucks into the exciter input with external strums every 300 blocks",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 1,
+    "model": 4,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.3,
+    "brightness": 0.7,
+    "damping": 0.7,
+    "position": 0.4
+   },
+   "end": {
+    "tonic": 49.0
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.6,
+    "frequency": 330.0,
+    "period_blocks": 300,
+    "seed": 11
+   }
+  },
+  {
+   "id": "quantized_external_exciter_poly2",
+   "purpose": "quantized model, polyphony 2, external noisy plucks into the exciter input with external strums every 300 blocks",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 2,
+    "model": 4,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.3,
+    "brightness": 0.7,
+    "damping": 0.7,
+    "position": 0.4
+   },
+   "end": {
+    "tonic": 49.0
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.6,
+    "frequency": 330.0,
+    "period_blocks": 300,
+    "seed": 11
+   }
+  },
+  {
+   "id": "reverb_external_exciter_poly1",
+   "purpose": "reverb model, polyphony 1, external noisy plucks into the exciter input with external strums every 300 blocks",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 1,
+    "model": 5,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.3,
+    "brightness": 0.7,
+    "damping": 0.7,
+    "position": 0.4
+   },
+   "end": {
+    "tonic": 49.0
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.6,
+    "frequency": 330.0,
+    "period_blocks": 300,
+    "seed": 12
+   }
+  },
+  {
+   "id": "reverb_external_exciter_poly2",
+   "purpose": "reverb model, polyphony 2, external noisy plucks into the exciter input with external strums every 300 blocks",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 2,
+    "model": 5,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.3,
+    "brightness": 0.7,
+    "damping": 0.7,
+    "position": 0.4
+   },
+   "end": {
+    "tonic": 49.0
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.6,
+    "frequency": 330.0,
+    "period_blocks": 300,
+    "seed": 12
+   }
+  },
+  {
+   "id": "modal_continuous_noise",
+   "purpose": "modal model excited by continuous noise, no strums; brightness sweeps the excitation filter",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 1,
+    "model": 0,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.1,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "end": {
+    "brightness": 1.0
+   },
+   "input": {
+    "type": "noise",
+    "amplitude": 0.3,
+    "seed": 3
+   }
+  },
+  {
+   "id": "string_continuous_saw",
+   "purpose": "string model bowed by a continuous saw with a slow V/oct glide, no strums",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 1,
+    "model": 2,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.9,
+    "position": 0.3
+   },
+   "end": {
+    "note": 12.0,
+    "structure": 0.1
+   },
+   "input": {
+    "type": "saw",
+    "amplitude": 0.25,
+    "frequency": 110.0
+   }
+  },
+  {
+   "id": "modal_quiet_input_gate",
+   "purpose": "modal model with an input that fades through the noise-gate threshold",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 1,
+    "model": 0,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "input": {
+    "type": "chirp",
+    "amplitude": 0.004,
+    "frequency": 200.0,
+    "ratio": 8.0
+   }
+  },
+  {
+   "id": "modal_strum_from_note_changes",
+   "purpose": "modal model, strum input normalized and V/oct patched: steps above 0.4 semitone strum, 0.3-semitone wiggles do not",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 2,
+    "model": 0,
+    "internal_exciter": 1,
+    "internal_strum": 1,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "events": [
+    {
+     "block": 100,
+     "note": 0.0
+    },
+    {
+     "block": 150,
+     "note": 0.3
+    },
+    {
+     "block": 300,
+     "note": 5.0
+    },
+    {
+     "block": 350,
+     "note": 5.3
+    },
+    {
+     "block": 500,
+     "note": 10.0
+    },
+    {
+     "block": 550,
+     "note": 10.3
+    },
+    {
+     "block": 700,
+     "note": 2.0
+    },
+    {
+     "block": 750,
+     "note": 2.3
+    },
+    {
+     "block": 900,
+     "note": 7.0
+    },
+    {
+     "block": 950,
+     "note": 7.3
+    },
+    {
+     "block": 1100,
+     "note": 12.0
+    },
+    {
+     "block": 1150,
+     "note": 12.3
+    },
+    {
+     "block": 1300,
+     "note": 4.0
+    },
+    {
+     "block": 1350,
+     "note": 4.3
+    },
+    {
+     "block": 1500,
+     "note": 9.0
+    },
+    {
+     "block": 1550,
+     "note": 9.3
+    },
+    {
+     "block": 1700,
+     "note": 1.0
+    },
+    {
+     "block": 1750,
+     "note": 1.3
+    },
+    {
+     "block": 1900,
+     "note": 6.0
+    },
+    {
+     "block": 1950,
+     "note": 6.3
+    }
+   ],
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "string_strum_from_note_changes",
+   "purpose": "string model, strum input normalized and V/oct patched: steps above 0.4 semitone strum, 0.3-semitone wiggles do not",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 2,
+    "model": 2,
+    "internal_exciter": 1,
+    "internal_strum": 1,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "events": [
+    {
+     "block": 100,
+     "note": 0.0
+    },
+    {
+     "block": 150,
+     "note": 0.3
+    },
+    {
+     "block": 300,
+     "note": 5.0
+    },
+    {
+     "block": 350,
+     "note": 5.3
+    },
+    {
+     "block": 500,
+     "note": 10.0
+    },
+    {
+     "block": 550,
+     "note": 10.3
+    },
+    {
+     "block": 700,
+     "note": 2.0
+    },
+    {
+     "block": 750,
+     "note": 2.3
+    },
+    {
+     "block": 900,
+     "note": 7.0
+    },
+    {
+     "block": 950,
+     "note": 7.3
+    },
+    {
+     "block": 1100,
+     "note": 12.0
+    },
+    {
+     "block": 1150,
+     "note": 12.3
+    },
+    {
+     "block": 1300,
+     "note": 4.0
+    },
+    {
+     "block": 1350,
+     "note": 4.3
+    },
+    {
+     "block": 1500,
+     "note": 9.0
+    },
+    {
+     "block": 1550,
+     "note": 9.3
+    },
+    {
+     "block": 1700,
+     "note": 1.0
+    },
+    {
+     "block": 1750,
+     "note": 1.3
+    },
+    {
+     "block": 1900,
+     "note": 6.0
+    },
+    {
+     "block": 1950,
+     "note": 6.3
+    }
+   ],
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "sympathetic_strum_from_onsets",
+   "purpose": "sympathetic model, polyphony 1, strum and V/oct normalized, external exciter: the onset detector strums",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 1,
+    "model": 1,
+    "internal_exciter": 0,
+    "internal_strum": 1,
+    "internal_note": 1,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "input": {
+    "type": "decay",
+    "amplitude": 0.7,
+    "frequency": 220.0,
+    "period_blocks": 150
+   }
+  },
+  {
+   "id": "fm_strum_from_onsets",
+   "purpose": "fm model, polyphony 2, strum and V/oct normalized, external exciter: the onset detector strums",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 2,
+    "model": 3,
+    "internal_exciter": 0,
+    "internal_strum": 1,
+    "internal_note": 1,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.5,
+    "frequency": 440.0,
+    "period_blocks": 150,
+    "seed": 11
+   }
+  },
+  {
+   "id": "modal_strum_from_onsets",
+   "purpose": "modal model, polyphony 2, strum and V/oct normalized, external exciter: the onset detector strums",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 2,
+    "model": 0,
+    "internal_exciter": 0,
+    "internal_strum": 1,
+    "internal_note": 1,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "input": {
+    "type": "clicks",
+    "amplitude": 0.8,
+    "period_blocks": 97
+   }
+  },
+  {
+   "id": "nothing_patched",
+   "purpose": "string model with every input normalized: the source never strums and stays silent",
+   "blocks": 600,
+   "start": {
+    "polyphony": 1,
+    "model": 2,
+    "internal_exciter": 1,
+    "internal_strum": 1,
+    "internal_note": 1,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "modal_strum_inhibit",
+   "purpose": "modal model, polyphony 4, external strums every 7 blocks against the 20-block inhibit",
+   "blocks": 1500,
+   "start": {
+    "polyphony": 4,
+    "model": 0,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "strum_period": 7,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "quantized_chords_poly1",
+   "purpose": "quantized sympathetic strings, polyphony 1: chords 0..10, one strum per chord",
+   "blocks": 2200,
+   "start": {
+    "polyphony": 1,
+    "model": 4,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "events": [
+    {
+     "block": 0,
+     "chord": 0
+    },
+    {
+     "block": 200,
+     "chord": 1
+    },
+    {
+     "block": 400,
+     "chord": 2
+    },
+    {
+     "block": 600,
+     "chord": 3
+    },
+    {
+     "block": 800,
+     "chord": 4
+    },
+    {
+     "block": 1000,
+     "chord": 5
+    },
+    {
+     "block": 1200,
+     "chord": 6
+    },
+    {
+     "block": 1400,
+     "chord": 7
+    },
+    {
+     "block": 1600,
+     "chord": 8
+    },
+    {
+     "block": 1800,
+     "chord": 9
+    },
+    {
+     "block": 2000,
+     "chord": 10
+    }
+   ],
+   "strums": [
+    1,
+    201,
+    401,
+    601,
+    801,
+    1001,
+    1201,
+    1401,
+    1601,
+    1801,
+    2001
+   ],
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "quantized_chords_poly2",
+   "purpose": "quantized sympathetic strings, polyphony 2: chords 0..10, one strum per chord",
+   "blocks": 2200,
+   "start": {
+    "polyphony": 2,
+    "model": 4,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "events": [
+    {
+     "block": 0,
+     "chord": 0
+    },
+    {
+     "block": 200,
+     "chord": 1
+    },
+    {
+     "block": 400,
+     "chord": 2
+    },
+    {
+     "block": 600,
+     "chord": 3
+    },
+    {
+     "block": 800,
+     "chord": 4
+    },
+    {
+     "block": 1000,
+     "chord": 5
+    },
+    {
+     "block": 1200,
+     "chord": 6
+    },
+    {
+     "block": 1400,
+     "chord": 7
+    },
+    {
+     "block": 1600,
+     "chord": 8
+    },
+    {
+     "block": 1800,
+     "chord": 9
+    },
+    {
+     "block": 2000,
+     "chord": 10
+    }
+   ],
+   "strums": [
+    1,
+    201,
+    401,
+    601,
+    801,
+    1001,
+    1201,
+    1401,
+    1601,
+    1801,
+    2001
+   ],
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "quantized_chords_poly3",
+   "purpose": "quantized sympathetic strings, polyphony 3: chords 0..10, one strum per chord",
+   "blocks": 2200,
+   "start": {
+    "polyphony": 3,
+    "model": 4,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "events": [
+    {
+     "block": 0,
+     "chord": 0
+    },
+    {
+     "block": 200,
+     "chord": 1
+    },
+    {
+     "block": 400,
+     "chord": 2
+    },
+    {
+     "block": 600,
+     "chord": 3
+    },
+    {
+     "block": 800,
+     "chord": 4
+    },
+    {
+     "block": 1000,
+     "chord": 5
+    },
+    {
+     "block": 1200,
+     "chord": 6
+    },
+    {
+     "block": 1400,
+     "chord": 7
+    },
+    {
+     "block": 1600,
+     "chord": 8
+    },
+    {
+     "block": 1800,
+     "chord": 9
+    },
+    {
+     "block": 2000,
+     "chord": 10
+    }
+   ],
+   "strums": [
+    1,
+    201,
+    401,
+    601,
+    801,
+    1001,
+    1201,
+    1401,
+    1601,
+    1801,
+    2001
+   ],
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "quantized_chords_poly4",
+   "purpose": "quantized sympathetic strings, polyphony 4: chords 0..10, one strum per chord",
+   "blocks": 2200,
+   "start": {
+    "polyphony": 4,
+    "model": 4,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "events": [
+    {
+     "block": 0,
+     "chord": 0
+    },
+    {
+     "block": 200,
+     "chord": 1
+    },
+    {
+     "block": 400,
+     "chord": 2
+    },
+    {
+     "block": 600,
+     "chord": 3
+    },
+    {
+     "block": 800,
+     "chord": 4
+    },
+    {
+     "block": 1000,
+     "chord": 5
+    },
+    {
+     "block": 1200,
+     "chord": 6
+    },
+    {
+     "block": 1400,
+     "chord": 7
+    },
+    {
+     "block": 1600,
+     "chord": 8
+    },
+    {
+     "block": 1800,
+     "chord": 9
+    },
+    {
+     "block": 2000,
+     "chord": 10
+    }
+   ],
+   "strums": [
+    1,
+    201,
+    401,
+    601,
+    801,
+    1001,
+    1201,
+    1401,
+    1601,
+    1801,
+    2001
+   ],
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "modal_extremes",
+   "purpose": "modal model at structure 0.9995 and damping 1.0 (last-entry table reads)",
+   "blocks": 1500,
+   "start": {
+    "polyphony": 1,
+    "model": 0,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.9995,
+    "brightness": 1.0,
+    "damping": 1.0,
+    "position": 1.0
+   },
+   "strum_period": 400,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "string_extremes",
+   "purpose": "string model at structure 0.9995 and damping 1.0 (last-entry table reads)",
+   "blocks": 1500,
+   "start": {
+    "polyphony": 1,
+    "model": 2,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.9995,
+    "brightness": 1.0,
+    "damping": 1.0,
+    "position": 1.0
+   },
+   "strum_period": 400,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "fm_extremes",
+   "purpose": "fm model at structure 0.9995 and damping 1.0 (last-entry table reads)",
+   "blocks": 1500,
+   "start": {
+    "polyphony": 1,
+    "model": 3,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.9995,
+    "brightness": 1.0,
+    "damping": 1.0,
+    "position": 1.0
+   },
+   "strum_period": 400,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "string_infinite_decay",
+   "purpose": "string model with damping sweeping 0.9 to 1.0 through the crossfade to infinite decay",
+   "blocks": 2500,
+   "start": {
+    "polyphony": 1,
+    "model": 2,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.9,
+    "position": 0.3
+   },
+   "end": {
+    "damping": 1.0
+   },
+   "strums": [
+    1
+   ],
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "reverb_infinite_decay",
+   "purpose": "string-and-reverb model with damping sweeping 0.85 to 1.0",
+   "blocks": 2500,
+   "start": {
+    "polyphony": 1,
+    "model": 5,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.85,
+    "position": 0.3
+   },
+   "end": {
+    "damping": 1.0,
+    "position": 1.0
+   },
+   "strums": [
+    1,
+    1200
+   ],
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "string_curved_bridge",
+   "purpose": "string model at structure 0 (negative dispersion, curved bridge) and above 0.9 (dispersion noise)",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 1,
+    "model": 2,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.0,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "events": [
+    {
+     "block": 1000,
+     "structure": 0.95
+    }
+   ],
+   "strums": [
+    1,
+    1001
+   ],
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "sympathetic_below_12hz",
+   "purpose": "sympathetic model at MIDI note 0 (8.2 Hz), below the delay line, through the linear upsampler",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 1,
+    "model": 1,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 12.0,
+    "note": -12.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "strums": [
+    1,
+    1000
+   ],
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "string_below_12hz",
+   "purpose": "string model at MIDI note 0 (8.2 Hz), below the delay line, through the linear upsampler",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 1,
+    "model": 2,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 12.0,
+    "note": -12.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "strums": [
+    1,
+    1000
+   ],
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "modal_high_pitch",
+   "purpose": "modal model near MIDI note 108",
+   "blocks": 1500,
+   "start": {
+    "polyphony": 1,
+    "model": 0,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 72.0,
+    "note": 36.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "string_high_pitch",
+   "purpose": "string model near MIDI note 108",
+   "blocks": 1500,
+   "start": {
+    "polyphony": 1,
+    "model": 2,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 72.0,
+    "note": 36.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "fm_high_pitch",
+   "purpose": "fm model near MIDI note 108",
+   "blocks": 1500,
+   "start": {
+    "polyphony": 1,
+    "model": 3,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 72.0,
+    "note": 36.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "fm_feedback_negative",
+   "purpose": "FM model with position 0.0: negative feedback",
+   "blocks": 1500,
+   "start": {
+    "polyphony": 1,
+    "model": 3,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.9,
+    "damping": 0.6,
+    "position": 0.0
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "fm_feedback_positive",
+   "purpose": "FM model with position 1.0: positive feedback",
+   "blocks": 1500,
+   "start": {
+    "polyphony": 1,
+    "model": 3,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.9,
+    "damping": 0.6,
+    "position": 1.0
+   },
+   "strum_period": 300,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "modal_fm_sweep",
+   "purpose": "modal model with the frequency-modulation offset sweeping -48 to +48 semitones",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 1,
+    "model": 0,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": -48.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "end": {
+    "fm": 48.0
+   },
+   "strum_period": 250,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "sympathetic_glide",
+   "purpose": "sympathetic strings with the internal exciter: brightness sweep changes the sympathetic glide",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 1,
+    "model": 1,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.05,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "end": {
+    "brightness": 1.0,
+    "tonic": 30.0
+   },
+   "strum_period": 200,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "string_polyphony_changes",
+   "purpose": "string model with polyphony changing 1, 2, 4, 3, 1, 4 between strums",
+   "blocks": 3000,
+   "start": {
+    "polyphony": 1,
+    "model": 2,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "events": [
+    {
+     "block": 10,
+     "polyphony": 1
+    },
+    {
+     "block": 510,
+     "polyphony": 2
+    },
+    {
+     "block": 1010,
+     "polyphony": 4
+    },
+    {
+     "block": 1510,
+     "polyphony": 3
+    },
+    {
+     "block": 2010,
+     "polyphony": 1
+    },
+    {
+     "block": 2510,
+     "polyphony": 4
+    }
+   ],
+   "strum_period": 97,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "model_changes",
+   "purpose": "polyphony 2 with the model cycling through all six and back to modal",
+   "blocks": 3500,
+   "start": {
+    "polyphony": 2,
+    "model": 0,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "events": [
+    {
+     "block": 10,
+     "model": 0
+    },
+    {
+     "block": 510,
+     "model": 1
+    },
+    {
+     "block": 1010,
+     "model": 2
+    },
+    {
+     "block": 1510,
+     "model": 3
+    },
+    {
+     "block": 2010,
+     "model": 4
+    },
+    {
+     "block": 2510,
+     "model": 5
+    },
+    {
+     "block": 3010,
+     "model": 0
+    }
+   ],
+   "strum_period": 101,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "modal_resolution_changes",
+   "purpose": "modal model with polyphony changes, which re-lay out the mode banks, and an external exciter",
+   "blocks": 2000,
+   "start": {
+    "polyphony": 1,
+    "model": 0,
+    "internal_exciter": 0,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "events": [
+    {
+     "block": 5,
+     "polyphony": 3
+    },
+    {
+     "block": 405,
+     "polyphony": 4
+    },
+    {
+     "block": 805,
+     "polyphony": 2
+    },
+    {
+     "block": 1205,
+     "polyphony": 1
+    },
+    {
+     "block": 1605,
+     "polyphony": 3
+    }
+   ],
+   "strum_period": 133,
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.5,
+    "frequency": 150.0,
+    "period_blocks": 133,
+    "seed": 5
+   }
+  },
+  {
+   "id": "string_seed",
+   "purpose": "string model with the source generator seeded to 123456789",
+   "blocks": 1500,
+   "start": {
+    "polyphony": 1,
+    "model": 2,
+    "internal_exciter": 1,
+    "internal_strum": 0,
+    "internal_note": 0,
+    "chord": 0,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.9,
+    "brightness": 0.6,
+    "damping": 0.6,
+    "position": 0.3
+   },
+   "strum_period": 300,
+   "seed": 123456789,
+   "input": {
+    "type": "zero"
+   }
+  },
+  {
+   "id": "host_golden_modal",
+   "purpose": "native host controls: modal, frequency 30, structure 0.4, brightness 0.6, damping 0.7, position 0.3, onset-strummed plucks",
+   "blocks": 450,
+   "start": {
+    "polyphony": 1,
+    "model": 0,
+    "internal_exciter": 0,
+    "internal_strum": 1,
+    "internal_note": 1,
+    "chord": 4,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.7,
+    "position": 0.3
+   },
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.5,
+    "frequency": 220.0,
+    "period_blocks": 120,
+    "seed": 21
+   }
+  },
+  {
+   "id": "host_golden_string",
+   "purpose": "native host controls: string, polyphony 2, frequency 30, structure 0.4, brightness 0.6, damping 0.7, position 0.3, onset-strummed plucks",
+   "blocks": 450,
+   "start": {
+    "polyphony": 2,
+    "model": 2,
+    "internal_exciter": 0,
+    "internal_strum": 1,
+    "internal_note": 1,
+    "chord": 4,
+    "tonic": 42.0,
+    "note": 0.0,
+    "fm": 0.0,
+    "structure": 0.4,
+    "brightness": 0.6,
+    "damping": 0.7,
+    "position": 0.3
+   },
+   "input": {
+    "type": "bursts",
+    "amplitude": 0.5,
+    "frequency": 220.0,
+    "period_blocks": 120,
+    "seed": 21
+   }
+  }
+ ]
+}
