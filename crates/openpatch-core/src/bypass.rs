@@ -8,6 +8,7 @@ pub(crate) fn routes(kind: &str) -> &'static [(&'static str, &'static str)] {
         "modal_resonator" => &[("excite", "out")],
         "cross_matter" => &[("carrier", "out"), ("modulator", "aux")],
         "grain_weather" => &[("left", "left"), ("right", "right")],
+        "string_field" => &[("in", "odd"), ("in", "even")],
         "scope" => &[("x", "x"), ("y", "y")],
         "svf_filter" => &[("signal", "low")],
         "stock_vca" => &[("signal", "out")],

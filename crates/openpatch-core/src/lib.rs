@@ -105,6 +105,9 @@ pub use cross_matter::{effective_algorithm as cross_matter_effective_algorithm, 
 mod grain_weather;
 #[doc(hidden)]
 pub use grain_weather::{GrainWeatherProbe, GrainWeatherSnapshot};
+mod string_field;
+#[doc(hidden)]
+pub use string_field::{StringFieldProbe, StringFieldSnapshot};
 mod event_fork;
 mod frame_scene;
 mod recall_random;
@@ -495,6 +498,10 @@ pub fn catalog() -> Value {
         .as_array_mut()
         .unwrap()
         .push(grain_weather::catalog());
+    result["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(string_field::catalog());
     result["modules"]
         .as_array_mut()
         .unwrap()

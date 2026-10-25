@@ -85,6 +85,8 @@ fn policy(kind: &str, name: &str) -> Randomization {
         ("cross_matter", _) => Linear,
         ("grain_weather", "freeze" | "mode" | "quality") => Enum,
         ("grain_weather", _) => Linear,
+        ("string_field", "polyphony" | "model") => Enum,
+        ("string_field", _) => Linear,
         ("stock_lfo", "rate" | "pulse_width") => Linear,
         ("stock_lfo", "offset" | "invert") => Enum,
         ("stock_lfo", _) => Disabled,

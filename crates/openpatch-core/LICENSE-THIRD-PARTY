@@ -1193,6 +1193,56 @@ THE SOFTWARE.
 
 See http://creativecommons.org/licenses/MIT/ for more information.
 
+String Field / Rings source adaptation
+======================================
+
+Covered OpenPatch files: openpatch-core/src/string_field/kernel.rs and
+openpatch-core/src/string_field/kernel/*.rs.
+
+Adapted into Rust from Rings and stmlib by Emilie Gillet:
+eurorack f4cfa7697095a28d292bff758beb51deb49b5a86
+stmlib e3bd7c9cc00e4364166f9905c0509b6ffd0535ec
+https://github.com/pichenettes/eurorack/tree/f4cfa7697095a28d292bff758beb51deb49b5a86/rings
+https://github.com/pichenettes/stmlib/tree/e3bd7c9cc00e4364166f9905c0509b6ffd0535ec
+
+Modified Rust source (part and voice allocation, note filter, strummer and
+onset detector, plucker, modal resonator, Karplus-Strong string with
+dispersion, FM voice and follower, FX engine and reverb, limiter, and the
+noise gate and output conversion of the firmware audio callback) and
+generated bit-preserving lookup tables, with an original OpenPatch native
+adapter, 48 kHz rate bridge and panel. No Mutable Instruments artwork, logo,
+analog hardware, codec/CV calibration, settings storage, firmware UI or the
+easter-egg string synthesizer is incorporated. Source inventory and file
+hashes: scripts/rings_reference/source_manifest.json. The voltage scaling, CV
+mapping, jack normalization and host-rate resampling are explicit OpenPatch
+adaptations; this does not claim complete firmware or hardware identity.
+
+Copyright 2012 Emilie Gillet.
+Copyright 2014 Emilie Gillet.
+Copyright 2015 Emilie Gillet.
+
+Author: Emilie Gillet (emilie.o.gillet@gmail.com)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+See http://creativecommons.org/licenses/MIT/ for more information.
+
 Frame Scene / Frames source adaptation
 =====================================
 
