@@ -203,6 +203,56 @@ jobs:
         with:
           name: repository-snapshot
           path: openpatch.bundle
+  steam-linux:
+    # The Steam/Deck Linux package is built inside Valve's Steam Linux Runtime 3.0
+    # (sniper) SDK so it runs on glibc 2.31 and in the Steam runtime container.
+    if: inputs.full_validation || inputs.release_validation || startsWith(github.head_ref, 'work/release-') || startsWith(github.head_ref, 'work/steam-')
+    runs-on: ubuntu-22.04
+    container: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain
+        run: |
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Desktop libraries
+        run: |
+          apt-get update || true
+          apt-get install -y libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev libgl-dev || true
+      - name: Release binary
+        run: cargo build --locked --release
+      - name: Steam runtime glibc limit
+        run: python3 scripts/check_glibc.py target/release/openpatch target/release/openpatch-desktop
+      - name: Portable desktop package
+        run: python3 scripts/package_release.py --platform linux-x86_64 --binary-dir target/release --output dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openpatch-linux-x86_64-steamrt
+          path: |
+            dist/OpenPatch-*.tar.gz
+            target/release/openpatch
+            target/release/openpatch-desktop
+  steam-linux-smoke:
+    # Run the runtime-built package on a stock desktop distribution as well.
+    needs: steam-linux
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: openpatch-linux-x86_64-steamrt
+      - name: Desktop libraries
+        run: sudo apt-get update && sudo apt-get install -y libasound2 libxkbcommon-x11-0 libgl1 xvfb
+      - name: Packaged executables and native window
+        run: |
+          mkdir -p out
+          tar -xzf dist/OpenPatch-linux-x86_64.tar.gz -C out
+          out/OpenPatch-linux-x86_64/openpatch catalog > out/catalog.json
+          out/OpenPatch-linux-x86_64/openpatch patch-engine "Deep House" Dreamy Liquid --info
+          timeout 180s xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 out/OpenPatch-linux-x86_64/openpatch-desktop --smoke-test out/rack.png --workspace /tmp/openpatch-smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: steam-linux-screenshot
+          path: out/rack.png
   visualizer:
     runs-on: macos-14
     timeout-minutes: 10
