@@ -58,6 +58,10 @@ impl Panel {
             return None;
         }
         let status = self.snapshot["status"].as_str().unwrap_or("failed");
+        // A finished build needs no lingering progress bar; failures stay until dismissed.
+        if status == "completed" && !self.snapshot["error"].is_string() {
+            return None;
+        }
         let (running, paused) = (status == "running", status == "paused");
         let active = running || paused;
         let completed = self.snapshot["completed_steps"].as_u64().unwrap_or(0);
@@ -139,7 +143,8 @@ impl Panel {
             self.dismissed = Some(plan_id);
         }
         let mut selected_mode = self.motion_mode;
-        egui::ComboBox::from_id_salt("construction-motion")
+        if active {
+            egui::ComboBox::from_id_salt("construction-motion")
             .selected_text(RichText::new(format!("Motion: {}", selected_mode.label())).size(10.0))
             .width(92.0)
             .show_ui(ui, |ui| {
@@ -149,6 +154,7 @@ impl Panel {
             })
             .response
             .on_hover_text("How committed edits animate: Full adds short movement accents; Reduced uses static accents; Off settles immediately.");
+        }
         self.set_motion_mode(selected_mode);
         ui.separator();
         action

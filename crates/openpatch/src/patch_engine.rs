@@ -99,7 +99,7 @@ pub struct Genome {
 impl Genome {
     pub fn new(genre: &str, mood: &str, texture: &str, seed: u64, controls: Controls) -> Self {
         Self {
-            genre: genre.into(),
+            genre: canonical_genre(genre).into(),
             mood: mood.into(),
             texture: texture.into(),
             song: seed,
@@ -112,7 +112,11 @@ impl Genome {
     /// A related genome. `sound`: new instruments and details, same song. `song`: new song, same instruments.
     /// `evolve`: new details and a small drift of the controls. `entropy` makes repeated mutations differ.
     pub fn mutate(&self, kind: &str, entropy: u64) -> Result<Genome, String> {
-        let mut rng = Rng::new(&format!("mutate|{kind}|{entropy}|{self}"));
+        let legacy = Genome {
+            genre: seed_genre(&self.genre).into(),
+            ..self.clone()
+        };
+        let mut rng = Rng::new(&format!("mutate|{kind}|{entropy}|{legacy}"));
         let mut g = self.clone();
         match kind {
             "sound" => {
@@ -212,7 +216,7 @@ impl std::str::FromStr for Genome {
             controls.validate()?;
         }
         Ok(Genome {
-            genre: parts[0].into(),
+            genre: canonical_genre(parts[0]).into(),
             mood: parts[1].into(),
             texture: parts[2].into(),
             song,
@@ -259,7 +263,7 @@ pub fn genre_noun(genre: &str) -> &'static str {
         "Lo-fi Hip Hop" => "Lo-fi Hip Hop beat",
         "Synthwave" => "Synthwave tune",
         "Downtempo" => "Downtempo groove",
-        "Minecraft" => "Minecraft-style piece",
+        "Ambient Piano" => "Ambient Piano piece",
         "Progressive House" => "Progressive House track",
         "Hypnagogic" => "Hypnagogic piece",
         "Berlin School" => "Berlin School sequence",
@@ -297,6 +301,24 @@ pub fn texture_text(texture: &str) -> &'static str {
 }
 
 // ---------------------------------------------------------------- random
+/// The piano mode's genre word. It was first released as "Minecraft"; genomes
+/// with that word still load, and random streams keep that seed text so saved songs rebuild unchanged.
+pub const PIANO: &str = "Ambient Piano";
+const LEGACY_PIANO: &str = "Minecraft";
+fn canonical_genre(genre: &str) -> &str {
+    if genre.eq_ignore_ascii_case(LEGACY_PIANO) {
+        PIANO
+    } else {
+        genre
+    }
+}
+fn seed_genre(genre: &str) -> &str {
+    if genre == PIANO {
+        LEGACY_PIANO
+    } else {
+        genre
+    }
+}
 struct Rng(u64);
 impl Rng {
     fn new(text: &str) -> Self {
@@ -853,8 +875,8 @@ fn genre_def(g: &str) -> GenreDef {
             hats: &["16", "shuffle", "euclid", "8"],
             ohat: &["half", "sparse", "none"],
         },
-        // C418-style mode: original music in that spirit (soft piano figures, slow drifting harmony, space)
-        "Minecraft" => GenreDef {
+        // Ambient Piano: soft piano figures, slow drifting harmony, lots of space
+        PIANO => GenreDef {
             bpm: (64, 80),
             swing: (50, 50),
             div: 2,
@@ -930,7 +952,7 @@ fn colorize(genre: &str, q: &'static str) -> &'static str {
             "dom9" => "maj7sh",
             _ => q,
         },
-        "Minecraft" => match q {
+        PIANO => match q {
             "dom9" => "maj7sh",
             "m11" | "m7" => "m9",
             _ => q,
@@ -950,7 +972,7 @@ fn harmonic_rhythms(genre: &str) -> &'static [[usize; 4]] {
         "Techno" | "Dub Techno" => &[[0, 0, 0, 0]],
         "Deep House" | "UK Garage" => &[[0, 0, 1, 1], [0, 1, 0, 1]],
         "Ambient" => &[[0, 0, 1, 1]],
-        "Minecraft" => &[[0, 0, 1, 1], [0, 1, 2, 3]],
+        PIANO => &[[0, 0, 1, 1], [0, 1, 2, 3]],
         "Downtempo" => &[[0, 0, 1, 1], [0, 1, 2, 3]],
         "Synthwave" => &[[0, 1, 2, 3]],
         "Progressive House" => &[[0, 0, 1, 1], [0, 1, 2, 3]],
@@ -1017,7 +1039,7 @@ fn out_gain(genre: &str) -> f64 {
         "Lo-fi Hip Hop" => 1.3,
         "Synthwave" => 0.95,
         "Downtempo" => 1.25,
-        "Minecraft" => 0.85,
+        PIANO => 0.85,
         "Progressive House" => 1.05,
         "Hypnagogic" => 1.25,
         "Berlin School" => 1.15,
@@ -1319,22 +1341,23 @@ impl Recipe {
             genome.song,
             genome.controls,
         );
-        let genre = if genre == "Minecraft" {
-            "Minecraft"
+        let genre = if genre == PIANO || genre.eq_ignore_ascii_case(LEGACY_PIANO) {
+            PIANO
         } else {
             find(&GENRES, genre).ok_or("unknown genre")?
         };
         let mood_name = find(&MOODS, mood).ok_or("unknown mood")?;
         let texture = find(&TEXTURES, texture).ok_or("unknown texture")?;
-        let mut rng = Rng::new(&format!("{genre}|{mood_name}|{texture}|{seed}"));
+        let seed_genre = seed_genre(genre);
+        let mut rng = Rng::new(&format!("{seed_genre}|{mood_name}|{texture}|{seed}"));
         // instrument designs and details draw from their own streams, so a song keeps its notes when its sounds
         // mutate (and the other way round)
         let mut srng = Rng::new(&format!(
-            "sound|{genre}|{mood_name}|{texture}|{}",
+            "sound|{seed_genre}|{mood_name}|{texture}|{}",
             genome.sound
         ));
         let drng = Rng::new(&format!(
-            "detail|{genre}|{mood_name}|{texture}|{}",
+            "detail|{seed_genre}|{mood_name}|{texture}|{}",
             genome.detail
         ));
         let g = genre_def(genre);
@@ -1361,7 +1384,7 @@ impl Recipe {
             + rng.uni(-0.15, 0.15))
         .clamp(-1.0, 1.0);
         let space = (m.space
-            + if genre == "Minecraft" { 0.25 } else { 0.0 }
+            + if genre == PIANO { 0.25 } else { 0.0 }
             + match texture {
                 "Spacious" => 0.3,
                 "Crisp" => -0.25,
@@ -1394,8 +1417,8 @@ impl Recipe {
             .then(|| rng.pick(&kinds))
             .filter(|k| Some(*k) != perc);
         // instrument designs: the genre's classic voices plus every catalog design, weighted by the three words
-        let minecraft = genre == "Minecraft";
-        let voice = if minecraft {
+        let piano = genre == PIANO;
+        let voice = if piano {
             srng.pick(g.voices)
         } else {
             choose(
@@ -1414,7 +1437,7 @@ impl Recipe {
         let pad_roll = srng.chance((g.pad * (1.5 - ctl.energy)).min(1.0));
         let pad = !voice_pad && !minimal && pad_roll;
         let bass_style = rng.pick(g.bass);
-        let bass_design = if minecraft || bass_style == "drone" {
+        let bass_design = if piano || bass_style == "drone" {
             "sine"
         } else {
             choose(
@@ -1431,7 +1454,7 @@ impl Recipe {
         };
         // percussive designs (low-pass gates, struck resonators) suit arps, riffs and bells; hooks need a held note
         let sustained_lead = matches!(lead, "hook" | "counter");
-        let lead_design = if minecraft || lead == "none" {
+        let lead_design = if piano || lead == "none" {
             "classic"
         } else {
             choose(
@@ -1478,7 +1501,7 @@ impl Recipe {
         // song form: each seed picks a form the genre suits (the classic or 16-bar layering forms, a long
         // progressive filter build, or a collage of abrupt cuts)
         let forms: &[(&str, f64)] = match genre {
-            "Minecraft" => &[("long", 1.0)],
+            PIANO => &[("long", 1.0)],
             "Techno" => &[("long", 3.0), ("collage", 0.5), ("progressive", 1.5)],
             "Dub Techno" | "Ambient" => &[("long", 3.0), ("collage", 1.5)],
             "Deep House" | "Synthwave" | "UK Garage" => {
@@ -1536,7 +1559,7 @@ impl Recipe {
             six: 60.0 / bpm as f64 / 4.0,
             lead,
             counter,
-            clap: !minimal && genre != "Ambient" && genre != "Minecraft",
+            clap: !minimal && genre != "Ambient" && genre != PIANO,
             perc,
             perc2,
             pad,
@@ -3400,14 +3423,14 @@ impl Recipe {
         self.label(
             0,
             format!(
-                "ROW 0 · MIX\n\n{} · seed {}\nStudio mixer · A → echo · B → reverb",
+                "MIX\n\n{} · seed {}\nSend A goes to the echo, send B to the reverb.",
                 self.title, self.seed
             ),
         );
         self.module("mixer", "studio_mixer", 0, json!({}), "Studio mixer");
         self.label(
             7,
-            "ROW 7 · MASTER\n\nGlue 2:1 → limiter → stereo out".into(),
+            "MASTER\n\nGentle 2:1 glue compression, then a limiter, then stereo out.".into(),
         );
         let bus = if c.glue { "glue" } else { "limit" };
         if c.glue {
@@ -3503,7 +3526,7 @@ impl Recipe {
 
         // row 1 · sequencing
         let div = c.g.div;
-        self.label(1, format!("ROW 1 · SEQUENCING\n\nseq_drums = master clock ({} BPM, swing {}%) + song-form lanes ({}) → seq_music ({names}{}) · seq_perc",
+        self.label(1, format!("SEQUENCING\n\nThe drum sequencer is the master clock ({} BPM, {}% swing) and drives the song form ({}). The music sequencer plays {names}{}; a third adds percussion.",
                               self.bpm, self.swing, c.form, if div == 2 { ", 2 bars each" } else { "" }));
         self.module(
             "seq_drums",
@@ -3566,7 +3589,7 @@ impl Recipe {
             .collect();
         self.label(
             2,
-            format!("ROW 2 · DRUMS\n\n{genre} kit · {}", drum_notes.join(" · ")),
+            format!("DRUMS\n\n{genre} kit · {}", drum_notes.join(" · ")),
         );
         let (kp, kd, kdr, kt) = c.g.kick;
         let crisp = tex == "Crisp";
@@ -3740,7 +3763,7 @@ impl Recipe {
         }
 
         // drum fill into each drop (seq_perc track 4, opened by the fill lane); long-form genres have none
-        if !matches!(genre, "Dub Techno" | "Techno" | "Ambient" | "Minecraft") {
+        if !matches!(genre, "Dub Techno" | "Techno" | "Ambient" | PIANO) {
             let fl = self.lane_out("fill");
             self.module("fill", "drum_voice", 2, json!({"mode": 1, "pitch": c.rng.int(900, 1300), "decay": 0.12, "tone": 0.3, "level": 1.3}), "Fill snare");
             self.con("seq_perc", "gate4", "fill", "trigger");
@@ -3764,7 +3787,7 @@ impl Recipe {
         self.label(
             3,
             format!(
-                "ROW 3 · BASS\n\n{} · {}{}",
+                "BASS\n\n{} · {}{}",
                 instruments::design(bass_kind).map_or("sine drone on the roots", |x| x.words),
                 self.notes
                     .iter()
@@ -3896,7 +3919,7 @@ impl Recipe {
         self.label(
             4,
             format!(
-                "ROW 4 · CHORDS\n\n{}{} · 4 voices · low-pass on the sweep lane{}{}",
+                "CHORDS\n\n{}{} · 4 voices · a low-pass filter follows the sweep{}{}",
                 voice_word[..1].to_uppercase(),
                 &voice_word[1..],
                 if c.pad {
@@ -4065,7 +4088,7 @@ impl Recipe {
             self.label(
                 5,
                 format!(
-                    "ROW 5 · MELODY\n\n{} built from the chord tones (always in key) · {}",
+                    "MELODY\n\n{} built from the chord tones (always in key) · {}",
                     if has_lead {
                         lead_word
                     } else {
@@ -4113,7 +4136,7 @@ impl Recipe {
                 } else {
                     base
                 };
-                let env = if genre == "Minecraft" {
+                let env = if genre == PIANO {
                     json!({"attack": 0.005, "decay": r3(c.rng.uni(1.4, 2.2)), "sustain": 0.0, "release": 1.2})
                 } else {
                     env
@@ -4189,7 +4212,7 @@ impl Recipe {
         self.label(
             6,
             format!(
-                "ROW 6 · TEXTURE · {}\n\n{}{}",
+                "TEXTURE · {}\n\n{}{}",
                 tex.to_uppercase(),
                 texture_text(tex)[..1].to_uppercase(),
                 &texture_text(tex)[1..]

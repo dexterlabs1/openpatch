@@ -49,10 +49,10 @@ impl OpenPatch {
                 ui.close();
             }
             ui.separator();
-            if ui.button("Reference analog voice").clicked() {
+            if ui.button("Analog voice").clicked() {
                 let mut patch = openpatch_core::analog_demo_patch();
                 patch.version = 2;
-                self.replace_from_menu(patch, "Reference analog voice");
+                self.replace_from_menu(patch, "Analog voice");
                 ui.close();
             }
             if ui.button("Clocked random voice").clicked() {

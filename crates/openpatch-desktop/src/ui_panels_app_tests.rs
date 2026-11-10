@@ -441,7 +441,7 @@ fn render_audio_mcp_and_footer_review() {
     egui::Popup::close_all(&ctx);
     let output = draw(&mut app, size, 19.0, vec![]);
     capture.observe(&output);
-    let position = preset_text(&output, "MCP off");
+    let position = preset_text(&output, "Connect AI");
     for (time, pressed) in [(19.1, true), (19.2, false)] {
         let output = draw(
             &mut app,

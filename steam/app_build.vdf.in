@@ -1,0 +1,14 @@
+"AppBuild"
+{
+	"AppID" "@APP_ID@"
+	"Desc" "OpenPatch @VERSION@"
+	"ContentRoot" "content/"
+	"BuildOutput" "output/"
+	"SetLive" ""
+	"Depots"
+	{
+		"@DEPOT_LINUX@" "depot_linux.vdf"
+		"@DEPOT_WINDOWS@" "depot_windows.vdf"
+		"@DEPOT_MACOS@" "depot_macos.vdf"
+	}
+}

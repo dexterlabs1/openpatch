@@ -302,7 +302,7 @@ fn text_rect(output: &egui::FullOutput, label: &str) -> Option<egui::Rect> {
 fn toolbar_starts_and_opens_real_bridge_and_footer_reopens_details() {
     let mut host = Host::new();
     assert!(!host.panel.is_open());
-    host.click("Start MCP bridge");
+    host.click("Connect AI");
     assert!(host.panel.is_open());
     let id = host.panel.session_id().unwrap().to_owned();
     assert_eq!(host.panel.clients(), 0);

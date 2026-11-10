@@ -1,0 +1,5 @@
+content/
+output/
+*.vdf
+!*.vdf.in
+steam_appid.txt

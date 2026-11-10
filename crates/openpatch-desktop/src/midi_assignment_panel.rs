@@ -380,7 +380,7 @@ impl Rack {
         painter.text(
             p(240.0, 376.0),
             Align2::CENTER_CENTER,
-            "Global MIDI input · select endpoint in MIDI settings",
+            "Global MIDI input · choose the device in Settings › MIDI",
             font(10.0),
             MUTED,
         );
